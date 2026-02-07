@@ -44,13 +44,31 @@ export default function ActCreatePage() {
   const [insured, setInsured] = useState(false);
 
   const [cargoRows, setCargoRows] = useState(() => [
-    { id: safeUuid(), places: "", length: "", width: "", height: "", volWeight: "" },
+    {
+      id: safeUuid(),
+      places: "",
+      length: "",
+      width: "",
+      height: "",
+      weight: "",
+      volume: "",
+      volWeight: "",
+    },
   ]);
 
   const addRow = () => {
     setCargoRows((prev) => [
       ...prev,
-      { id: safeUuid(), places: "", length: "", width: "", height: "", volWeight: "" },
+      {
+        id: safeUuid(),
+        places: "",
+        length: "",
+        width: "",
+        height: "",
+        weight: "",
+        volume: "",
+        volWeight: "",
+      },
     ]);
   };
 
@@ -216,10 +234,12 @@ export default function ActCreatePage() {
                 <thead>
                   <tr>
                     <th style={{ width: 56 }}>№</th>
-                    <th style={{ width: 140 }}>Кол-во мест</th>
-                    <th style={{ width: 120 }}>Длина</th>
-                    <th style={{ width: 120 }}>Ширина</th>
+                    <th style={{ width: 70 }}>Кол-во мест</th>
+                    <th style={{ width: 70 }}>Длина</th>
+                    <th style={{ width: 70 }}>Ширина</th>
                     <th style={{ width: 120 }}>Высота</th>
+                    <th style={{ width: 120 }}>Вес</th>
+                    <th style={{ width: 120 }}>Объём</th>
                     <th style={{ width: 160 }}>Объёмный вес</th>
                     <th style={{ width: 140, textAlign: "right" }}>Действия</th>
                   </tr>
@@ -258,6 +278,23 @@ export default function ActCreatePage() {
                           value={r.height}
                           onChange={(e) => setRow(r.id, { height: e.target.value })}
                           placeholder="см"
+                        />
+                      </td>
+                      <td>
+                        <input
+                          className="cell_input"
+                          value={r.weight || ""}
+                          onChange={(e) => setRow(r.id, { weight: e.target.value })}
+                          placeholder="кг"
+                        />
+                      </td>
+
+                      <td>
+                        <input
+                          className="cell_input"
+                          value={r.volume || ""}
+                          onChange={(e) => setRow(r.id, { volume: e.target.value })}
+                          placeholder="м³"
                         />
                       </td>
                       <td>

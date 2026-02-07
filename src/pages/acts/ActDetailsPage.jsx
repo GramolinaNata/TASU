@@ -168,43 +168,121 @@ export default function ActDetailsPage() {
         </div>
 
         <div className="card_body">
-          <div className="details_grid">
-            <div>
+          <div className="summary_grid">
+            <div className="summary_item">
+              <div className="label">Номер</div>
+              <div className="v">{act.number}</div>
+            </div>
+
+            <div className="summary_item">
               <div className="label">Дата</div>
-              <div style={{ fontWeight: 800 }}>{act.date}</div>
+              <div className="v">{act.date || "—"}</div>
             </div>
 
-            <div>
+            <div className="summary_item">
               <div className="label">Статус</div>
-              {act.docType === "ttn" ? (
-                <span className="badge badge--ttn">ТТН</span>
-              ) : act.docType === "smr" ? (
-                <span className="badge badge--smr">СМР</span>
-              ) : (
-                <span className="badge badge--draft">Черновик</span>
-              )}
-            </div>
-
-            <div>
-              <div className="label">Откуда</div>
-              <div style={{ fontWeight: 800 }}>{act.route?.fromCity || "—"}</div>
-            </div>
-
-            <div>
-              <div className="label">Куда</div>
-              <div style={{ fontWeight: 800 }}>{act.route?.toCity || "—"}</div>
-            </div>
-
-            <div className="details_full">
-              <div className="label">Заказчик</div>
-              <div style={{ fontWeight: 800 }}>
-                {act.customer?.fio || "—"} · {act.customer?.phone || "—"}
+              <div>
+                {act.docType === "ttn" ? (
+                  <span className="badge badge--ttn">ТТН</span>
+                ) : act.docType === "smr" ? (
+                  <span className="badge badge--smr">СМР</span>
+                ) : (
+                  <span className="badge badge--draft">Черновик</span>
+                )}
               </div>
-              <div className="muted" style={{ marginTop: 4 }}>
-                {act.customer?.address || "—"}
+            </div>
+
+            <div className="summary_item">
+              <div className="label">Страховка</div>
+              <div className="v">{act.insured ? "Да" : "Нет"}</div>
+            </div>
+
+            <div className="summary_item summary_full">
+              <div className="label">Маршрут</div>
+              <div className="route_row">
+                <span className="chip">{act.route?.fromCity || "—"}</span>
+                <span className="route_arrow">→</span>
+                <span className="chip">{act.route?.toCity || "—"}</span>
               </div>
             </div>
           </div>
+
+          <div className="split_2" style={{ marginTop: 14 }}>
+            <div className="info_card">
+              <div className="info_title">Заказчик</div>
+              <div className="kv">
+                <div className="k">ФИО</div>
+                <div className="v">{act.customer?.fio || "—"}</div>
+
+                <div className="k">Телефон</div>
+                <div className="v">{act.customer?.phone || "—"}</div>
+
+                <div className="k">Адрес</div>
+                <div className="v">{act.customer?.address || "—"}</div>
+
+                <div className="k">БИН</div>
+                <div className="v">{act.customer?.bin || "—"}</div>
+              </div>
+            </div>
+
+            <div className="info_card">
+              <div className="info_title">Адреса доставки</div>
+              <div className="kv">
+                <div className="k">Адрес отправителя</div>
+                <div className="v">{act.route?.fromAddress || "—"}</div>
+
+                <div className="k">Адрес получателя</div>
+                <div className="v">{act.route?.toAddress || "—"}</div>
+
+                <div className="k">Комментарий</div>
+                <div className="v">{act.route?.comment || "—"}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="info_card" style={{ marginTop: 14 }}>
+            <div className="info_title">Характеристики груза</div>
+            <div className="text_block">{act.cargoText || "—"}</div>
+          </div>
+
+          {Array.isArray(act.cargoRows) && act.cargoRows.length ? (
+            <div className="info_card" style={{ marginTop: 14 }}>
+              <div className="info_title">Таблица мест</div>
+
+              <div className="table_wrap" style={{ marginTop: 10 }}>
+                <div className="table_scroll">
+                  <table className="table_fixed">
+                    <thead>
+                      <tr>
+                        <th style={{ width: 56 }}>№</th>
+                        <th>Кол-во мест</th>
+                        <th>Длина</th>
+                        <th>Ширина</th>
+                        <th>Высота</th>
+                        <th>Вес</th>
+                        <th>Объём</th>
+                        <th>Объёмный вес</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {act.cargoRows.map((r, idx) => (
+                        <tr key={r.id || idx}>
+                          <td>{idx + 1}</td>
+                          <td>{r.places || "—"}</td>
+                          <td>{r.length || "—"}</td>
+                          <td>{r.width || "—"}</td>
+                          <td>{r.height || "—"}</td>
+                          <td>{r.weight || "—"}</td>
+                          <td>{r.volume || "—"}</td>
+                          <td>{r.volWeight || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
 

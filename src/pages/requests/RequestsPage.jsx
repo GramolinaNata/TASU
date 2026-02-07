@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getActs, subscribeActs } from "../../shared/storage/actsStorage.js";
+import { getActs, subscribeActs, deleteAct } from "../../shared/storage/actsStorage.js";
+import { downloadJson } from "../../shared/export/actExport.js";
 
 export default function RequestsPage() {
   const [items, setItems] = useState([]);
@@ -28,12 +29,13 @@ export default function RequestsPage() {
               <th>Откуда</th>
               <th>Куда</th>
               <th>Заказчик</th>
+              <th style={{ width: 170, textAlign: "right" }}>Действия</th>
             </tr>
           </thead>
           <tbody>
             {items.length === 0 ? (
               <tr>
-                <td colSpan={5} className="muted" style={{ padding: 16 }}>
+                <td colSpan={6} className="muted" style={{ padding: 16 }}>
                   Пока пусто. Открой акт и нажми “Сформировать ТТН”.
                 </td>
               </tr>
@@ -47,6 +49,34 @@ export default function RequestsPage() {
                   <td>{a.route?.fromCity || "—"}</td>
                   <td>{a.route?.toCity || "—"}</td>
                   <td>{a.customer?.fio || "—"}</td>
+                  <td
+                    style={{
+                      textAlign: "right",
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 8,
+                    }}
+                  >
+                    <button
+                      className="btn btn--sm"
+                      type="button"
+                      onClick={() => downloadJson(`ttn_${a.number.replace("#", "")}.json`, a)}
+                    >
+                      Экспорт
+                    </button>
+
+                    <button
+                      className="btn btn--sm btn--danger"
+                      type="button"
+                      onClick={() => {
+                        const ok = window.confirm(`Удалить ${a.number} из ТТН?`);
+                        if (!ok) return;
+                        deleteAct(a.id);
+                      }}
+                    >
+                      Удалить
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
