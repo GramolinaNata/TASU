@@ -66,3 +66,33 @@ button:focus-visible {
     background-color: #f9f9f9;
   }
 }
+
+/* Дополнительные вспомогательные стили */
+.text_danger {
+  color: #ff4d4f !important;
+  font-weight: bold;
+  margin-left: 2px;
+}
+
+input.error, 
+textarea.error {
+  border: 1px solid #ff4d4f !important;
+  background-color: #fff2f0 !important;
+}
+
+.badge--draft {
+  background: #f0f2f5;
+  color: #595959;
+}
+
+.badge--ttn {
+  background: #f6ffed;
+  color: #389e0d;
+  border: 1px solid #b7eb8f;
+}
+
+.badge--danger {
+  background: #fff1f0;
+  color: #cf1322;
+  border: 1px solid #ffa39e;
+}

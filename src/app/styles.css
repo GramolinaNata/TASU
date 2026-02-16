@@ -499,3 +499,18 @@ textarea {
     line-height: 1.45;
     font-weight: 700;
 }
+
+/* Validation & Feedback Styles */
+.text_danger {
+    color: #ff3333 !important;
+    font-weight: 900;
+    margin-left: 3px;
+    font-size: 1.2em;
+}
+
+input.error, 
+textarea.error {
+    border-color: #ff3333 !important;
+    background-color: #fff8f8 !important;
+    box-shadow: 0 0 0 3px rgba(255, 51, 51, 0.1) !important;
+}

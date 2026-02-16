@@ -89,7 +89,12 @@ export default function ActDetailsPage() {
           
           {act.status !== 'canceled' ? (
             <>
-              {/* <button className="btn btn--danger">Удалить</button> - Удаление отключено по требованию */}
+              <button 
+                className="btn" 
+                onClick={() => nav(`/acts/${act.id}/edit`)} // Edit button
+              >
+                Редактировать
+              </button>
               <button className="btn btn--accent" onClick={() => chooseDocType("ttn")}>
                 Сформировать ТТН
               </button>
@@ -128,10 +133,8 @@ export default function ActDetailsPage() {
               <div>
                 {act.status === "canceled" ? (
                   <span className="badge badge--danger">Аннулирована</span>
-                ) : act.docType === "ttn" ? (
-                  <span className="badge badge--ttn">ТТН</span>
-                ) : act.docType === "smr" ? (
-                  <span className="badge badge--smr">СМР</span>
+                ) : act.status === "act" ? (
+                  <span className="badge badge--ttn">Заявка</span>
                 ) : (
                   <span className="badge badge--draft">Черновик</span>
                 )}
@@ -210,7 +213,7 @@ export default function ActDetailsPage() {
             </div>
       </div>
 
-       {/* Груз */}
+      {/* Груз */}
       <div className="info_card" style={{ marginTop: 14 }}>
         <div className="info_title">Груз</div>
         <div className="text_block" style={{marginBottom: 10}}>{act.cargoText || "—"}</div>
@@ -261,47 +264,6 @@ export default function ActDetailsPage() {
                 </table>
             </div>
         )}
-      </div>
-
-      {/* Услуги и итоговая цена (редактируемые) */}
-      <div className="card" style={{ marginTop: 14 }}>
-        <div className="card_head"><div className="card_title">Услуги и Итого</div></div>
-        <div className="card_body">
-           <div className="table_wrap">
-                  <table className="table_fixed">
-                    <thead>
-                      <tr>
-                        <th>Название услуги</th>
-                        <th style={{ width: 100 }}>Кол-во</th>
-                        <th style={{ width: 150 }}>Сумма</th>
-                        <th style={{ width: 80 }}></th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {services.map((s) => (
-                        <tr key={s.id}>
-                          <td><input className="cell_input" value={s.name} onChange={(e) => setServiceRow(s.id, { name: e.target.value })} /></td>
-                          <td><input className="cell_input" type="number" value={s.qty} onChange={(e) => setServiceRow(s.id, { qty: e.target.value })} /></td>
-                          <td><input className="cell_input" type="number" value={s.sum} onChange={(e) => setServiceRow(s.id, { sum: e.target.value })} /></td>
-                          <td><button className="btn btn--sm" onClick={() => removeServiceRow(s.id)}>x</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  <div style={{padding: 10}}><button className="btn btn--sm" onClick={addServiceRow}>+ Добавить услугу</button></div>
-           </div>
-           
-           <div className="form_grid" style={{marginTop: 15, borderTop: '1px solid #eee', paddingTop: 15}}>
-              <div className="field">
-                  <div className="label">Итоговая стоимость (К оплате)</div>
-                  <input type="number" value={total.price} onChange={(e) => setTotal({ price: e.target.value })} placeholder="0" />
-              </div>
-           </div>
-           
-           <div style={{marginTop: 15}}>
-               <button className="btn btn--accent" onClick={saveExtra}>Сохранить изменения</button>
-           </div>
-        </div>
       </div>
     </>
   );

@@ -153,6 +153,7 @@ export default function ActsListPage() {
             <tr>
               <th style={{width: 100}}>Номер</th>
               <th style={{width: 100}}>Дата</th>
+              <th style={{width: 100}}>Статус</th>
               <th>Откуда</th>
               <th>Куда</th>
               <th>Заказчик</th>
@@ -162,7 +163,7 @@ export default function ActsListPage() {
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={6} className="muted" style={{ padding: 16 }}>
+                <td colSpan={7} className="muted" style={{ padding: 16 }}>
                   {company ? "В этой компании нет заявок." : "Выберите компанию."}
                 </td>
               </tr>
@@ -171,9 +172,17 @@ export default function ActsListPage() {
                 <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
                   <td className="num">
                     <Link to={`/acts/${a.id}`}>{a.number}</Link>
-                    {a.status === 'canceled' && <div className="badge badge--danger" style={{marginTop: 4, fontSize: 10}}>Аннулирована</div>}
                   </td>
                   <td>{a.date}</td>
+                  <td>
+                    {a.status === 'canceled' ? (
+                       <span className="badge badge--danger">Аннулирована</span>
+                    ) : a.status === 'act' ? (
+                       <span className="badge badge--ttn">Заявка</span>
+                    ) : (
+                       <span className="badge badge--draft">Черновик</span>
+                    )}
+                  </td>
                   <td>{a.route?.fromCity || "—"}</td>
                   <td>{a.route?.toCity || "—"}</td>
                   <td>

@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { addAct, getActs } from "../../shared/storage/actsStorage.js";
-import { getSelectedCompanyId, getSelectedCompany } from "../../shared/storage/companyStorage.js";
+import { useNavigate, useParams } from "react-router-dom";
+import { addAct, getActs, getActById, updateAct } from "../../shared/storage/actsStorage.js";
+import { getSelectedCompanyId, getSelectedCompany, getCompanies } from "../../shared/storage/companyStorage.js";
 
 function todayIso() {
   const d = new Date();
@@ -68,8 +68,13 @@ const initialRequisites = {
 
 export default function ActCreatePage() {
   const nav = useNavigate();
+  const { id } = useParams();
+  const isEditMode = !!id;
+
   const [date, setDate] = useState(todayIso());
   const [totalSum, setTotalSum] = useState(""); // Ручная сумма
+  const [selectedCompanyId, setSelectedCompanyId] = useState("");
+  const [allCompanies, setAllCompanies] = useState([]);
 
   // 1. Заказчик
   const [customer, setCustomer] = useState({
@@ -104,10 +109,10 @@ export default function ActCreatePage() {
     {
       id: safeUuid(),
       seats: 1,
-      length: 0,
-      width: 0,
-      height: 0,
-      weight: 0,
+      length: "",
+      width: "",
+      height: "",
+      weight: "",
       volume: 0,
       volWeight: 0,
     },
@@ -116,6 +121,29 @@ export default function ActCreatePage() {
   // Сворачиваемые блоки реквизитов
   const [showCustReq, setShowCustReq] = useState(false);
   const [showRecReq, setShowRecReq] = useState(false);
+
+  // Load companies and act data
+  useEffect(() => {
+    const companies = getCompanies();
+    setAllCompanies(companies);
+
+    if (isEditMode) {
+      const act = getActById(id);
+      if (act) {
+        setDate(act.date || todayIso());
+        setTotalSum(act.totalSum || "");
+        setSelectedCompanyId(act.companyId || "");
+        if (act.customer) setCustomer(act.customer);
+        if (act.receiver) setReceiver(act.receiver);
+        if (act.route) setRoute(act.route);
+        if (act.cargoText) setCargoText(act.cargoText);
+        setInsured(!!act.insured);
+        if (Array.isArray(act.cargoRows)) setCargoRows(act.cargoRows);
+      }
+    } else {
+      setSelectedCompanyId(getSelectedCompanyId() || "");
+    }
+  }, [id, isEditMode]);
 
   // Хелперы для изменения строк
   const updateRow = (id, field, val) => {
@@ -126,12 +154,13 @@ export default function ActCreatePage() {
         
         // Авторасчет объема (м3) и объемного веса (кг)
         if (["length", "width", "height"].includes(field)) {
+          // Ввод теперь в метрах
           const l = parseFloat(next.length) || 0;
           const w = parseFloat(next.width) || 0;
           const h = parseFloat(next.height) || 0;
           
-          const v = (l * w * h) / 1000000;
-          const vw = (l * w * h) / 6000;
+          const v = l * w * h;
+          const vw = (v * 1000000) / 6000;
           
           next.volume = v > 0 ? parseFloat(v.toFixed(4)) : 0;
           next.volWeight = vw > 0 ? parseFloat(vw.toFixed(2)) : 0;
@@ -147,10 +176,10 @@ export default function ActCreatePage() {
       {
         id: safeUuid(),
         seats: 1,
-        length: 0,
-        width: 0,
-        height: 0,
-        weight: 0,
+        length: "", // Default empty
+        width: "",
+        height: "",
+        weight: "",
         volume: 0,
         volWeight: 0,
       },
@@ -175,36 +204,66 @@ export default function ActCreatePage() {
     );
   }, [cargoRows]);
 
-  const onSave = () => {
-    const company = getSelectedCompany();
-    const number = genNumber(company);
+  const [attemptedSave, setAttemptedSave] = useState(false);
 
-    const act = {
-      id: safeUuid(),
-      number, // используется сгенерированный номер
+  const onSave = () => {
+    setAttemptedSave(true);
+    
+    // Find selected company object
+    const company = allCompanies.find(c => c.id === selectedCompanyId);
+    
+    // 1. Основные поля (Обязательны для любого сохранения)
+    const coreFilled = 
+      customer.fio && customer.phone && customer.companyName &&
+      receiver.fio && receiver.phone && receiver.companyName &&
+      route.fromCity && route.toCity && route.fromAddress && route.toAddress &&
+      date && selectedCompanyId;
+
+    if (!coreFilled) {
+       alert("Пожалуйста, заполните основные поля (отмечены звездочкой) и выберите компанию.");
+       return;
+    }
+
+    // 2. Реквизиты (Нужны для статуса "Заявка")
+    // Проверяем наличие ключевых реквизитов у обоих сторон
+    const checkReqs = (obj) => {
+        return obj.jurAddress && obj.bin && obj.account && obj.bank && obj.bik;
+    };
+
+    const reqsComplete = checkReqs(customer) && checkReqs(receiver);
+    const status = reqsComplete ? "act" : "draft";
+    
+    const actData = {
       date,
-      createdAt: Date.now(),
-      status: "draft",
-      companyId: company?.id || null, 
-      
       customer,
       receiver,
       route,
-      
       cargoText,
       cargoRows,
       totals,
       insured,
       totalSum,
-      
-      docType: null,
+      companyId: selectedCompanyId, 
+      status, 
     };
-    
-    addAct(act); // Исправлен вызов (был api.acts.create в mock, но здесь возвращаемся к storage пока или mock? 
-    // Wait, user accepted mock implementation in ActsListPage but here we are still using direct storage?
-    // Let's stick to storage for now as step 421 didn't change ActCreatePage to use API yet.
-    // Actually, implementation plan said "Refactoring ActCreatePage (async/await) - TODO". 
-    // So sticking to sync storage for now is correct to fix the immediate syntax error.
+
+    if (isEditMode) {
+      const oldAct = getActById(id);
+      // Если компания изменилась - генерируем новый номер
+      if (oldAct && oldAct.companyId !== selectedCompanyId) {
+          actData.number = genNumber(company);
+      }
+      updateAct(id, actData);
+    } else {
+      const number = genNumber(company);
+      addAct({
+        id: safeUuid(),
+        number,
+        createdAt: Date.now(),
+        docType: null,
+        ...actData
+      });
+    }
     
     nav("/acts");
   };
@@ -213,11 +272,32 @@ export default function ActCreatePage() {
     <>
       <div className="topbar">
         <div>
-          <div className="crumbs">Заявки / Создать заявку</div>
-          <h1>Создать заявку</h1>
+          <div className="crumbs">Заявки / {isEditMode ? "Редактирование" : "Создать заявку"}</div>
+          <h1>{isEditMode ? "Редактирование заявки" : "Создать заявку"}</h1>
         </div>
         <div className="topbar_actions">
           <button className="btn" onClick={() => nav(-1)}>← Назад</button>
+        </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="card_head">
+          <div className="card_title">Выбор компании <span className="text_danger">*</span></div>
+        </div>
+        <div className="card_body">
+           <div className="field">
+              <select 
+                className={attemptedSave && !selectedCompanyId ? "error" : ""}
+                style={{ width: "100%", height: 44, fontSize: 16, fontWeight: 700 }}
+                value={selectedCompanyId}
+                onChange={e => setSelectedCompanyId(e.target.value)}
+              >
+                <option value="">-- Выберите компанию --</option>
+                {allCompanies.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+           </div>
         </div>
       </div>
 
@@ -228,25 +308,28 @@ export default function ActCreatePage() {
         </div>
         <div className="card_body">
           <div className="form_grid">
-             <div className="field">
-              <div className="label">ФИО / Название</div>
+            <div className="field">
+              <div className="label">ФИО / Название <span className="text_danger">*</span></div>
               <input 
+                className={attemptedSave && !customer.fio ? "error" : ""}
                 value={customer.fio} 
                 onChange={e => setCustomer({...customer, fio: e.target.value})} 
                 placeholder="Иванов И.И. / ТОО Ромашка"
               />
             </div>
             <div className="field">
-              <div className="label">Телефон</div>
+              <div className="label">Телефон <span className="text_danger">*</span></div>
               <input 
+                className={attemptedSave && !customer.phone ? "error" : ""}
                 value={customer.phone} 
                 onChange={e => setCustomer({...customer, phone: e.target.value})} 
                 placeholder="+7..."
               />
             </div>
             <div className="field">
-               <div className="label">Название компании</div>
+               <div className="label">Название компании <span className="text_danger">*</span></div>
                <input 
+                 className={attemptedSave && !customer.companyName ? "error" : ""}
                  value={customer.companyName}
                  onChange={e => setCustomer({...customer, companyName: e.target.value})}
                  placeholder="Если отличается от ФИО"
@@ -304,25 +387,28 @@ export default function ActCreatePage() {
         </div>
         <div className="card_body">
           <div className="form_grid">
-             <div className="field">
-              <div className="label">ФИО / Название</div>
+            <div className="field">
+              <div className="label">ФИО / Название <span className="text_danger">*</span></div>
               <input 
+                className={attemptedSave && !receiver.fio ? "error" : ""}
                 value={receiver.fio} 
                 onChange={e => setReceiver({...receiver, fio: e.target.value})} 
                 placeholder="Сидоров С.С."
               />
             </div>
             <div className="field">
-              <div className="label">Телефон</div>
+              <div className="label">Телефон <span className="text_danger">*</span></div>
               <input 
+                className={attemptedSave && !receiver.phone ? "error" : ""}
                 value={receiver.phone} 
                 onChange={e => setReceiver({...receiver, phone: e.target.value})} 
                 placeholder="+7..."
               />
             </div>
             <div className="field">
-               <div className="label">Название компании</div>
+               <div className="label">Название компании <span className="text_danger">*</span></div>
                <input 
+                 className={attemptedSave && !receiver.companyName ? "error" : ""}
                  value={receiver.companyName}
                  onChange={e => setReceiver({...receiver, companyName: e.target.value})}
                />
@@ -380,31 +466,35 @@ export default function ActCreatePage() {
         <div className="card_body">
           <div className="form_grid">
             <div className="field">
-              <div className="label">Город отправителя</div>
+              <div className="label">Город отправителя <span className="text_danger">*</span></div>
               <input
+                className={attemptedSave && !route.fromCity ? "error" : ""}
                 value={route.fromCity}
                 onChange={(e) => setRoute({...route, fromCity: e.target.value})}
                 placeholder="Алматы"
               />
             </div>
             <div className="field">
-              <div className="label">Город получателя</div>
+              <div className="label">Город получателя <span className="text_danger">*</span></div>
               <input
+                className={attemptedSave && !route.toCity ? "error" : ""}
                 value={route.toCity}
                 onChange={(e) => setRoute({...route, toCity: e.target.value})}
                 placeholder="Астана"
               />
             </div>
             <div className="field">
-              <div className="label">Адрес отправителя</div>
+              <div className="label">Адрес отправителя <span className="text_danger">*</span></div>
               <input
+                className={attemptedSave && !route.fromAddress ? "error" : ""}
                 value={route.fromAddress}
                 onChange={(e) => setRoute({...route, fromAddress: e.target.value})}
               />
             </div>
             <div className="field">
-              <div className="label">Адрес получателя</div>
+              <div className="label">Адрес получателя <span className="text_danger">*</span></div>
               <input
+                 className={attemptedSave && !route.toAddress ? "error" : ""}
                 value={route.toAddress}
                 onChange={(e) => setRoute({...route, toAddress: e.target.value})}
               />
@@ -427,15 +517,15 @@ export default function ActCreatePage() {
             </div>
           </div>
 
-          <div className="table_wrap" style={{ marginTop: 16 }}>
+          <div className="table_wrap" style={{ marginTop: 16, maxHeight: "500px", overflowY: "auto", overflowX: "auto" }}>
             <table className="table_fixed">
-              <thead>
+              <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1, boxShadow: "0 1px 2px rgba(0,0,0,0.1)" }}>
                 <tr>
                   <th style={{width: 40}}>№</th>
                   <th>Кол-во</th>
-                  <th>Длина (см)</th>
-                  <th>Ширина (см)</th>
-                  <th>Высота (см)</th>
+                  <th>Длина (м)</th>
+                  <th>Ширина (м)</th>
+                  <th>Высота (м)</th>
                   <th>Вес (кг)</th>
                   <th>Объем (м³)</th>
                   <th>Об. вес (кг)</th>
@@ -447,17 +537,17 @@ export default function ActCreatePage() {
                   <tr key={r.id}>
                     <td>{i+1}</td>
                     <td><input type="number" className="cell_input" value={r.seats} onChange={e => updateRow(r.id, 'seats', e.target.value)} /></td>
-                    <td><input type="number" className="cell_input" value={r.length} onChange={e => updateRow(r.id, 'length', e.target.value)} /></td>
-                    <td><input type="number" className="cell_input" value={r.width} onChange={e => updateRow(r.id, 'width', e.target.value)} /></td>
-                    <td><input type="number" className="cell_input" value={r.height} onChange={e => updateRow(r.id, 'height', e.target.value)} /></td>
-                    <td><input type="number" className="cell_input" value={r.weight} onChange={e => updateRow(r.id, 'weight', e.target.value)} /></td>
+                    <td><input type="number" className="cell_input" value={r.length} onChange={e => updateRow(r.id, 'length', e.target.value)} placeholder="" /></td>
+                    <td><input type="number" className="cell_input" value={r.width} onChange={e => updateRow(r.id, 'width', e.target.value)} placeholder="" /></td>
+                    <td><input type="number" className="cell_input" value={r.height} onChange={e => updateRow(r.id, 'height', e.target.value)} placeholder="" /></td>
+                    <td><input type="number" className="cell_input" value={r.weight} onChange={e => updateRow(r.id, 'weight', e.target.value)} placeholder="" /></td>
                     <td>{r.volume}</td>
                     <td>{r.volWeight}</td>
                     <td><button className="btn btn--sm btn--danger" onClick={() => delRow(r.id)}>x</button></td>
                   </tr>
                 ))}
               </tbody>
-              <tfoot style={{background: '#f5f5f5', fontWeight: 700}}>
+              <tfoot style={{background: '#f5f5f5', fontWeight: 700, position: "sticky", bottom: 0}}>
                 <tr>
                   <td colSpan={1}>Итого:</td>
                   <td>{totals.seats}</td>
@@ -506,8 +596,13 @@ export default function ActCreatePage() {
             </div>
             
              <div className="field">
-               <div className="label">Дата</div>
-               <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+               <div className="label">Дата <span className="text_danger">*</span></div>
+               <input 
+                 type="date" 
+                 className={attemptedSave && !date ? "error" : ""}
+                 value={date} 
+                 onChange={e => setDate(e.target.value)} 
+               />
             </div>
           </div>
 

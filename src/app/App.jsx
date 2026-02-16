@@ -15,6 +15,7 @@ export default function App() {
         <Route path="/" element={<Navigate to="/acts" replace />} />
         <Route path="/acts" element={<ActsListPage />} />
         <Route path="/acts/new" element={<ActCreatePage />} />
+        <Route path="/acts/:id/edit" element={<ActCreatePage />} />
         <Route path="/acts/:id" element={<ActDetailsPage />} />
         <Route path="/requests" element={<RequestsPage />} />
         <Route path="/smr" element={<SmrPage />} />
