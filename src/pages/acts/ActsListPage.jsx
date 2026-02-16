@@ -1,87 +1,183 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { getActs, subscribeActs, deleteAct } from "../../shared/storage/actsStorage.js";
+import { Link, useOutletContext } from "react-router-dom";
+import { api } from "../../shared/api/mockClient.js";
+import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { downloadJson } from "../../shared/export/actExport.js";
 
 export default function ActsListPage() {
+  const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [acts, setActs] = useState([]);
+  const [company, setCompany] = useState(null);
+  const [loading, setLoading] = useState(true);
+// ...
+  // Фильтрация
+  const filtered = useMemo(() => {
+    let list = acts;
+
+    // 1. Фильтр по компании
+    if (company) {
+       list = list.filter(a => a.companyId === company.id);
+    } else {
+       return [];
+    }
+
+    // 2. По дате
+    if (dateFrom) {
+       list = list.filter(a => a.date >= dateFrom);
+    }
+    if (dateTo) {
+       list = list.filter(a => a.date <= dateTo);
+    }
+
+    // 3. Поиск (Номер, ФИО, Город)
+    const s = q.trim().toLowerCase();
+    if (s) {
+       list = list.filter((a) => {
+        const hay = [a.number, a.date, a.customer?.fio, a.route?.fromCity, a.route?.toCity]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        return hay.includes(s);
+      });
+    }
+    
+    return list;
+  }, [acts, q, company, dateFrom, dateTo]);
+
+  const loadActs = async () => {
+    setLoading(true);
+    try {
+      const list = await api.acts.list();
+      // Проверка на массив, чтобы избежать краша map
+      if (Array.isArray(list)) {
+        setActs(list);
+      } else {
+        console.error("API returned non-array", list);
+        setActs([]);
+      }
+    } catch (e) {
+      console.error("Failed to load acts", e);
+      setActs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    setActs(getActs());
-    return subscribeActs((list) => setActs(list));
+    // 1. Загрузка заявок
+    loadActs(); // async call inside effect
   }, []);
 
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return acts;
+  useEffect(() => {
+    // 2. Подписка на изменение компании
+    const unsubscribe = subscribeSelectedCompany(setCompany);
+    setCompany(getSelectedCompany());
+    return unsubscribe;
+  }, []);
 
-    return acts.filter((a) => {
-      const hay = [a.number, a.date, a.customer?.fio, a.route?.fromCity, a.route?.toCity]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
+  useEffect(() => {
+    // 3. Перезагрузка заявок при смене компании
+    if (company) {
+      loadActs();
+    } else {
+      setActs([]);
+    }
+  }, [company]);
 
-      return hay.includes(s);
-    });
-  }, [acts, q]);
+  const handleAnnul = async (id, number) => {
+    if (window.confirm(`Аннулировать заявку №${number}?`)) {
+      await api.acts.update(id, { status: "canceled" });
+      loadActs();
+    }
+  };
+
+  const handleRestore = async (id, number) => {
+    if (window.confirm(`Восстановить заявку №${number}?`)) {
+      await api.acts.update(id, { status: "draft" });
+      loadActs();
+    }
+  };
 
   return (
     <>
       <div className="navbar">
-        <h1>Акты</h1>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <h1>Заявки</h1>
+          {company ? (
+            <div className="chip" style={{ background: "#e6f7ff", borderColor: "#91caff", color: "#0050b3" }}>
+              Выбрано: {company.name}
+            </div>
+          ) : (
+            <div className="chip" style={{ background: "#fff1f0", borderColor: "#ffccc7", color: "#a8071a" }}>
+              Компания не выбрана
+            </div>
+          )}
+          
+          <button className="btn btn--sm btn--ghost" onClick={openCompanySelector}>
+            Сменить
+          </button>
+        </div>
+
         <Link className="btn btn--accent" to="/acts/new">
-          + Создать акт
+          + Создать заявку
         </Link>
       </div>
 
-      <div className="filter" style={{ marginTop: 16 }}>
-        <div className="field" style={{ minWidth: 340 }}>
+      <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <div className="field" style={{ minWidth: 200, flex: 1 }}>
           <div className="label">Поиск</div>
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Номер, ФИО, город..."
+            placeholder="Номер, заказчик, город..."
           />
+        </div>
+        <div className="field" style={{ width: 140 }}>
+           <div className="label">Дата с</div>
+           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+        </div>
+        <div className="field" style={{ width: 140 }}>
+           <div className="label">Дата по</div>
+           <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
         </div>
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        <table>
+        {loading && <div className="muted" style={{padding: 20}}>Загрузка...</div>}
+        {!loading && (
+        <table className="table_fixed">
           <thead>
             <tr>
-              <th>Номер</th>
-              <th>Дата</th>
+              <th style={{width: 100}}>Номер</th>
+              <th style={{width: 100}}>Дата</th>
               <th>Откуда</th>
               <th>Куда</th>
-              <th>Статус</th>
-              <th style={{ width: 140, textAlign: "right" }}>Действия</th>
+              <th>Заказчик</th>
+              <th style={{ width: 180, textAlign: "right" }}>Действия</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={6} className="muted" style={{ padding: 16 }}>
-                  Пусто. Создай первый акт.
+                  {company ? "В этой компании нет заявок." : "Выберите компанию."}
                 </td>
               </tr>
             ) : (
               filtered.map((a) => (
-                <tr key={a.id}>
+                <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
                   <td className="num">
                     <Link to={`/acts/${a.id}`}>{a.number}</Link>
+                    {a.status === 'canceled' && <div className="badge badge--danger" style={{marginTop: 4, fontSize: 10}}>Аннулирована</div>}
                   </td>
                   <td>{a.date}</td>
                   <td>{a.route?.fromCity || "—"}</td>
                   <td>{a.route?.toCity || "—"}</td>
                   <td>
-                    {a.docType === "ttn" ? (
-                      <span className="badge badge--ttn">ТТН</span>
-                    ) : a.docType === "smr" ? (
-                      <span className="badge badge--smr">СМР</span>
-                    ) : (
-                      <span className="badge badge--draft">Черновик</span>
-                    )}
+                    <div style={{fontWeight: 500}}>{a.customer?.fio || "—"}</div>
                   </td>
                   <td
                     style={{
@@ -91,31 +187,41 @@ export default function ActsListPage() {
                       gap: 8,
                     }}
                   >
+                   
                     <button
-                      className="btn btn--sm"
+                      className="btn btn--sm btn--ghost"
                       type="button"
-                      onClick={() => downloadJson(`act_${a.number.replace("#", "")}.json`, a)}
+                      onClick={() => downloadJson(a)}
+                      title="Экспорт JSON"
                     >
                       Экспорт
                     </button>
-
-                    <button
-                      className="btn btn--sm btn--danger"
-                      type="button"
-                      onClick={() => {
-                        const ok = window.confirm(`Удалить акт ${a.number}?`);
-                        if (!ok) return;
-                        deleteAct(a.id);
-                      }}
-                    >
-                      Удалить
-                    </button>
+                    
+                    {a.status !== 'canceled' ? (
+                      <button
+                        className="btn btn--sm btn--danger"
+                        type="button"
+                        onClick={() => handleAnnul(a.id, a.number)}
+                      >
+                        Аннулировать
+                      </button>
+                    ) : (
+                      <button
+                        className="btn btn--sm btn--primary" // или другой класс для восстановления
+                        style={{ borderColor: "#108ee9", color: "#108ee9" }}
+                        type="button"
+                        onClick={() => handleRestore(a.id, a.number)}
+                      >
+                        Восстановить
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
+        )}
       </div>
     </>
   );
