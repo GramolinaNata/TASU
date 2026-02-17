@@ -30,6 +30,8 @@ export default function CompaniesPage() {
     bik: "",
     kbe: "",
     director: "",
+    email: "",
+    phone: "",
   });
 
   useEffect(() => {
@@ -54,6 +56,8 @@ export default function CompaniesPage() {
       bik: "",
       kbe: "",
       director: "",
+      email: "",
+      phone: "",
     });
     setModalOpen(true);
   };
@@ -70,6 +74,8 @@ export default function CompaniesPage() {
       bik: c.bik || "",
       kbe: c.kbe || "",
       director: c.director || "",
+      email: c.email || "",
+      phone: c.phone || "",
     });
     setModalOpen(true);
   };
@@ -104,6 +110,7 @@ export default function CompaniesPage() {
               <th>Название</th>
               <th>БИН</th>
               <th>Адрес</th>
+              <th>Email</th>
               <th style={{ width: 140, textAlign: "right" }}>Действия</th>
             </tr>
           </thead>
@@ -120,6 +127,7 @@ export default function CompaniesPage() {
                 </td>
                 <td>{c.bin}</td>
                 <td>{c.address}</td>
+                <td>{c.email || "—"}</td>
                 <td
                   style={{
                     textAlign: "right",
@@ -221,6 +229,22 @@ export default function CompaniesPage() {
                 value={form.director}
                 onChange={(e) => setForm({ ...form, director: e.target.value })}
                 placeholder="Иванов И.И."
+              />
+            </div>
+            <div className="field">
+              <div className="label">Электронная почта (Email)</div>
+              <input
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                placeholder="info@company.kz"
+              />
+            </div>
+            <div className="field">
+              <div className="label">Телефон компании</div>
+              <input
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
+                placeholder="+7..."
               />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>

@@ -102,12 +102,15 @@ export default function ActCreatePage() {
   });
 
   const [cargoText, setCargoText] = useState("");
+  const [packaging, setPackaging] = useState("");
+  const [fastening, setFastening] = useState("");
+  const [deliveryTerm, setDeliveryTerm] = useState("");
   const [insured, setInsured] = useState(false);
 
-  // Таблица грузов
   const [cargoRows, setCargoRows] = useState([
     {
       id: safeUuid(),
+      title: "",
       seats: 1,
       length: "",
       width: "",
@@ -137,6 +140,9 @@ export default function ActCreatePage() {
         if (act.receiver) setReceiver(act.receiver);
         if (act.route) setRoute(act.route);
         if (act.cargoText) setCargoText(act.cargoText);
+        if (act.packaging) setPackaging(act.packaging);
+        if (act.fastening) setFastening(act.fastening);
+        if (act.deliveryTerm) setDeliveryTerm(act.deliveryTerm);
         setInsured(!!act.insured);
         if (Array.isArray(act.cargoRows)) setCargoRows(act.cargoRows);
       }
@@ -154,15 +160,15 @@ export default function ActCreatePage() {
         
         // Авторасчет объема (м3) и объемного веса (кг)
         if (["length", "width", "height"].includes(field)) {
-          // Ввод теперь в метрах
+          // Ввод теперь снова в сантиметрах
           const l = parseFloat(next.length) || 0;
           const w = parseFloat(next.width) || 0;
           const h = parseFloat(next.height) || 0;
           
-          const v = l * w * h;
-          const vw = (v * 1000000) / 6000;
+          const v = l * w * h; // Объем в см3
+          const vw = (l * w * h) / 6000; // Объемный вес в кг
           
-          next.volume = v > 0 ? parseFloat(v.toFixed(4)) : 0;
+          next.volume = v > 0 ? parseFloat(v.toFixed(0)) : 0;
           next.volWeight = vw > 0 ? parseFloat(vw.toFixed(2)) : 0;
         }
         return next;
@@ -175,6 +181,7 @@ export default function ActCreatePage() {
       ...prev,
       {
         id: safeUuid(),
+        title: "",
         seats: 1,
         length: "", // Default empty
         width: "",
@@ -241,6 +248,9 @@ export default function ActCreatePage() {
       cargoText,
       cargoRows,
       totals,
+      packaging,
+      fastening,
+      deliveryTerm,
       insured,
       totalSum,
       companyId: selectedCompanyId, 
@@ -515,6 +525,33 @@ export default function ActCreatePage() {
                 placeholder="Бытовая техника, хрупкое..."
               />
             </div>
+
+            <div className="field field--full">
+              <div className="label">Вид упаковки</div>
+              <input 
+                value={packaging}
+                onChange={e => setPackaging(e.target.value)}
+                placeholder="Коробки, паллеты, обрешетка..."
+              />
+            </div>
+
+            <div className="field field--full">
+              <div className="label">Крепление, штабелирование</div>
+              <input 
+                value={fastening}
+                onChange={e => setFastening(e.target.value)}
+                placeholder="Ремни, стяжки, в 2 яруса..."
+              />
+            </div>
+
+            <div className="field field--full">
+              <div className="label">Срок доставки</div>
+              <input 
+                value={deliveryTerm}
+                onChange={e => setDeliveryTerm(e.target.value)}
+                placeholder="Напр. 3-5 дней"
+              />
+            </div>
           </div>
 
           <div className="table_wrap" style={{ marginTop: 16, maxHeight: "500px", overflowY: "auto", overflowX: "auto" }}>
@@ -522,12 +559,13 @@ export default function ActCreatePage() {
               <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1, boxShadow: "0 1px 2px rgba(0,0,0,0.1)" }}>
                 <tr>
                   <th style={{width: 40}}>№</th>
+                  <th>Название</th>
                   <th>Кол-во</th>
-                  <th>Длина (м)</th>
-                  <th>Ширина (м)</th>
-                  <th>Высота (м)</th>
+                  <th>Длина (см)</th>
+                  <th>Ширина (см)</th>
+                  <th>Высота (см)</th>
                   <th>Вес (кг)</th>
-                  <th>Объем (м³)</th>
+                  <th>Объем (см³)</th>
                   <th>Об. вес (кг)</th>
                   <th style={{width: 80}}></th>
                 </tr>
@@ -536,6 +574,7 @@ export default function ActCreatePage() {
                 {cargoRows.map((r, i) => (
                   <tr key={r.id}>
                     <td>{i+1}</td>
+                    <td><input className="cell_input" value={r.title} onChange={e => updateRow(r.id, 'title', e.target.value)} placeholder="Напр. Коробки" /></td>
                     <td><input type="number" className="cell_input" value={r.seats} onChange={e => updateRow(r.id, 'seats', e.target.value)} /></td>
                     <td><input type="number" className="cell_input" value={r.length} onChange={e => updateRow(r.id, 'length', e.target.value)} placeholder="" /></td>
                     <td><input type="number" className="cell_input" value={r.width} onChange={e => updateRow(r.id, 'width', e.target.value)} placeholder="" /></td>
@@ -549,13 +588,13 @@ export default function ActCreatePage() {
               </tbody>
               <tfoot style={{background: '#f5f5f5', fontWeight: 700, position: "sticky", bottom: 0}}>
                 <tr>
-                  <td colSpan={1}>Итого:</td>
+                  <td colSpan={2}>Итого:</td>
                   <td>{totals.seats}</td>
                   <td></td>
                   <td></td>
                   <td></td>
                   <td>{totals.weight}</td>
-                  <td>{totals.volume.toFixed(4)}</td>
+                  <td>{totals.volume.toFixed(0)}</td>
                   <td>{totals.volWeight.toFixed(2)}</td>
                   <td></td>
                 </tr>
