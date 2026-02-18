@@ -1,5 +1,5 @@
-const KEY_COMPANIES = "tasu_companies_v1";
-const KEY_SELECTED = "tasu_company_selected_v1";
+const KEY_COMPANIES = "tasu_companies_v2";
+const KEY_SELECTED = "tasu_company_selected_v2";
 const EVT_COMPANIES = "tasu_companies_changed";
 const EVT_SELECTED = "tasu_company_selected_changed";
 
@@ -11,31 +11,50 @@ function emitSelected() {
   window.dispatchEvent(new Event(EVT_SELECTED));
 }
 
-// Начальные данные (мок)
+// Начальные данные (настоящие компании TASU)
 const DEFAULT_COMPANIES = [
   {
-    id: "c1",
-    name: "TOO Ромашка",
-    bin: "123456789012",
-    address: "Алматы, Абая 1",
-    factAddress: "Алматы, Абая 1, офис 5",
-    account: "KZ1234567890",
-    bank: "Kaspi Bank",
-    bik: "KZKCJ",
+    id: "tasu_kaz",
+    name: 'ТОО "TASU KAZAKHSTAN"',
+    bin: "240140034889",
+    address: "Талгарский район, Бесагаш, ул. Латиф Хамиди, дом 64А",
+    factAddress: "Талгарский район, Бесагаш, ул. Латиф Хамиди, дом 64А",
+    account: "KZ15722S000034046863",
+    bank: 'АО "Kaspi Bank"',
+    bik: "CASPKZKA",
     kbe: "17",
-    director: "Петров П.П.",
+    director: "Төлеубек А.Т.",
+    phone: "+7 701 123 4567",
+    email: "info@tasu.kz"
   },
   {
-    id: "c2",
-    name: "IP Иванов",
-    bin: "987654321098",
-    address: "Астана, Ленина 5",
-    factAddress: "Астана, Ленина 5",
-    account: "KZ0987654321",
-    bank: "Halyk Bank",
-    bik: "HLKBKZ",
+    id: "aldiyar",
+    name: "ИП Алдияр",
+    bin: "860702400843",
+    address: "г. Алматы, ул. Закарпатская, дом 42",
+    factAddress: "г. Алматы, ул. Закарпатская, дом 42",
+    account: "KZ60722S000016847953",
+    bank: 'АО "Kaspi Bank"',
+    bik: "CASPKZKA",
     kbe: "19",
+    director: "Мынбаев А.М.",
+    phone: "+7 702 987 6543",
+    email: "aldiyar@tasu.kz"
   },
+  {
+    id: "tasu_kz",
+    name: "ИП TASU KZ",
+    bin: "600507400276",
+    address: "Талгарский район, Бесагаш, ул. Латиф Хамиди, дом 64А",
+    factAddress: "Талгарский район, Бесагаш, ул. Латиф Хамиди, дом 64А",
+    account: "KZ95722S000037232940",
+    bank: 'АО "Kaspi Bank"',
+    bik: "CASPKZKA",
+    kbe: "19",
+    director: "Төлеубек А.",
+    phone: "+7 707 555 4433",
+    email: "tasukz@tasu.kz"
+  }
 ];
 
 export function getCompanies() {
