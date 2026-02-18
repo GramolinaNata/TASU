@@ -64,6 +64,7 @@ const initialRequisites = {
   bank: "",
   bik: "",
   kbe: "",
+  email: "",
 };
 
 export default function ActCreatePage() {
@@ -72,15 +73,26 @@ export default function ActCreatePage() {
   const isEditMode = !!id;
 
   const [date, setDate] = useState(todayIso());
+  const [createdAt, setCreatedAt] = useState(todayIso());
   const [totalSum, setTotalSum] = useState(""); // Ручная сумма
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [allCompanies, setAllCompanies] = useState([]);
 
-  // 1. Заказчик
   const [customer, setCustomer] = useState({
     fio: "",
     phone: "",
     companyName: "",
+    email: "",
+    ...initialRequisites,
+  });
+
+  // 1.1 Отправитель
+  const [isSenderSameAsCustomer, setIsSenderSameAsCustomer] = useState(true);
+  const [sender, setSender] = useState({
+    fio: "",
+    phone: "",
+    companyName: "",
+    email: "",
     ...initialRequisites,
   });
 
@@ -89,6 +101,7 @@ export default function ActCreatePage() {
     fio: "",
     phone: "",
     companyName: "",
+    email: "",
     ...initialRequisites,
   });
 
@@ -123,7 +136,25 @@ export default function ActCreatePage() {
 
   // Сворачиваемые блоки реквизитов
   const [showCustReq, setShowCustReq] = useState(false);
+  const [showSendReq, setShowSendReq] = useState(false);
   const [showRecReq, setShowRecReq] = useState(false);
+
+  // Состояния для сформированных документов (ТТН/СМР)
+  const [docType, setDocType] = useState(null);
+  const [docAttrs, setDocAttrs] = useState({
+    vehicle: "",
+    driver: "",
+    grossWeight: "",
+    totalSeats: "",
+    loadingArrival: "",
+    loadingEnd: "",
+    unloadingArrival: "",
+    unloadingEnd: "",
+    cargoNotes: "",
+    transportType: "auto_console",
+    flightNumber: "",
+    doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: ""
+  });
 
   // Load companies and act data
   useEffect(() => {
@@ -134,15 +165,22 @@ export default function ActCreatePage() {
       const act = getActById(id);
       if (act) {
         setDate(act.date || todayIso());
+        setCreatedAt(act.createdAt || todayIso());
         setTotalSum(act.totalSum || "");
         setSelectedCompanyId(act.companyId || "");
         if (act.customer) setCustomer(act.customer);
         if (act.receiver) setReceiver(act.receiver);
+        if (act.sender) setSender(act.sender);
+        if (typeof act.isSenderSameAsCustomer === 'boolean') {
+          setIsSenderSameAsCustomer(act.isSenderSameAsCustomer);
+        }
         if (act.route) setRoute(act.route);
         if (act.cargoText) setCargoText(act.cargoText);
-        if (act.packaging) setPackaging(act.packaging);
-        if (act.fastening) setFastening(act.fastening);
-        if (act.deliveryTerm) setDeliveryTerm(act.deliveryTerm);
+        if (act.deliveryTerm) setDeliveryTerm(act.deliveryTerm || "");
+        
+        if (act.docType) setDocType(act.docType);
+        if (act.docAttrs) setDocAttrs(prev => ({ ...prev, ...act.docAttrs }));
+        
         setInsured(!!act.insured);
         if (Array.isArray(act.cargoRows)) setCargoRows(act.cargoRows);
       }
@@ -242,8 +280,11 @@ export default function ActCreatePage() {
     
     const actData = {
       date,
+      createdAt,
       customer,
       receiver,
+      sender: isSenderSameAsCustomer ? null : sender,
+      isSenderSameAsCustomer,
       route,
       cargoText,
       cargoRows,
@@ -252,6 +293,8 @@ export default function ActCreatePage() {
       fastening,
       deliveryTerm,
       insured,
+      docType,
+      docAttrs,
       totalSum,
       companyId: selectedCompanyId, 
       status, 
@@ -336,15 +379,23 @@ export default function ActCreatePage() {
                 placeholder="+7..."
               />
             </div>
-            <div className="field">
-               <div className="label">Название компании <span className="text_danger">*</span></div>
-               <input 
-                 className={attemptedSave && !customer.companyName ? "error" : ""}
-                 value={customer.companyName}
-                 onChange={e => setCustomer({...customer, companyName: e.target.value})}
-                 placeholder="Если отличается от ФИО"
-               />
-            </div>
+             <div className="field">
+                <div className="label">Название компании <span className="text_danger">*</span></div>
+                <input 
+                  className={attemptedSave && !customer.companyName ? "error" : ""}
+                  value={customer.companyName}
+                  onChange={e => setCustomer({...customer, companyName: e.target.value})}
+                  placeholder="Если отличается от ФИО"
+                />
+             </div>
+             <div className="field">
+                <div className="label">Email</div>
+                <input 
+                  value={customer.email}
+                  onChange={e => setCustomer({...customer, email: e.target.value})}
+                  placeholder="customer@example.com"
+                />
+             </div>
              <div className="field field--full">
                <button 
                  className="btn btn--sm btn--ghost" 
@@ -387,8 +438,105 @@ export default function ActCreatePage() {
                </>
              )}
           </div>
+          
+          <div style={{ marginTop: 20, padding: "12px 0", borderTop: "1px solid #eee" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={isSenderSameAsCustomer}
+                onChange={(e) => setIsSenderSameAsCustomer(e.target.checked)}
+              />
+              Заказчик является отправителем
+            </label>
+          </div>
         </div>
       </div>
+
+      {/* 1.1 Отправитель (Грузоотправитель) */}
+      {!isSenderSameAsCustomer && (
+        <div className="card" style={{ marginTop: 16 }}>
+          <div className="card_head">
+            <div className="card_title">1.1 Грузоотправитель</div>
+          </div>
+          <div className="card_body">
+            <div className="form_grid">
+              <div className="field">
+                <div className="label">ФИО / Название <span className="text_danger">*</span></div>
+                <input 
+                  className={attemptedSave && !sender.fio ? "error" : ""}
+                  value={sender.fio} 
+                  onChange={e => setSender({...sender, fio: e.target.value})} 
+                  placeholder="Отправитель / Склад"
+                />
+              </div>
+              <div className="field">
+                <div className="label">Телефон <span className="text_danger">*</span></div>
+                <input 
+                  className={attemptedSave && !sender.phone ? "error" : ""}
+                  value={sender.phone} 
+                  onChange={e => setSender({...sender, phone: e.target.value})} 
+                  placeholder="+7..."
+                />
+              </div>
+              <div className="field">
+                <div className="label">Название компании</div>
+                <input 
+                  value={sender.companyName}
+                  onChange={e => setSender({...sender, companyName: e.target.value})}
+                />
+              </div>
+              <div className="field">
+                <div className="label">Email</div>
+                <input 
+                  value={sender.email}
+                  onChange={e => setSender({...sender, email: e.target.value})}
+                />
+              </div>
+              <div className="field field--full">
+                <button 
+                  className="btn btn--sm btn--ghost" 
+                  onClick={() => setShowSendReq(!showSendReq)}
+                >
+                  {showSendReq ? "▲ Скрыть реквизиты" : "▼ Показать реквизиты"}
+                </button>
+              </div>
+              
+              {showSendReq && (
+                <>
+                  <div className="field">
+                    <div className="label">Юр. адрес</div>
+                    <input value={sender.jurAddress} onChange={e => setSender({...sender, jurAddress: e.target.value})} />
+                  </div>
+                  <div className="field">
+                    <div className="label">Фактический адрес</div>
+                    <input value={sender.factAddress} onChange={e => setSender({...sender, factAddress: e.target.value})} />
+                  </div>
+                  <div className="field">
+                    <div className="label">БИН</div>
+                    <input value={sender.bin} onChange={e => setSender({...sender, bin: e.target.value})} />
+                  </div>
+                  <div className="field">
+                    <div className="label">Банк</div>
+                    <input value={sender.bank} onChange={e => setSender({...sender, bank: e.target.value})} />
+                  </div>
+                  <div className="field">
+                    <div className="label">БИК</div>
+                    <input value={sender.bik} onChange={e => setSender({...sender, bik: e.target.value})} />
+                  </div>
+                  <div className="field">
+                    <div className="label">Счет</div>
+                    <input value={sender.account} onChange={e => setSender({...sender, account: e.target.value})} />
+                  </div>
+                  <div className="field">
+                    <div className="label">КБЕ</div>
+                    <input value={sender.kbe} onChange={e => setSender({...sender, kbe: e.target.value})} />
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* 2. Получатель */}
       <div className="card" style={{ marginTop: 14 }}>
@@ -415,14 +563,22 @@ export default function ActCreatePage() {
                 placeholder="+7..."
               />
             </div>
-            <div className="field">
-               <div className="label">Название компании <span className="text_danger">*</span></div>
-               <input 
-                 className={attemptedSave && !receiver.companyName ? "error" : ""}
-                 value={receiver.companyName}
-                 onChange={e => setReceiver({...receiver, companyName: e.target.value})}
-               />
-            </div>
+             <div className="field">
+                <div className="label">Название компании <span className="text_danger">*</span></div>
+                <input 
+                  className={attemptedSave && !receiver.companyName ? "error" : ""}
+                  value={receiver.companyName}
+                  onChange={e => setReceiver({...receiver, companyName: e.target.value})}
+                />
+             </div>
+             <div className="field">
+                <div className="label">Email</div>
+                <input 
+                  value={receiver.email}
+                  onChange={e => setReceiver({...receiver, email: e.target.value})}
+                  placeholder="receiver@example.com"
+                />
+             </div>
              <div className="field field--full">
                <button 
                  className="btn btn--sm btn--ghost" 
@@ -471,12 +627,12 @@ export default function ActCreatePage() {
       {/* 3. Доставка и груз */}
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card_head">
-          <div className="card_title">3. Доставка и характеристики груза</div>
+          <div className="card_title">3. Доставка и груз</div>
         </div>
         <div className="card_body">
           <div className="form_grid">
             <div className="field">
-              <div className="label">Город отправителя <span className="text_danger">*</span></div>
+              <div className="label">Страна, город отправителя <span className="text_danger">*</span></div>
               <input
                 className={attemptedSave && !route.fromCity ? "error" : ""}
                 value={route.fromCity}
@@ -485,7 +641,7 @@ export default function ActCreatePage() {
               />
             </div>
             <div className="field">
-              <div className="label">Город получателя <span className="text_danger">*</span></div>
+              <div className="label">Страна, город получателя <span className="text_danger">*</span></div>
               <input
                 className={attemptedSave && !route.toCity ? "error" : ""}
                 value={route.toCity}
@@ -518,7 +674,7 @@ export default function ActCreatePage() {
               />
             </div>
             <div className="field field--full">
-              <div className="label">Характеристики груза</div>
+              <div className="label">Наименование и характер груза <span className="text_danger">*</span></div>
               <textarea
                 value={cargoText}
                 onChange={(e) => setCargoText(e.target.value)}
@@ -624,6 +780,94 @@ export default function ActCreatePage() {
               />
               Имеется ли страховка?
             </label>
+            
+            {docType && (
+              <div className="card" style={{ gridColumn: 'span 2', marginTop: 20, border: '2px solid var(--accent)', background: '#f0faff' }}>
+                 <div className="card_head" style={{ background: '#f0faff' }}>
+                    <div className="card_title">Транспортная информация ({docType.toUpperCase()})</div>
+                 </div>
+                 <div className="card_body">
+                    <div className="form_grid">
+                        <div className="field" style={{ gridColumn: 'span 2' }}>
+                          <div className="label">Вид перевозки</div>
+                          <select 
+                            value={docAttrs.transportType} 
+                            onChange={e => setDocAttrs({...docAttrs, transportType: e.target.value})}
+                          >
+                            <option value="auto_console">Авто перевозки консол</option>
+                            <option value="auto_separate">Авто перевозки отдельно</option>
+                            <option value="plane">Самолет</option>
+                            <option value="train">Поезд рейс</option>
+                          </select>
+                        </div>
+
+                        {docAttrs.transportType.startsWith('auto') && (
+                          <>
+                            <div className="field">
+                              <div className="label">Автомобиль</div>
+                              <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} />
+                            </div>
+                            <div className="field">
+                              <div className="label">Водитель</div>
+                              <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
+                            </div>
+                          </>
+                        )}
+
+                        {docAttrs.transportType === 'plane' && (
+                          <div className="field" style={{ gridColumn: 'span 2' }}>
+                            <div className="label">Номер рейса</div>
+                            <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
+                          </div>
+                        )}
+
+                        {docAttrs.transportType === 'train' && (
+                          <>
+                            <div className="field">
+                              <div className="label">Поезд / Вагон</div>
+                              <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
+                            </div>
+                            <div className="field">
+                              <div className="label">Ответственный</div>
+                              <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
+                            </div>
+                          </>
+                        )}
+
+                        <div className="field">
+                           <div className="label">Масса брутто (кг)</div>
+                           <input value={docAttrs.grossWeight} onChange={e => setDocAttrs({...docAttrs, grossWeight: e.target.value})} />
+                        </div>
+                        <div className="field">
+                           <div className="label">Количество мест</div>
+                           <input value={docAttrs.totalSeats} onChange={e => setDocAttrs({...docAttrs, totalSeats: e.target.value})} placeholder={totals.seats} />
+                        </div>
+
+                        <div className="field">
+                           <div className="label">Прибытие на погрузку</div>
+                           <input value={docAttrs.loadingArrival} onChange={e => setDocAttrs({...docAttrs, loadingArrival: e.target.value})} />
+                        </div>
+                        <div className="field">
+                           <div className="label">Окончание погрузки</div>
+                           <input value={docAttrs.loadingEnd} onChange={e => setDocAttrs({...docAttrs, loadingEnd: e.target.value})} />
+                        </div>
+                        <div className="field">
+                           <div className="label">Прибытие на выгрузку</div>
+                           <input value={docAttrs.unloadingArrival} onChange={e => setDocAttrs({...docAttrs, unloadingArrival: e.target.value})} />
+                        </div>
+                        <div className="field">
+                           <div className="label">Окончание выгрузки</div>
+                           <input value={docAttrs.unloadingEnd} onChange={e => setDocAttrs({...docAttrs, unloadingEnd: e.target.value})} />
+                        </div>
+
+                        <div className="field" style={{ gridColumn: 'span 2' }}>
+                           <div className="label">Сведения о грузе / Таможня</div>
+                           <input value={docAttrs.cargoNotes} onChange={e => setDocAttrs({...docAttrs, cargoNotes: e.target.value})} />
+                        </div>
+                    </div>
+                 </div>
+              </div>
+            )}
             
             <div className="field">
                <div className="label">Сумма (тг)</div>

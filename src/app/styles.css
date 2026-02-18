@@ -466,6 +466,12 @@ textarea {
     gap: 12px;
 }
 
+.split_3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+}
+
 .info_card {
     border: 1px solid var(--line);
     background: #fff;

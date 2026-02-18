@@ -1,13 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  getCompanies,
   subscribeCompanies,
-  addCompany,
-  updateCompany,
-  deleteCompany,
   getSelectedCompanyId,
 } from "../../shared/storage/companyStorage.js";
+import { api } from "../../shared/api/mockClient.js";
 import Modal from "../../shared/ui/Modal.jsx";
 
 function safeUuid() {
@@ -16,7 +13,8 @@ function safeUuid() {
 
 export default function CompaniesPage() {
   const [list, setList] = useState([]);
-  const [selectedId, setSelectedId] = useState(null); // ID текущей выбранной в шапке (для подсветки)
+  const [selectedId, setSelectedId] = useState(null); 
+  const [loading, setLoading] = useState(false);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editId, setEditId] = useState(null);
@@ -34,8 +32,18 @@ export default function CompaniesPage() {
     phone: "",
   });
 
+  const loadCompanies = async () => {
+    setLoading(true);
+    try {
+      const data = await api.companies.list();
+      setList(data);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    setList(getCompanies());
+    loadCompanies();
     setSelectedId(getSelectedCompanyId());
 
     return subscribeCompanies((newList) => {
@@ -80,18 +88,20 @@ export default function CompaniesPage() {
     setModalOpen(true);
   };
 
-  const onSave = () => {
+  const onSave = async () => {
     if (editId) {
-      updateCompany(editId, form);
+      await api.companies.update(editId, form);
     } else {
-      addCompany({ id: safeUuid(), ...form });
+      await api.companies.create({ id: safeUuid(), ...form });
     }
+    loadCompanies();
     setModalOpen(false);
   };
 
-  const onDelete = (id, name) => {
+  const onDelete = async (id, name) => {
     if (!window.confirm(`Удалить компанию "${name}"?`)) return;
-    deleteCompany(id);
+    await api.companies.delete(id);
+    loadCompanies();
   };
 
   return (
@@ -104,6 +114,7 @@ export default function CompaniesPage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
+        {loading && <div className="muted" style={{ padding: 12 }}>Загрузка компаний...</div>}
         <table>
           <thead>
             <tr>

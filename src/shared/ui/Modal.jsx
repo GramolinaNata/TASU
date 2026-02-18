@@ -8,7 +8,7 @@ export default function Modal({ title, children, onClose, closable = true }) {
     // Блокировка скролла
     document.body.style.overflow = "hidden";
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = "scroll";
     };
   }, []);
 

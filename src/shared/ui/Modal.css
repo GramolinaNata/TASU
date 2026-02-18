@@ -18,6 +18,8 @@
     max-width: 500px;
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
     animation: modalSlide 0.2s ease;
+    height: 80vh;
+    overflow-x: scroll;
 }
 
 @keyframes modalSlide {

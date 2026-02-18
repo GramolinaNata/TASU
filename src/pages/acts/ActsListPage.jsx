@@ -2,7 +2,26 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../../shared/api/mockClient.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
-import { downloadJson } from "../../shared/export/actExport.js";
+
+function formatDisplayDate(val) {
+  if (!val) return "—";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return val;
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+}
+
+function normalizeIsoDate(val) {
+  if (!val) return "";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return "";
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
 
 export default function ActsListPage() {
   const { openCompanySelector } = useOutletContext();
@@ -17,19 +36,19 @@ export default function ActsListPage() {
   const filtered = useMemo(() => {
     let list = acts;
 
-    // 1. Фильтр по компании
+    // 1. Фильтр по компании и отсутствие docType
     if (company) {
-       list = list.filter(a => a.companyId === company.id);
+       list = list.filter(a => a.companyId === company.id && !a.docType);
     } else {
        return [];
     }
 
-    // 2. По дате
+    // 2. По дате (используем дату создания для фильтрации в списке)
     if (dateFrom) {
-       list = list.filter(a => a.date >= dateFrom);
+       list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
     }
     if (dateTo) {
-       list = list.filter(a => a.date <= dateTo);
+       list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) <= dateTo);
     }
 
     // 3. Поиск (Номер, ФИО, Город)
@@ -132,7 +151,7 @@ export default function ActsListPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Номер, заказчик, город..."
+            placeholder="Номер, заказчик, страна, город..."
           />
         </div>
         <div className="field" style={{ width: 140 }}>
@@ -154,8 +173,8 @@ export default function ActsListPage() {
               <th style={{width: 100}}>Номер</th>
               <th style={{width: 100}}>Дата</th>
               <th style={{width: 100}}>Статус</th>
-              <th>Откуда</th>
-              <th>Куда</th>
+              <th>Страна, город (откуда)</th>
+              <th>Страна, город (куда)</th>
               <th>Заказчик</th>
               <th style={{ width: 180, textAlign: "right" }}>Действия</th>
             </tr>
@@ -173,7 +192,7 @@ export default function ActsListPage() {
                   <td className="num">
                     <Link to={`/acts/${a.id}`}>{a.number}</Link>
                   </td>
-                  <td>{a.date}</td>
+                  <td>{formatDisplayDate(a.createdAt || a.date)}</td>
                   <td>
                     {a.status === 'canceled' ? (
                        <span className="badge badge--danger">Аннулирована</span>
@@ -197,14 +216,6 @@ export default function ActsListPage() {
                     }}
                   >
                    
-                    <button
-                      className="btn btn--sm btn--ghost"
-                      type="button"
-                      onClick={() => downloadJson(a)}
-                      title="Экспорт JSON"
-                    >
-                      Экспорт
-                    </button>
                     
                     {a.status !== 'canceled' ? (
                       <button

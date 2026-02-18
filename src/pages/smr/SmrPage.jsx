@@ -1,15 +1,33 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { getActs, subscribeActs, deleteAct } from "../../shared/storage/actsStorage.js";
-import { downloadJson } from "../../shared/export/actExport.js";
+import { api } from "../../shared/api/mockClient.js";
+
+function formatDisplayDate(val) {
+  if (!val) return "—";
+  const d = new Date(val);
+  if (isNaN(d.getTime())) return val;
+  const day = String(d.getDate()).padStart(2, "0");
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const year = d.getFullYear();
+  return `${day}.${month}.${year}`;
+}
 
 export default function SmrPage() {
   const [items, setItems] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const list = await api.acts.list();
+      setItems(list.filter(a => a.docType === "smr"));
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const apply = (list) => setItems(list.filter((a) => a.docType === "smr"));
-    apply(getActs());
-    return subscribeActs(apply);
+    loadData();
   }, []);
 
   return (
@@ -22,13 +40,14 @@ export default function SmrPage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
+        {loading && <div className="muted" style={{ padding: 12 }}>Загрузка...</div>}
         <table>
           <thead>
             <tr>
               <th>Номер</th>
               <th>Дата</th>
-              <th>Откуда</th>
-              <th>Куда</th>
+              <th>Страна, город (откуда)</th>
+              <th>Страна, город (куда)</th>
               <th>Заказчик</th>
               <th style={{ width: 170, textAlign: "right" }}>Действия</th>
             </tr>
@@ -46,7 +65,7 @@ export default function SmrPage() {
                   <td className="num">
                     <Link to={`/acts/${a.id}`}>{a.number}</Link>
                   </td>
-                  <td>{a.date}</td>
+                  <td>{formatDisplayDate(a.createdAt || a.date)}</td>
                   <td>{a.route?.fromCity || "—"}</td>
                   <td>{a.route?.toCity || "—"}</td>
                   <td>{a.customer?.fio || "—"}</td>
@@ -58,25 +77,26 @@ export default function SmrPage() {
                       gap: 8,
                     }}
                   >
-                    <button
-                      className="btn btn--sm"
-                      type="button"
-                      onClick={() => downloadJson(`smr_${a.number.replace("#", "")}.json`, a)}
-                    >
-                      Экспорт
-                    </button>
 
-                    <button
-                      className="btn btn--sm btn--danger"
-                      type="button"
-                      onClick={() => {
-                        const ok = window.confirm(`Удалить ${a.number} из СМР?`);
-                        if (!ok) return;
-                        deleteAct(a.id);
-                      }}
-                    >
-                      Удалить
-                    </button>
+                     <Link
+                       className="btn btn--sm"
+                       to={`/acts/${a.id}/edit`}
+                     >
+                       Редактировать
+                     </Link>
+
+                     <button
+                       className="btn btn--sm btn--danger"
+                       type="button"
+                       onClick={async () => {
+                         const ok = window.confirm(`Удалить ${a.number} из СМР?`);
+                         if (!ok) return;
+                         await api.acts.update(a.id, { docType: null });
+                         loadData();
+                       }}
+                     >
+                       Удалить
+                     </button>
                   </td>
                 </tr>
               ))
