@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/mockClient.js";
 
 function formatDisplayDate(val) {
@@ -22,8 +22,16 @@ function safeUuid() {
 export default function ActDetailsPage() {
   const nav = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const [act, setAct] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  // Определяем контекст (из какого списка пришли)
+  const isSMRPath = location.pathname.startsWith('/smr');
+  const isTTNPath = location.pathname.startsWith('/requests');
+  
+  const basePath = isSMRPath ? "/smr" : (isTTNPath ? "/requests" : "/acts");
+  const crumbLabel = isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : "Заявки");
   
   const [services, setServices] = useState([]);
   const [total, setTotal] = useState({ price: "" });
@@ -123,11 +131,11 @@ export default function ActDetailsPage() {
     return (
       <div className="topbar">
         <div>
-          <div className="crumbs">Заявки / Не найдено</div>
+          <div className="crumbs">{crumbLabel} / Не найдено</div>
           <h1>Акт не найден</h1>
         </div>
         <div className="topbar_actions">
-          <button className="btn" onClick={() => nav("/acts")}>← Назад</button>
+          <button className="btn" onClick={() => nav(basePath)}>← Назад</button>
         </div>
       </div>
     );
@@ -137,12 +145,12 @@ export default function ActDetailsPage() {
     <>
       <div className="topbar">
         <div>
-          <div className="crumbs">Заявки / {act.number}</div>
+          <div className="crumbs">{crumbLabel} / {act.number}</div>
           <h1>{act.number}</h1>
         </div>
 
         <div className="topbar_actions">
-          <button className="btn" onClick={() => nav("/acts")}>← Назад</button>
+          <button className="btn" onClick={() => nav(basePath)}>← Назад</button>
           
           {act.status !== 'canceled' ? (
             <>

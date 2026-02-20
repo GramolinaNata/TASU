@@ -5,7 +5,7 @@ import ActsListPage from "../pages/acts/ActsListPage.jsx";
 import ActCreatePage from "../pages/acts/ActCreatePage.jsx";
 import ActDetailsPage from "../pages/acts/ActDetailsPage.jsx";
 import RequestsPage from "../pages/requests/RequestsPage.jsx";
-import SmrPage from "../pages/smr/SmrPage.jsx";
+import SmrPage from "../pages/smr/SMRPage.jsx";
 import CompaniesPage from "../pages/companies/CompaniesPage.jsx";
 
 export default function App() {
@@ -18,7 +18,9 @@ export default function App() {
         <Route path="/acts/:id/edit" element={<ActCreatePage />} />
         <Route path="/acts/:id" element={<ActDetailsPage />} />
         <Route path="/requests" element={<RequestsPage />} />
+        <Route path="/requests/:id" element={<ActDetailsPage />} />
         <Route path="/smr" element={<SmrPage />} />
+        <Route path="/smr/:id" element={<ActDetailsPage />} />
         <Route path="/companies" element={<CompaniesPage />} />
       </Route>
     </Routes>
