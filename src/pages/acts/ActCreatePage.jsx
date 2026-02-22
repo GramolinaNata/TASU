@@ -862,7 +862,7 @@ export default function ActCreatePage() {
 
                         <div className="field" style={{ gridColumn: 'span 2' }}>
                            <div className="label">Сведения о грузе / Таможня</div>
-                           <input value={docAttrs.cargoNotes} onChange={e => setDocAttrs({...docAttrs, cargoNotes: e.target.value})} />
+                           <input value={docAttrs.cargoNotes} onChange={e => setDocAttrs({...docAttrs, cargoNotes: e.target.value})} placeholder="Груз под таможенным контролем" />
                         </div>
                     </div>
                  </div>

@@ -113,6 +113,7 @@ export async function exportToDocx(act) {
       total_seats: act.totals?.seats || 0,
       total_weight: act.totals?.weight || 0,
       total_volume: act.totals?.volume ? act.totals.volume.toFixed(0) : 0,
+      total_volume_m3: act.totals?.volume ? (act.totals.volume / 1000000).toFixed(2) : "0.00",
       total_volWeight: act.totals?.volWeight ? act.totals.volWeight.toFixed(2) : "0.00",
       insured_yes: act.insured ? "☑" : "☐",
       insured_no: !act.insured ? "☑" : "☐",
@@ -133,16 +134,51 @@ export async function exportToDocx(act) {
       unloadingEnd: act.docAttrs?.unloadingEnd || "",
       cargoNotes: act.docAttrs?.cargoNotes || "Груз под таможенным контролем",
       flightNumber: act.docAttrs?.flightNumber || "",
+
+      // --- SMR SPECIFIC BLOCKS ---
+      smr_sender: [
+        act.isSenderSameAsCustomer ? act.customer?.companyName : act.sender?.companyName,
+        act.isSenderSameAsCustomer ? act.customer?.jurAddress : act.sender?.jurAddress,
+        `БИН ${act.isSenderSameAsCustomer ? act.customer?.bin : act.sender?.bin}`,
+        (act.route?.fromCity || "").split(",")[0].trim().toUpperCase()
+      ].filter(Boolean).join("\n"),
+
+      smr_recipient: [
+        act.receiver?.companyName,
+        act.receiver?.jurAddress,
+        `ИИН/БИН ${act.receiver?.bin}`,
+        (act.route?.toCity || "").split(",")[0].trim().toUpperCase()
+      ].filter(Boolean).join("\n"),
+
+      smr_unloading: [
+        act.route?.toAddress,
+        act.route?.toCity
+      ].filter(Boolean).join(", "),
+
+      smr_loading: [
+        act.route?.fromAddress,
+        act.route?.fromCity,
+        act.date ? formatRussianDate(act.date) : ""
+      ].filter(Boolean).join(", "),
+
+      smr_carrier: [
+        act.company?.name,
+        act.company?.address,
+        `БИН ${act.company?.bin}`,
+        "КАЗАХСТАН"
+      ].filter(Boolean).join("\n"),
+
       rows: (act.cargoRows || []).map((r, i) => ({
         index: i + 1,
         title: r.title || "",
         seats: r.seats || "",
-        packaging: r.packaging || act.packaging || "", // Пробуем взять из строки или общее
+        packaging: r.packaging || act.packaging || "", 
         length: r.length || "",
         width: r.width || "",
         height: r.height || "",
         weight: r.weight || "",
         volume: r.volume || "",
+        volumeM3: r.volume ? (r.volume / 1000000).toFixed(2) : "0.00",
         volWeight: r.volWeight || "",
       })),
     };

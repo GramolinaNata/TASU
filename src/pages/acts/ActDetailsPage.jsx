@@ -83,15 +83,31 @@ export default function ActDetailsPage() {
     loadAct();
   }, [id]);
 
+  /* ГИБРИДНОЕ ФОРМИРОВАНИЕ */
   const chooseDocType = async (type) => {
-    setShowDocForm(type);
+    if (!id) return;
+    
+    // Если это ТТН — сначала показываем форму
+    if (type === "ttn") {
+       setShowDocForm("ttn");
+       return;
+    }
+
+    // Если это СМР — формируем мгновенно + меняем статус на 'act'
+    const updated = await api.acts.update(id, { 
+      docType: type,
+      status: "act" 
+    });
+    setAct(updated);
+    if (type === "smr") nav("/smr");
   };
 
   const confirmDocType = async () => {
     if (!id || !showDocForm) return;
     const updated = await api.acts.update(id, { 
       docType: showDocForm,
-      docAttrs 
+      docAttrs,
+      status: "act"
     });
     setAct(updated);
     
@@ -100,7 +116,6 @@ export default function ActDetailsPage() {
     
     // Навигация
     if (type === "ttn") nav("/requests");
-    if (type === "smr") nav("/smr");
   };
 
   const addServiceRow = () => {
@@ -160,12 +175,18 @@ export default function ActDetailsPage() {
               >
                 Редактировать
               </button>
-              <button className="btn btn--accent" onClick={() => chooseDocType("ttn")}>
-                {act.docType === "ttn" ? "ТТН Сформирована" : "Сформировать ТТН"}
-              </button>
-              <button className="btn btn--accent" onClick={() => chooseDocType("smr")}>
-                {act.docType === "smr" ? "СМР Сформирована" : "Сформировать СМР"}
-              </button>
+
+              {act.docType !== "ttn" && (
+                <button className="btn btn--accent" onClick={() => chooseDocType("ttn")}>
+                  Сформировать ТТН
+                </button>
+              )}
+              
+              {act.docType !== "smr" && (
+                <button className="btn btn--accent" onClick={() => chooseDocType("smr")}>
+                  Сформировать СМР
+                </button>
+              )}
               <button 
                 className="btn" 
                 style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
@@ -195,129 +216,99 @@ export default function ActDetailsPage() {
         </div>
       </div>
 
-      {showDocForm && (
+      {showDocForm === "ttn" && (
         <div className="card" style={{ marginTop: 16, border: '2px solid var(--accent)', background: '#f0faff' }}>
           <div className="card_head">
-            <div className="card_title">Заполнение данных для {showDocForm.toUpperCase()}</div>
+            <div className="card_title">Заполнение данных для ТТН</div>
           </div>
           <div className="card_body">
             <div className="form_grid">
-              {showDocForm === "ttn" ? (
-                <>
-                  <div className="field" style={{ gridColumn: 'span 2', marginBottom: 10 }}>
-                    <div className="label">Вид перевозки <span className="text_danger">*</span></div>
-                    <select 
-                      value={docAttrs.transportType} 
-                      onChange={e => setDocAttrs({...docAttrs, transportType: e.target.value})}
-                      style={{ fontWeight: 'bold', padding: '8px' }}
-                    >
-                      <option value="auto_console">Авто перевозки консол</option>
-                      <option value="auto_separate">Авто перевозки отдельно</option>
-                      <option value="plane">Самолет</option>
-                      <option value="train">Поезд рейс</option>
-                    </select>
-                  </div>
+              <div className="field" style={{ gridColumn: 'span 2', marginBottom: 10 }}>
+                <div className="label">Вид перевозки <span className="text_danger">*</span></div>
+                <select 
+                  value={docAttrs.transportType} 
+                  onChange={e => setDocAttrs({...docAttrs, transportType: e.target.value})}
+                  style={{ fontWeight: 'bold', padding: '8px' }}
+                >
+                  <option value="auto_console">Авто перевозки консол</option>
+                  <option value="auto_separate">Авто перевозки отдельно</option>
+                  <option value="plane">Самолет</option>
+                  <option value="train">Поезд рейс</option>
+                </select>
+              </div>
 
-                  {docAttrs.transportType.startsWith("auto") && (
-                    <>
-                      <div className="field">
-                        <div className="label">Автомобиль (Марка, гос. номер)</div>
-                        <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} placeholder="Volvo 016ACT02/ 21WSZ05" />
-                      </div>
-                      <div className="field">
-                        <div className="label">Водитель (Ф.И.О.)</div>
-                        <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
-                      </div>
-                    </>
-                  )}
-
-                  {docAttrs.transportType === "plane" && (
-                    <div className="field" style={{ gridColumn: 'span 2' }}>
-                      <div className="label">Номер рейса <span className="text_danger">*</span></div>
-                      <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} placeholder="KC-987" />
-                    </div>
-                  )}
-
-                  {docAttrs.transportType === "train" && (
-                    <>
-                      <div className="field">
-                        <div className="label">Поезд / Вагон / Рейс</div>
-                        <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
-                      </div>
-                      <div className="field">
-                        <div className="label">Ф.И.О. ответственного (если есть)</div>
-                        <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
-                      </div>
-                    </>
-                  )}
-                  <div className="field">
-                    <div className="label">Сведения о грузе / Отметки таможни</div>
-                    <input value={docAttrs.cargoNotes} onChange={e => setDocAttrs({...docAttrs, cargoNotes: e.target.value})} placeholder="Груз под таможенным контролем" />
-                  </div>
-                  <div className="field">
-                    <div className="label">Масса брутто (кг)</div>
-                    <input value={docAttrs.grossWeight} onChange={e => setDocAttrs({...docAttrs, grossWeight: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">Количество мест</div>
-                    <input value={docAttrs.totalSeats} onChange={e => setDocAttrs({...docAttrs, totalSeats: e.target.value})} placeholder={act.totals?.seats || ""} />
-                  </div>
-                  <div className="field">
-                    <div className="label">Прибытие под загрузку (Дата, время)</div>
-                    <input value={docAttrs.loadingArrival} onChange={e => setDocAttrs({...docAttrs, loadingArrival: e.target.value})} placeholder="28.05.2024 09:00" />
-                  </div>
-                  <div className="field">
-                    <div className="label">Окончание погрузки (Дата, время)</div>
-                    <input value={docAttrs.loadingEnd} onChange={e => setDocAttrs({...docAttrs, loadingEnd: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">Прибытие под разгрузку (Дата, время)</div>
-                    <input value={docAttrs.unloadingArrival} onChange={e => setDocAttrs({...docAttrs, unloadingArrival: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">Окончание разгрузки (Дата, время)</div>
-                    <input value={docAttrs.unloadingEnd} onChange={e => setDocAttrs({...docAttrs, unloadingEnd: e.target.value})} />
-                  </div>
-
-                  {docAttrs.transportType === "plane" && (
-                    <div className="field" style={{ gridColumn: 'span 2', background: '#fffbe6', padding: 12, borderRadius: 8, border: '1px solid #ffe58f', marginTop: 10 }}>
-                      <div className="label" style={{ color: '#856404' }}>Расчет для авиа-отправки</div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                         <span style={{ fontSize: 13 }}>Оплачиваемый вес (макс. из {act.totals?.weight}кг и {act.totals?.volWeight}кг):</span>
-                         <span style={{ fontSize: 18, fontWeight: 900, color: '#d48806' }}>
-                           {Math.max(act.totals?.weight || 0, act.totals?.volWeight || 0).toFixed(2)} кг
-                         </span>
-                      </div>
-                    </div>
-                  )}
-                </>
-              ) : (
+              {docAttrs.transportType.startsWith("auto") && (
                 <>
                   <div className="field">
-                    <div className="label">5. Прилагаемые документы</div>
-                    <input value={docAttrs.doc5} onChange={e => setDocAttrs({...docAttrs, doc5: e.target.value})} placeholder="Сертификаты, счета..." />
+                    <div className="label">Автомобиль (Марка, гос. номер)</div>
+                    <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} placeholder="Volvo 016ACT02/ 21WSZ05" />
                   </div>
                   <div className="field">
-                    <div className="label">6. Маркировка и номера</div>
-                    <input value={docAttrs.doc6} onChange={e => setDocAttrs({...docAttrs, doc6: e.target.value})} placeholder="Марка, класс..." />
-                  </div>
-                  <div className="field">
-                    <div className="label">13. Указания отправителя (Таможня)</div>
-                    <input value={docAttrs.doc13} onChange={e => setDocAttrs({...docAttrs, doc13: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">14. Возврат</div>
-                    <input value={docAttrs.doc14} onChange={e => setDocAttrs({...docAttrs, doc14: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">15. Условия оплаты</div>
-                    <input value={docAttrs.doc15} onChange={e => setDocAttrs({...docAttrs, doc15: e.target.value})} placeholder="Франко..." />
-                  </div>
-                  <div className="field">
-                    <div className="label">18. Оговорки и замечания перевозчика</div>
-                    <input value={docAttrs.doc18} onChange={e => setDocAttrs({...docAttrs, doc18: e.target.value})} />
+                    <div className="label">Водитель (Ф.И.О.)</div>
+                    <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
                   </div>
                 </>
+              )}
+
+              {docAttrs.transportType === "plane" && (
+                <div className="field" style={{ gridColumn: 'span 2' }}>
+                  <div className="label">Номер рейса <span className="text_danger">*</span></div>
+                  <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} placeholder="KC-987" />
+                </div>
+              )}
+
+              {docAttrs.transportType === "train" && (
+                <>
+                  <div className="field">
+                    <div className="label">Поезд / Вагон / Рейс</div>
+                    <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
+                  </div>
+                  <div className="field">
+                    <div className="label">Ф.И.О. ответственного (если есть)</div>
+                    <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
+                  </div>
+                </>
+              )}
+
+              <div className="field">
+                <div className="label">Сведения о грузе / Отметки таможни</div>
+                <input value={docAttrs.cargoNotes} onChange={e => setDocAttrs({...docAttrs, cargoNotes: e.target.value})} placeholder="Груз под таможенным контролем" />
+              </div>
+              <div className="field">
+                <div className="label">Масса брутто (кг)</div>
+                <input value={docAttrs.grossWeight} onChange={e => setDocAttrs({...docAttrs, grossWeight: e.target.value})} />
+              </div>
+              <div className="field">
+                <div className="label">Количество мест (ТТН)</div>
+                <input value={docAttrs.totalSeats} onChange={e => setDocAttrs({...docAttrs, totalSeats: e.target.value})} placeholder={act.totals?.seats || ""} />
+              </div>
+              <div className="field">
+                <div className="label">Прибытие под загрузку</div>
+                <input value={docAttrs.loadingArrival} onChange={e => setDocAttrs({...docAttrs, loadingArrival: e.target.value})} placeholder="28.05.2024 09:00" />
+              </div>
+              <div className="field">
+                <div className="label">Окончание погрузки</div>
+                <input value={docAttrs.loadingEnd} onChange={e => setDocAttrs({...docAttrs, loadingEnd: e.target.value})} />
+              </div>
+              <div className="field">
+                <div className="label">Прибытие под разгрузку</div>
+                <input value={docAttrs.unloadingArrival} onChange={e => setDocAttrs({...docAttrs, unloadingArrival: e.target.value})} />
+              </div>
+              <div className="field">
+                <div className="label">Окончание разгрузки</div>
+                <input value={docAttrs.unloadingEnd} onChange={e => setDocAttrs({...docAttrs, unloadingEnd: e.target.value})} />
+              </div>
+
+              {docAttrs.transportType === "plane" && (
+                <div className="field" style={{ gridColumn: 'span 2', background: '#fffbe6', padding: 12, borderRadius: 8, border: '1px solid #ffe58f', marginTop: 10 }}>
+                  <div className="label" style={{ color: '#856404' }}>Расчет для авиа-отправки</div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                     <span style={{ fontSize: 13 }}>Оплачиваемый вес (макс. из {act.totals?.weight}кг и {act.totals?.volWeight}кг):</span>
+                     <span style={{ fontSize: 18, fontWeight: 900, color: '#d48806' }}>
+                       {Math.max(act.totals?.weight || 0, act.totals?.volWeight || 0).toFixed(2)} кг
+                     </span>
+                  </div>
+                </div>
               )}
             </div>
             <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
@@ -348,9 +339,9 @@ export default function ActDetailsPage() {
                   <span className="badge badge--danger">Аннулирована</span>
                 ) : act.status === "act" ? (
                    <>
-                    <span className="badge badge--ttn">Заявка</span>
-                    {act.docType === "ttn" && <span className="badge badge--ttn" style={{marginLeft: 5, background: '#52c41a'}}>ТТН</span>}
-                    {act.docType === "smr" && <span className="badge badge--ttn" style={{marginLeft: 5, background: '#1890ff'}}>СМР</span>}
+                    {!act.docType && <span className="badge badge--ttn">Заявка</span>}
+                    {act.docType === "ttn" && <span className="badge badge--ttn" style={{marginTop: 5, background: '#52c41a'}}>ТТН</span>}
+                    {act.docType === "smr" && <span className="badge badge--ttn" style={{marginTop: 5, background: '#1890ff'}}>СМР</span>}
                    </>
                 ) : (
                   <span className="badge badge--draft">Черновик</span>
@@ -453,7 +444,7 @@ export default function ActDetailsPage() {
             </div>
        </div>
 
-      {act.docType && (
+      {act.docType === 'ttn' && (
         <div className="card" style={{ marginTop: 14, border: '1px solid var(--accent)' }}>
           <div className="card_head" style={{ background: '#f0faff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="card_title">Транспортная информация ({act.docType.toUpperCase()})</div>
@@ -537,18 +528,6 @@ export default function ActDetailsPage() {
                 </div>
               )}
 
-              {act.docType === 'smr' && (
-                <div className="field" style={{gridColumn: 'span 2', borderTop: '1px dashed #ccc', marginTop: 10, paddingTop: 10}}>
-                   <div className="form_grid">
-                     <div className="field"><div className="label">Док. 5</div><div className="v">{act.docAttrs?.doc5 || "—"}</div></div>
-                     <div className="field"><div className="label">Док. 6</div><div className="v">{act.docAttrs?.doc6 || "—"}</div></div>
-                     <div className="field"><div className="label">Пункт 13</div><div className="v">{act.docAttrs?.doc13 || "—"}</div></div>
-                     <div className="field"><div className="label">Пункт 14</div><div className="v">{act.docAttrs?.doc14 || "—"}</div></div>
-                     <div className="field"><div className="label">Пункт 15</div><div className="v">{act.docAttrs?.doc15 || "—"}</div></div>
-                     <div className="field"><div className="label">Пункт 18</div><div className="v">{act.docAttrs?.doc18 || "—"}</div></div>
-                   </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
