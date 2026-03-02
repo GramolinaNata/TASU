@@ -38,7 +38,7 @@ export default function ContractDetailsPage() {
   }, [id]);
 
   const handleExport = async () => {
-    if (contract?.type === 'warehouse' && contract.actData) {
+    if (contract?.actData) {
       const allCompanies = getCompanies();
       const company = allCompanies.find(c => c.id === contract.companyId);
 
@@ -47,7 +47,8 @@ export default function ContractDetailsPage() {
         company: company,
         contractNumber: contract.number,
         contractDate: contract.date,
-        isContract: true
+        isContract: true,
+        type: contract.type // Передаем тип для выбора шаблона
       });
     }
   };

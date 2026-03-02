@@ -117,6 +117,25 @@ export default function ActDetailsPage() {
     // Навигация
     if (type === "ttn") nav("/requests");
   };
+  
+  const handleCancelFormation = async () => {
+    if (!id) return;
+    if (window.confirm("Отменить формирование документа? Заявка вернется в общий список.")) {
+      const updated = await api.acts.update(id, {
+        docType: null,
+        docAttrs: {},
+        status: "act" // Убеждаемся, что статус остается активным
+      });
+      setAct(updated);
+      setDocAttrs({
+        doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
+        vehicle: "", driver: "", grossWeight: "", totalSeats: "",
+        loadingArrival: "", loadingEnd: "", unloadingArrival: "", unloadingEnd: "",
+        cargoNotes: "", transportType: "auto_console", flightNumber: ""
+      });
+      nav("/acts"); // Возвращаем в список заявок
+    }
+  };
 
   const addServiceRow = () => {
     setServices((prev) => [...prev, { id: safeUuid(), name: "", qty: "1", sum: "0" }]);
@@ -185,6 +204,12 @@ export default function ActDetailsPage() {
               {act.docType !== "smr" && !act.isWarehouse && (
                 <button className="btn btn--accent" onClick={() => chooseDocType("smr")}>
                   Сформировать СМР
+                </button>
+              )}
+
+              {act.docType && (
+                <button className="btn btn--danger" onClick={handleCancelFormation}>
+                  Отменить формирование
                 </button>
               )}
               {!act.isWarehouse && (

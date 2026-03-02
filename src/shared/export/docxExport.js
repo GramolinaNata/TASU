@@ -45,7 +45,9 @@ export async function exportToDocx(act) {
     let templateFile = "/templates/template.docx";
     if (act.docType === "ttn") templateFile = "/templates/template_ttn.docx";
     if (act.docType === "smr") templateFile = "/templates/template_smr.docx";
-    if (act.isContract) templateFile = "/templates/warehouse_contract.docx";
+    if (act.isContract) {
+        templateFile = act.type === 'warehouse' ? "/templates/warehouse_contract.docx" : "/templates/transport_contract.docx";
+    }
 
     console.log(`[Export] Попытка загрузки шаблона: ${templateFile}`);
 
@@ -91,6 +93,7 @@ export async function exportToDocx(act) {
       customer_fio: act.customer?.fio || "",
       customer_phone: act.customer?.phone || "",
       customer_address: act.customer?.jurAddress || "",
+      customer_fact_address: act.customer?.factAddress || act.customer?.jurAddress || "",
       customer_bin: act.customer?.bin || "",
       customer_bank: act.customer?.bank || "",
       customer_bik: act.customer?.bik || "",
@@ -241,7 +244,10 @@ export async function exportToDocx(act) {
       mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
 
-    const fileName = act.docType ? `${act.docType.toUpperCase()}_${act.number}.docx` : `Заявка_${act.number}.docx`;
+    let fileName = act.docType ? `${act.docType.toUpperCase()}_${act.number}.docx` : `Заявка_${act.number}.docx`;
+    if (act.isContract) {
+      fileName = `dogovor_${act.contractNumber || act.number}.docx`;
+    }
     saveAs(out, fileName);
   } catch (error) {
     console.error("Ошибка при экспорте DOCX:", error);

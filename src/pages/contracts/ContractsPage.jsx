@@ -81,7 +81,7 @@ export default function ContractsPage() {
   };
 
   const handleExport = async (contract) => {
-    if (contract.type === 'warehouse' && contract.actData) {
+    if (contract.actData) {
       // Находим актуальные данные компании
       const allCompanies = api.companies ? await api.companies.list() : [];
       const company = allCompanies.find(c => c.id === contract.companyId);
@@ -91,10 +91,9 @@ export default function ContractsPage() {
         company: company, // Передаем полный объект компании
         contractNumber: contract.number,
         contractDate: contract.date,
-        isContract: true
+        isContract: true,
+        type: contract.type // Передаем тип для выбора шаблона
       });
-    } else {
-      alert("Экспорт для этого типа договора пока не поддерживается.");
     }
   };
 

@@ -7,7 +7,7 @@ import { exportToDocx } from "../../shared/export/docxExport.js";
 export default function ContractCreatePage() {
   const nav = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [warehouseActs, setWarehouseActs] = useState([]);
+  const [availableActs, setAvailableActs] = useState([]);
   
   const [formData, setFormData] = useState({
     type: "warehouse",
@@ -26,9 +26,12 @@ export default function ContractCreatePage() {
           api.contracts.list()
         ]);
 
-        // 1. Фильтруем только складские заявки для этой компании
-        const onlyWarehouse = actsList.filter(a => a.isWarehouse && a.companyId === company?.id);
-        setWarehouseActs(onlyWarehouse);
+        // 1. Фильтруем заявки для этой компании согласно типу договора
+        const filtered = actsList.filter(a => {
+            if (formData.type === 'warehouse') return a.isWarehouse && a.companyId === company?.id;
+            return !a.isWarehouse && a.companyId === company?.id;
+        });
+        setAvailableActs(filtered);
 
         // 2. Генерируем следующий номер договора
         if (company && formData.type) {
@@ -64,7 +67,7 @@ export default function ContractCreatePage() {
 
     setLoading(true);
     try {
-      const selectedAct = warehouseActs.find(a => a.id === formData.actId);
+      const selectedAct = availableActs.find(a => a.id === formData.actId);
       
       const contractData = {
         ...formData,
@@ -84,17 +87,6 @@ export default function ContractCreatePage() {
     }
   };
 
-  if (formData.type === 'transport' && !formData.placeholder) {
-      return (
-          <div className="card">
-              <div className="card_body" style={{ textAlign: 'center', padding: 40 }}>
-                  <h2>Договор транспортной экспедиции</h2>
-                  <p className="muted">Этот функционал находится в разработке.</p>
-                  <button className="btn btn--accent" style={{ marginTop: 20 }} onClick={() => setFormData({ ...formData, type: 'warehouse' })}>Назад к складским</button>
-              </div>
-          </div>
-      );
-  }
 
   return (
     <>
@@ -133,7 +125,7 @@ export default function ContractCreatePage() {
                         onChange={e => setFormData({ ...formData, type: e.target.value })}
                         style={{ height: 'auto' }}
                     />
-                    <span>Транспортной экспедиции (Заглушка)</span>
+                    <span>Транспортной экспедиции</span>
                   </label>
                 </div>
               </div>
@@ -156,28 +148,28 @@ export default function ContractCreatePage() {
                 />
               </div>
 
-              {formData.type === 'warehouse' && (
                 <div className="field field--full">
-                  <div className="label">Выберите складскую заявку (из Warehouse)</div>
+                  <div className="label">
+                    {formData.type === 'warehouse' ? "Выберите складскую заявку (из Warehouse)" : "Выберите заявку (из списка Заявок)"}
+                  </div>
                   <select 
                     value={formData.actId} 
                     onChange={e => setFormData({ ...formData, actId: e.target.value })}
                     style={{ fontWeight: 'bold' }}
                   >
                     <option value="">-- Выберите заявку --</option>
-                    {warehouseActs.map(a => (
+                    {availableActs.map(a => (
                         <option key={a.id} value={a.id}>
-                            №{a.number} от {formatDisplayDate(a.date)} — {a.customer?.companyName || a.customer?.fio}
+                            №{a.number} {a.docType ? `(${a.docType.toUpperCase()})` : ""} от {formatDisplayDate(a.date)} — {a.customer?.companyName || a.customer?.fio}
                         </option>
                     ))}
                   </select>
                 </div>
-              )}
             </div>
           </div>
           <div className="table_actions">
             <button className="btn btn--accent" type="submit" disabled={loading}>
-              {loading ? "Сохранение..." : "Создать и Экспортировать"}
+              {loading ? "Сохранение..." : "Создать договор"}
             </button>
           </div>
         </div>
