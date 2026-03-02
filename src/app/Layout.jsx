@@ -39,11 +39,19 @@ export default function Layout() {
                 ТТН
               </NavLink>
 
-              <a href="#!" className="not-implemented">
+              <NavLink
+                to="/warehouse"
+                className={({ isActive }) => (isActive ? "selected_menu" : "")}
+              >
                 Склад
-              </a>
+              </NavLink>
 
-              <a href="#!">Договоры</a>
+              <NavLink
+                to="/contracts"
+                className={({ isActive }) => (isActive ? "selected_menu" : "")}
+              >
+                Договоры
+              </NavLink>
 
               <NavLink
                 to="/companies"

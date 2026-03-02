@@ -20,6 +20,23 @@ function formatRussianDate(isoString) {
 }
 
 /**
+ * Вспомогательная функция для форматирования даты договора в формате «01» января 2026 г.
+ */
+function formatContractDate(isoString) {
+    if (!isoString) return "";
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    
+    const months = [
+      "января", "февраля", "марта", "апреля", "мая", "июня",
+      "июля", "августа", "сентября", "октября", "ноября", "декабря"
+    ];
+    
+    const day = String(date.getDate()).padStart(2, "0");
+    return `«${day}» ${months[date.getMonth()]} ${date.getFullYear()} г.`;
+}
+
+/**
  * Экспорт данных акта в Word по шаблону.
  */
 export async function exportToDocx(act) {
@@ -28,6 +45,7 @@ export async function exportToDocx(act) {
     let templateFile = "/templates/template.docx";
     if (act.docType === "ttn") templateFile = "/templates/template_ttn.docx";
     if (act.docType === "smr") templateFile = "/templates/template_smr.docx";
+    if (act.isContract) templateFile = "/templates/warehouse_contract.docx";
 
     console.log(`[Export] Попытка загрузки шаблона: ${templateFile}`);
 
@@ -58,7 +76,11 @@ export async function exportToDocx(act) {
 
     // 2. Подготовка данных
     const data = {
-      // ... (то же самое, что и было)
+      contractNumber: act.contractNumber || "",
+      contractNumberOnly: (act.contractNumber || "").split("-")[0],
+      contractDate: act.contractDate ? new Date(act.contractDate).toLocaleDateString("ru-RU") : "",
+      contractDateLong: act.contractDate ? formatRussianDate(act.contractDate) : "",
+      contractDateQuotes: act.contractDate ? formatContractDate(act.contractDate) : "",
       number: act.number || "",
       date: act.date || "",
       dateLong: formatRussianDate(act.date),
@@ -71,7 +93,9 @@ export async function exportToDocx(act) {
       customer_address: act.customer?.jurAddress || "",
       customer_bin: act.customer?.bin || "",
       customer_bank: act.customer?.bank || "",
+      customer_bik: act.customer?.bik || "",
       customer_account: act.customer?.account || "",
+      customer_kbe: act.customer?.kbe || "",
       customer_email: act.customer?.email || "",
       is_sender_same: !!act.isSenderSameAsCustomer,
       is_sender_different: !act.isSenderSameAsCustomer,
@@ -85,9 +109,15 @@ export async function exportToDocx(act) {
       expeditor_phone: act.company?.phone || "",
       expeditor_email: act.company?.email || "",
       expeditor_address: act.company?.address || "",
-      expeditor_director: act.company?.director || "",
-      director: act.company?.director || "",
-      "53": act.company?.director || "", 
+      expeditor_fact_address: act.company?.factAddress || act.company?.address || "",
+      expeditor_bin: act.company?.bin || "",
+      expeditor_bank: act.company?.bank || "",
+      expeditor_bik: act.company?.bik || "",
+      expeditor_account: act.company?.account || "",
+      expeditor_kbe: act.company?.kbe || "",
+      expeditor_director_name: act.company?.director || "",
+      customer_name: act.customer?.companyName || act.customer?.fio || "",
+      customer_director_name: act.customer?.fio || "",
       receiver_company: act.receiver?.companyName || act.receiver?.fio || "",
       receiver_fio: act.receiver?.fio || "",
       receiver_phone: act.receiver?.phone || "",
@@ -181,6 +211,14 @@ export async function exportToDocx(act) {
         volumeM3: r.volume ? (r.volume / 1000000).toFixed(2) : "0.00",
         volWeight: r.volWeight || "",
       })),
+      warehouse_services: (act.warehouseServices || []).map((s, i) => ({
+        index: i + 1,
+        name: s.name || "",
+        qty: s.qty || "",
+        price: s.price || "",
+        total: s.total || "",
+      })),
+      warehouse_total: (act.warehouseServices || []).reduce((acc, s) => acc + (s.total || 0), 0),
     };
 
     // 3. Рендеринг

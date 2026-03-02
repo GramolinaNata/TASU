@@ -115,8 +115,6 @@ export default function ActCreatePage() {
   });
 
   const [cargoText, setCargoText] = useState("");
-  const [packaging, setPackaging] = useState("");
-  const [fastening, setFastening] = useState("");
   const [deliveryTerm, setDeliveryTerm] = useState("");
   const [insured, setInsured] = useState(false);
 
@@ -134,10 +132,32 @@ export default function ActCreatePage() {
     },
   ]);
 
-  // Сворачиваемые блоки реквизитов
+  // 4. Склад
+  const [isWarehouse, setIsWarehouse] = useState(false);
+  const [warehouseServices, setWarehouseServices] = useState([
+    { id: safeUuid(), name: "", qty: 1, price: 0, total: 0 }
+  ]);
+
+  // Сворачиваемые блоки (карточки)
+  const [showCompanyCard, setShowCompanyCard] = useState(false);
+  const [showCustCard, setShowCustCard] = useState(false);
+  const [showSendCard, setShowSendCard] = useState(false);
+  const [showRecCard, setShowRecCard] = useState(false);
+  const [showRouteCard, setShowRouteCard] = useState(false);
+  const [showTransportCard, setShowTransportCard] = useState(false);
+
+  // Сворачиваемые блоки реквизитов (внутри карточек)
   const [showCustReq, setShowCustReq] = useState(false);
   const [showSendReq, setShowSendReq] = useState(false);
   const [showRecReq, setShowRecReq] = useState(false);
+
+  // Автозаполнение totalSum из складских услуг
+  useEffect(() => {
+    if (isWarehouse) {
+      const sum = warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0);
+      setTotalSum(sum > 0 ? sum.toString() : "");
+    }
+  }, [warehouseServices, isWarehouse]);
 
   // Состояния для сформированных документов (ТТН/СМР)
   const [docType, setDocType] = useState(null);
@@ -183,6 +203,13 @@ export default function ActCreatePage() {
         
         setInsured(!!act.insured);
         if (Array.isArray(act.cargoRows)) setCargoRows(act.cargoRows);
+        
+        if (typeof act.isWarehouse === 'boolean') {
+          setIsWarehouse(act.isWarehouse);
+        }
+        if (Array.isArray(act.warehouseServices)) {
+          setWarehouseServices(act.warehouseServices);
+        }
       }
     } else {
       setSelectedCompanyId(getSelectedCompanyId() || "");
@@ -257,15 +284,9 @@ export default function ActCreatePage() {
     // Find selected company object
     const company = allCompanies.find(c => c.id === selectedCompanyId);
     
-    // 1. Основные поля (Обязательны для любого сохранения)
-    const coreFilled = 
-      customer.fio && customer.phone && customer.companyName &&
-      receiver.fio && receiver.phone && receiver.companyName &&
-      route.fromCity && route.toCity && route.fromAddress && route.toAddress &&
-      date && selectedCompanyId;
-
-    if (!coreFilled) {
-       alert("Пожалуйста, заполните основные поля (отмечены звездочкой) и выберите компанию.");
+    // 1. Упрощенная валидация (только компания и дата для генерации номера)
+    if (!selectedCompanyId || !date) {
+       alert("Пожалуйста, заполните дату и выберите компанию.");
        return;
     }
 
@@ -289,13 +310,13 @@ export default function ActCreatePage() {
       cargoText,
       cargoRows,
       totals,
-      packaging,
-      fastening,
       deliveryTerm,
       insured,
       docType,
       docAttrs,
       totalSum,
+      isWarehouse,
+      warehouseServices,
       companyId: selectedCompanyId, 
       status, 
     };
@@ -334,239 +355,261 @@ export default function ActCreatePage() {
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <div className="card_head">
-          <div className="card_title">Выбор компании <span className="text_danger">*</span></div>
+        <div className="card_head" style={{ cursor: 'pointer' }} onClick={() => setShowCompanyCard(!showCompanyCard)}>
+          <div className="card_title">
+            {showCompanyCard ? "▼" : "▶"} Выбор компании
+          </div>
         </div>
-        <div className="card_body">
-           <div className="field">
-              <select 
-                className={attemptedSave && !selectedCompanyId ? "error" : ""}
-                style={{ width: "100%", height: 44, fontSize: 16, fontWeight: 700 }}
-                value={selectedCompanyId}
-                onChange={e => setSelectedCompanyId(e.target.value)}
-              >
-                <option value="">-- Выберите компанию --</option>
-                {allCompanies.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-           </div>
+        {showCompanyCard && (
+          <div className="card_body">
+             <div className="field">
+                <select 
+                  style={{ width: "100%", height: 44, fontSize: 16, fontWeight: 700 }}
+                  value={selectedCompanyId}
+                  onChange={e => setSelectedCompanyId(e.target.value)}
+                >
+                  <option value="">-- Выберите компанию --</option>
+                  {allCompanies.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 16, border: isWarehouse ? '2px solid #52c41a' : 'none' }}>
+        <div className="card_body" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+           <label style={{ fontSize: 18, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+              <input 
+                type="checkbox" 
+                style={{ width: 20, height: 20 }}
+                checked={isWarehouse}
+                onChange={e => setIsWarehouse(e.target.checked)}
+              />
+              Склад (Складские услуги)
+           </label>
+           {isWarehouse && <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Режим склада активен</span>}
         </div>
       </div>
 
       {/* 1. Заказчик */}
       <div className="card" style={{ marginTop: 16 }}>
-        <div className="card_head">
-          <div className="card_title">1. Заказчик</div>
-        </div>
-        <div className="card_body">
-          <div className="form_grid">
-            <div className="field">
-              <div className="label">ФИО / Название <span className="text_danger">*</span></div>
-              <input 
-                className={attemptedSave && !customer.fio ? "error" : ""}
-                value={customer.fio} 
-                onChange={e => setCustomer({...customer, fio: e.target.value})} 
-                placeholder="Иванов И.И. / ТОО Ромашка"
-              />
-            </div>
-            <div className="field">
-              <div className="label">Телефон <span className="text_danger">*</span></div>
-              <input 
-                className={attemptedSave && !customer.phone ? "error" : ""}
-                value={customer.phone} 
-                onChange={e => setCustomer({...customer, phone: e.target.value})} 
-                placeholder="+7..."
-              />
-            </div>
-             <div className="field">
-                <div className="label">Название компании <span className="text_danger">*</span></div>
-                <input 
-                  className={attemptedSave && !customer.companyName ? "error" : ""}
-                  value={customer.companyName}
-                  onChange={e => setCustomer({...customer, companyName: e.target.value})}
-                  placeholder="Если отличается от ФИО"
-                />
-             </div>
-             <div className="field">
-                <div className="label">Email</div>
-                <input 
-                  value={customer.email}
-                  onChange={e => setCustomer({...customer, email: e.target.value})}
-                  placeholder="customer@example.com"
-                />
-             </div>
-             <div className="field field--full">
-               <button 
-                 className="btn btn--sm btn--ghost" 
-                 onClick={() => setShowCustReq(!showCustReq)}
-               >
-                 {showCustReq ? "▲ Скрыть реквизиты" : "▼ Показать реквизиты"}
-               </button>
-             </div>
-             
-             {showCustReq && (
-               <>
-                 <div className="field">
-                   <div className="label">Юр. адрес</div>
-                   <input value={customer.jurAddress} onChange={e => setCustomer({...customer, jurAddress: e.target.value})} />
-                 </div>
-                 <div className="field">
-                   <div className="label">Фактический адрес</div>
-                   <input value={customer.factAddress} onChange={e => setCustomer({...customer, factAddress: e.target.value})} />
-                 </div>
-                 <div className="field">
-                   <div className="label">БИН</div>
-                   <input value={customer.bin} onChange={e => setCustomer({...customer, bin: e.target.value})} />
-                 </div>
-                 <div className="field">
-                   <div className="label">Банк</div>
-                   <input value={customer.bank} onChange={e => setCustomer({...customer, bank: e.target.value})} />
-                 </div>
-                 <div className="field">
-                   <div className="label">БИК</div>
-                   <input value={customer.bik} onChange={e => setCustomer({...customer, bik: e.target.value})} />
-                 </div>
-                 <div className="field">
-                   <div className="label">Счет</div>
-                   <input value={customer.account} onChange={e => setCustomer({...customer, account: e.target.value})} />
-                 </div>
-                 <div className="field">
-                   <div className="label">КБЕ</div>
-                   <input value={customer.kbe} onChange={e => setCustomer({...customer, kbe: e.target.value})} />
-                 </div>
-               </>
-             )}
-          </div>
-          
-          <div style={{ marginTop: 20, padding: "12px 0", borderTop: "1px solid #eee" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, cursor: "pointer" }}>
-              <input
-                type="checkbox"
-                checked={isSenderSameAsCustomer}
-                onChange={(e) => setIsSenderSameAsCustomer(e.target.checked)}
-              />
-              Заказчик является отправителем
-            </label>
+        <div className="card_head" style={{ cursor: 'pointer' }} onClick={() => setShowCustCard(!showCustCard)}>
+          <div className="card_title">
+            {showCustCard ? "▼" : "▶"} 1. Заказчик
           </div>
         </div>
+        {showCustCard && (
+          <div className="card_body">
+            <div className="form_grid">
+              <div className="field">
+                <div className="label">ФИО / Название</div>
+                <input 
+                  value={customer.fio} 
+                  onChange={e => setCustomer({...customer, fio: e.target.value})} 
+                  placeholder="Иванов И.И. / ТОО Ромашка"
+                />
+              </div>
+              <div className="field">
+                <div className="label">Телефон</div>
+                <input 
+                  value={customer.phone} 
+                  onChange={e => setCustomer({...customer, phone: e.target.value})} 
+                  placeholder="+7..."
+                />
+              </div>
+               <div className="field">
+                  <div className="label">Название компании</div>
+                  <input 
+                    value={customer.companyName}
+                    onChange={e => setCustomer({...customer, companyName: e.target.value})}
+                    placeholder="Если отличается от ФИО"
+                  />
+               </div>
+               <div className="field">
+                  <div className="label">Email</div>
+                  <input 
+                    value={customer.email}
+                    onChange={e => setCustomer({...customer, email: e.target.value})}
+                    placeholder="customer@example.com"
+                  />
+               </div>
+               <div className="field field--full">
+                 <button 
+                   className="btn btn--sm btn--ghost" 
+                   onClick={() => setShowCustReq(!showCustReq)}
+                 >
+                   {showCustReq ? "▲ Скрыть реквизиты" : "▼ Показать реквизиты"}
+                 </button>
+               </div>
+               
+               {showCustReq && (
+                 <>
+                   <div className="field">
+                     <div className="label">Юр. адрес</div>
+                     <input value={customer.jurAddress} onChange={e => setCustomer({...customer, jurAddress: e.target.value})} />
+                   </div>
+                   <div className="field">
+                     <div className="label">Фактический адрес</div>
+                     <input value={customer.factAddress} onChange={e => setCustomer({...customer, factAddress: e.target.value})} />
+                   </div>
+                   <div className="field">
+                     <div className="label">БИН</div>
+                     <input value={customer.bin} onChange={e => setCustomer({...customer, bin: e.target.value})} />
+                   </div>
+                   <div className="field">
+                     <div className="label">Банк</div>
+                     <input value={customer.bank} onChange={e => setCustomer({...customer, bank: e.target.value})} />
+                   </div>
+                   <div className="field">
+                     <div className="label">БИК</div>
+                     <input value={customer.bik} onChange={e => setCustomer({...customer, bik: e.target.value})} />
+                   </div>
+                   <div className="field">
+                     <div className="label">Счет</div>
+                     <input value={customer.account} onChange={e => setCustomer({...customer, account: e.target.value})} />
+                   </div>
+                   <div className="field">
+                     <div className="label">КБЕ</div>
+                     <input value={customer.kbe} onChange={e => setCustomer({...customer, kbe: e.target.value})} />
+                   </div>
+                 </>
+               )}
+            </div>
+            
+            <div style={{ marginTop: 20, padding: "12px 0", borderTop: "1px solid #eee" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  checked={isSenderSameAsCustomer}
+                  onChange={(e) => setIsSenderSameAsCustomer(e.target.checked)}
+                />
+                Заказчик является отправителем
+              </label>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 1.1 Отправитель (Грузоотправитель) */}
       {!isSenderSameAsCustomer && (
         <div className="card" style={{ marginTop: 16 }}>
-          <div className="card_head">
-            <div className="card_title">1.1 Грузоотправитель</div>
-          </div>
-          <div className="card_body">
-            <div className="form_grid">
-              <div className="field">
-                <div className="label">ФИО / Название <span className="text_danger">*</span></div>
-                <input 
-                  className={attemptedSave && !sender.fio ? "error" : ""}
-                  value={sender.fio} 
-                  onChange={e => setSender({...sender, fio: e.target.value})} 
-                  placeholder="Отправитель / Склад"
-                />
-              </div>
-              <div className="field">
-                <div className="label">Телефон <span className="text_danger">*</span></div>
-                <input 
-                  className={attemptedSave && !sender.phone ? "error" : ""}
-                  value={sender.phone} 
-                  onChange={e => setSender({...sender, phone: e.target.value})} 
-                  placeholder="+7..."
-                />
-              </div>
-              <div className="field">
-                <div className="label">Название компании</div>
-                <input 
-                  value={sender.companyName}
-                  onChange={e => setSender({...sender, companyName: e.target.value})}
-                />
-              </div>
-              <div className="field">
-                <div className="label">Email</div>
-                <input 
-                  value={sender.email}
-                  onChange={e => setSender({...sender, email: e.target.value})}
-                />
-              </div>
-              <div className="field field--full">
-                <button 
-                  className="btn btn--sm btn--ghost" 
-                  onClick={() => setShowSendReq(!showSendReq)}
-                >
-                  {showSendReq ? "▲ Скрыть реквизиты" : "▼ Показать реквизиты"}
-                </button>
-              </div>
-              
-              {showSendReq && (
-                <>
-                  <div className="field">
-                    <div className="label">Юр. адрес</div>
-                    <input value={sender.jurAddress} onChange={e => setSender({...sender, jurAddress: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">Фактический адрес</div>
-                    <input value={sender.factAddress} onChange={e => setSender({...sender, factAddress: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">БИН</div>
-                    <input value={sender.bin} onChange={e => setSender({...sender, bin: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">Банк</div>
-                    <input value={sender.bank} onChange={e => setSender({...sender, bank: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">БИК</div>
-                    <input value={sender.bik} onChange={e => setSender({...sender, bik: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">Счет</div>
-                    <input value={sender.account} onChange={e => setSender({...sender, account: e.target.value})} />
-                  </div>
-                  <div className="field">
-                    <div className="label">КБЕ</div>
-                    <input value={sender.kbe} onChange={e => setSender({...sender, kbe: e.target.value})} />
-                  </div>
-                </>
-              )}
+          <div className="card_head" style={{ cursor: 'pointer' }} onClick={() => setShowSendCard(!showSendCard)}>
+            <div className="card_title">
+              {showSendCard ? "▼" : "▶"} 1.1 Грузоотправитель
             </div>
           </div>
+          {showSendCard && (
+            <div className="card_body">
+              <div className="form_grid">
+                <div className="field">
+                  <div className="label">ФИО / Название</div>
+                  <input 
+                    value={sender.fio} 
+                    onChange={e => setSender({...sender, fio: e.target.value})} 
+                    placeholder="Отправитель / Склад"
+                  />
+                </div>
+                <div className="field">
+                  <div className="label">Телефон</div>
+                  <input 
+                    value={sender.phone} 
+                    onChange={e => setSender({...sender, phone: e.target.value})} 
+                    placeholder="+7..."
+                  />
+                </div>
+                <div className="field">
+                  <div className="label">Название компании</div>
+                  <input 
+                    value={sender.companyName}
+                    onChange={e => setSender({...sender, companyName: e.target.value})}
+                  />
+                </div>
+                <div className="field">
+                  <div className="label">Email</div>
+                  <input 
+                    value={sender.email}
+                    onChange={e => setSender({...sender, email: e.target.value})}
+                  />
+                </div>
+                <div className="field field--full">
+                  <button 
+                    className="btn btn--sm btn--ghost" 
+                    onClick={() => setShowSendReq(!showSendReq)}
+                  >
+                    {showSendReq ? "▲ Скрыть реквизиты" : "▼ Показать реквизиты"}
+                  </button>
+                </div>
+                
+                {showSendReq && (
+                  <>
+                    <div className="field">
+                      <div className="label">Юр. адрес</div>
+                      <input value={sender.jurAddress} onChange={e => setSender({...sender, jurAddress: e.target.value})} />
+                    </div>
+                    <div className="field">
+                      <div className="label">Фактический адрес</div>
+                      <input value={sender.factAddress} onChange={e => setSender({...sender, factAddress: e.target.value})} />
+                    </div>
+                    <div className="field">
+                      <div className="label">БИН</div>
+                      <input value={sender.bin} onChange={e => setSender({...sender, bin: e.target.value})} />
+                    </div>
+                    <div className="field">
+                      <div className="label">Банк</div>
+                      <input value={sender.bank} onChange={e => setSender({...sender, bank: e.target.value})} />
+                    </div>
+                    <div className="field">
+                      <div className="label">БИК</div>
+                      <input value={sender.bik} onChange={e => setSender({...sender, bik: e.target.value})} />
+                    </div>
+                    <div className="field">
+                      <div className="label">Счет</div>
+                      <input value={sender.account} onChange={e => setSender({...sender, account: e.target.value})} />
+                    </div>
+                    <div className="field">
+                      <div className="label">КБЕ</div>
+                      <input value={sender.kbe} onChange={e => setSender({...sender, kbe: e.target.value})} />
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {/* 2. Получатель */}
+      {!isWarehouse && (
       <div className="card" style={{ marginTop: 14 }}>
-        <div className="card_head">
-          <div className="card_title">2. Получатель</div>
+        <div className="card_head" style={{ cursor: 'pointer' }} onClick={() => setShowRecCard(!showRecCard)}>
+          <div className="card_title">
+            {showRecCard ? "▼" : "▶"} 2. Получатель
+          </div>
         </div>
+        {showRecCard && (
         <div className="card_body">
           <div className="form_grid">
             <div className="field">
-              <div className="label">ФИО / Название <span className="text_danger">*</span></div>
+              <div className="label">ФИО / Название</div>
               <input 
-                className={attemptedSave && !receiver.fio ? "error" : ""}
                 value={receiver.fio} 
                 onChange={e => setReceiver({...receiver, fio: e.target.value})} 
                 placeholder="Сидоров С.С."
               />
             </div>
             <div className="field">
-              <div className="label">Телефон <span className="text_danger">*</span></div>
+              <div className="label">Телефон</div>
               <input 
-                className={attemptedSave && !receiver.phone ? "error" : ""}
                 value={receiver.phone} 
                 onChange={e => setReceiver({...receiver, phone: e.target.value})} 
                 placeholder="+7..."
               />
             </div>
              <div className="field">
-                <div className="label">Название компании <span className="text_danger">*</span></div>
+                <div className="label">Название компании</div>
                 <input 
-                  className={attemptedSave && !receiver.companyName ? "error" : ""}
                   value={receiver.companyName}
                   onChange={e => setReceiver({...receiver, companyName: e.target.value})}
                 />
@@ -622,45 +665,47 @@ export default function ActCreatePage() {
              )}
           </div>
         </div>
+        )}
       </div>
+      )}
 
       {/* 3. Доставка и груз */}
       <div className="card" style={{ marginTop: 14 }}>
-        <div className="card_head">
-          <div className="card_title">3. Доставка и груз</div>
+        <div className="card_head" style={{ cursor: 'pointer' }} onClick={() => setShowRouteCard(!showRouteCard)}>
+          <div className="card_title">
+            {showRouteCard ? "▼" : "▶"} 3. Груз и услуги
+          </div>
         </div>
+        {showRouteCard && (
         <div className="card_body">
+          {!isWarehouse ? (
           <div className="form_grid">
             <div className="field">
-              <div className="label">Страна, город отправителя <span className="text_danger">*</span></div>
+              <div className="label">Страна, город отправителя</div>
               <input
-                className={attemptedSave && !route.fromCity ? "error" : ""}
                 value={route.fromCity}
                 onChange={(e) => setRoute({...route, fromCity: e.target.value})}
                 placeholder="Алматы"
               />
             </div>
             <div className="field">
-              <div className="label">Страна, город получателя <span className="text_danger">*</span></div>
+              <div className="label">Страна, город получателя</div>
               <input
-                className={attemptedSave && !route.toCity ? "error" : ""}
                 value={route.toCity}
                 onChange={(e) => setRoute({...route, toCity: e.target.value})}
                 placeholder="Астана"
               />
             </div>
             <div className="field">
-              <div className="label">Адрес отправителя <span className="text_danger">*</span></div>
+              <div className="label">Адрес отправителя</div>
               <input
-                className={attemptedSave && !route.fromAddress ? "error" : ""}
                 value={route.fromAddress}
                 onChange={(e) => setRoute({...route, fromAddress: e.target.value})}
               />
             </div>
             <div className="field">
-              <div className="label">Адрес получателя <span className="text_danger">*</span></div>
+              <div className="label">Адрес получателя</div>
               <input
-                 className={attemptedSave && !route.toAddress ? "error" : ""}
                 value={route.toAddress}
                 onChange={(e) => setRoute({...route, toAddress: e.target.value})}
               />
@@ -674,29 +719,11 @@ export default function ActCreatePage() {
               />
             </div>
             <div className="field field--full">
-              <div className="label">Наименование и характер груза <span className="text_danger">*</span></div>
+              <div className="label">Наименование и характер груза</div>
               <textarea
                 value={cargoText}
                 onChange={(e) => setCargoText(e.target.value)}
                 placeholder="Бытовая техника, хрупкое..."
-              />
-            </div>
-
-            <div className="field field--full">
-              <div className="label">Вид упаковки</div>
-              <input 
-                value={packaging}
-                onChange={e => setPackaging(e.target.value)}
-                placeholder="Коробки, паллеты, обрешетка..."
-              />
-            </div>
-
-            <div className="field field--full">
-              <div className="label">Крепление, штабелирование</div>
-              <input 
-                value={fastening}
-                onChange={e => setFastening(e.target.value)}
-                placeholder="Ремни, стяжки, в 2 яруса..."
               />
             </div>
 
@@ -709,6 +736,9 @@ export default function ActCreatePage() {
               />
             </div>
           </div>
+          ) : (
+            <div className="muted" style={{ padding: '10px 0' }}>Данные маршрута и груза скрыты для складской заявки.</div>
+          )}
 
           <div className="table_wrap" style={{ marginTop: 16, maxHeight: "500px", overflowY: "auto", overflowX: "auto" }}>
             <table className="table_fixed">
@@ -770,8 +800,101 @@ export default function ActCreatePage() {
               </button>
             </div>
           </div>
-          
-          <div className="form_grid" style={{marginTop: 20}}>
+
+          {isWarehouse && (
+            <div style={{ marginTop: 24 }}>
+              <div className="card_title" style={{ marginBottom: 12, color: '#000' }}>Складские услуги</div>
+              <div className="table_wrap">
+                <table className="table_fixed">
+                   <thead>
+                      <tr>
+                        <th style={{ width: 40 }}>№</th>
+                        <th style={{ minWidth: 300 }}>Наименование услуги</th>
+                        <th style={{ width: 100 }}>Кол-во</th>
+                        <th style={{ width: 120 }}>Цена</th>
+                        <th style={{ width: 120 }}>Сумма</th>
+                        <th style={{ width: 50 }}></th>
+                      </tr>
+                   </thead>
+                   <tbody>
+                      {warehouseServices.map((s, idx) => (
+                        <tr key={s.id}>
+                           <td>{idx + 1}</td>
+                           <td>
+                             <input 
+                               className="cell_input" 
+                               style={{ width: '100%' }}
+                               value={s.name} 
+                               onChange={e => {
+                                 const next = [...warehouseServices];
+                                 next[idx].name = e.target.value;
+                                 setWarehouseServices(next);
+                               }}
+                               placeholder="Приемка, хранение, паллетирование..."
+                             />
+                           </td>
+                           <td>
+                             <input 
+                               type="number" 
+                               className="cell_input" 
+                               value={s.qty} 
+                               onChange={e => {
+                                 const next = [...warehouseServices];
+                                 next[idx].qty = parseFloat(e.target.value) || 0;
+                                 next[idx].total = next[idx].qty * next[idx].price;
+                                 setWarehouseServices(next);
+                               }}
+                             />
+                           </td>
+                           <td>
+                             <input 
+                               type="number" 
+                               className="cell_input" 
+                               value={s.price} 
+                               onChange={e => {
+                                 const next = [...warehouseServices];
+                                 next[idx].price = parseFloat(e.target.value) || 0;
+                                 next[idx].total = next[idx].qty * next[idx].price;
+                                 setWarehouseServices(next);
+                               }}
+                             />
+                           </td>
+                           <td style={{ fontWeight: 700 }}>{s.total.toLocaleString()}</td>
+                           <td>
+                             <button className="btn btn--sm btn--danger" onClick={() => {
+                               if (warehouseServices.length > 1) {
+                                 setWarehouseServices(warehouseServices.filter(x => x.id !== s.id));
+                               }
+                             }}>x</button>
+                           </td>
+                        </tr>
+                      ))}
+                   </tbody>
+                   <tfoot>
+                       <tr style={{ fontWeight: 700, background: '#f5f5f5' }}>
+                           <td colSpan={2} style={{ textAlign: 'right' }}>Итого:</td>
+                           <td>{warehouseServices.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0)}</td>
+                           <td></td>
+                           <td style={{ fontWeight: 900, color: '#000' }}>
+                             {warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
+                           </td>
+                           <td></td>
+                       </tr>
+                   </tfoot>
+                </table>
+                <div style={{ padding: 12, display: "flex", justifyContent: "flex-end", background: "#fbfbfb" }}>
+                  <button className="btn" type="button" onClick={() => setWarehouseServices([...warehouseServices, { id: safeUuid(), name: "", qty: 1, price: 0, total: 0 }])}>
+                    + Добавить услугу
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+          </div>
+        )}
+      </div>
+      
+      <div className="form_grid" style={{marginTop: 20}}>
              <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, gridColumn: "span 1" }}>
               <input
                 type="checkbox"
@@ -783,9 +906,12 @@ export default function ActCreatePage() {
             
             {docType && (
               <div className="card" style={{ gridColumn: 'span 2', marginTop: 20, border: '2px solid var(--accent)', background: '#f0faff' }}>
-                 <div className="card_head" style={{ background: '#f0faff' }}>
-                    <div className="card_title">Транспортная информация ({docType.toUpperCase()})</div>
+                 <div className="card_head" style={{ background: '#f0faff', cursor: 'pointer' }} onClick={() => setShowTransportCard(!showTransportCard)}>
+                    <div className="card_title">
+                      {showTransportCard ? "▼" : "▶"} Транспортная информация ({docType.toUpperCase()})
+                    </div>
                  </div>
+                 {showTransportCard && (
                  <div className="card_body">
                     <div className="form_grid">
                         <div className="field" style={{ gridColumn: 'span 2' }}>
@@ -866,6 +992,7 @@ export default function ActCreatePage() {
                         </div>
                     </div>
                  </div>
+                 )}
               </div>
             )}
             
@@ -878,25 +1005,21 @@ export default function ActCreatePage() {
                />
             </div>
             
-             <div className="field">
-               <div className="label">Дата <span className="text_danger">*</span></div>
+            <div className="field">
+               <div className="label">Дата</div>
                <input 
                  type="date" 
-                 className={attemptedSave && !date ? "error" : ""}
                  value={date} 
                  onChange={e => setDate(e.target.value)} 
                />
             </div>
           </div>
 
-
           <div className="page_actions" style={{ marginTop: 24, paddingBottom: 40 }}>
             <button className="btn btn--accent btn--lg" style={{ width: "100%" }} onClick={onSave}>
               Сохранить заявку
             </button>
           </div>
-        </div>
-      </div>
     </>
   );
 }

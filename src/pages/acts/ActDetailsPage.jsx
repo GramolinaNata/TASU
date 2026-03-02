@@ -176,28 +176,30 @@ export default function ActDetailsPage() {
                 Редактировать
               </button>
 
-              {act.docType !== "ttn" && (
+              {act.docType !== "ttn" && !act.isWarehouse && (
                 <button className="btn btn--accent" onClick={() => chooseDocType("ttn")}>
                   Сформировать ТТН
                 </button>
               )}
               
-              {act.docType !== "smr" && (
+              {act.docType !== "smr" && !act.isWarehouse && (
                 <button className="btn btn--accent" onClick={() => chooseDocType("smr")}>
                   Сформировать СМР
                 </button>
               )}
-              <button 
-                className="btn" 
-                style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
-                onClick={() => {
-                  const companies = getCompanies();
-                  const comp = companies.find(c => c.id === act.companyId);
-                  exportToDocx({ ...act, company: comp });
-                }}
-              >
-                Экспорт в Word
-              </button>
+              {!act.isWarehouse && (
+                <button 
+                  className="btn" 
+                  style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
+                  onClick={() => {
+                    const companies = getCompanies();
+                    const comp = companies.find(c => c.id === act.companyId);
+                    exportToDocx({ ...act, company: comp });
+                  }}
+                >
+                  Экспорт в Word
+                </button>
+              )}
             </>
           ) : (
             <button 
@@ -356,6 +358,12 @@ export default function ActDetailsPage() {
               <div className="label">Сумма (заявленная)</div>
               <div className="v">{act.totalSum || "—"}</div>
           </div>
+          {act.isWarehouse && (
+            <div className="summary_item">
+                <div className="label">Тип</div>
+                <div className="v"><span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад (Складские услуги)</span></div>
+            </div>
+          )}
       </div>
 
       <div className="split_2" style={{ marginTop: 14 }}>
@@ -405,7 +413,7 @@ export default function ActDetailsPage() {
           )}
         </div>
 
-        {/* Получатель */}
+        {!act.isWarehouse && (
         <div className="info_card">
           <div className="info_title">Получатель</div>
            <div className="kv">
@@ -425,9 +433,11 @@ export default function ActDetailsPage() {
             <div className="v">{act.receiver?.account || "—"}</div>
           </div>
         </div>
+        )}
       </div>
       
        {/* Маршрут */}
+       {!act.isWarehouse && (
        <div className="info_card" style={{ marginTop: 14 }}>
             <div className="info_title">Маршрут и сроки</div>
             <div className="kv">
@@ -443,6 +453,7 @@ export default function ActDetailsPage() {
                <div className="v">{act.route?.comment || "—"}</div>
             </div>
        </div>
+       )}
 
       {act.docType === 'ttn' && (
         <div className="card" style={{ marginTop: 14, border: '1px solid var(--accent)' }}>
@@ -538,12 +549,6 @@ export default function ActDetailsPage() {
         <div className="info_title">Груз</div>
         <div className="text_block" style={{marginBottom: 10}}>{act.cargoText || "—"}</div>
         
-        <div className="kv" style={{marginBottom: 10}}>
-             <div className="k">Вид упаковки</div>
-             <div className="v">{act.packaging || "—"}</div>
-             <div className="k">Крепление, штабелирование</div>
-             <div className="v">{act.fastening || "—"}</div>
-        </div>
 
 
         {Array.isArray(act.cargoRows) && (
@@ -595,6 +600,44 @@ export default function ActDetailsPage() {
             </div>
         )}
       </div>
+
+      {act.isWarehouse && Array.isArray(act.warehouseServices) && (
+        <div className="info_card" style={{ marginTop: 14 }}>
+          <div className="info_title" style={{ color: '#000' }}>Складские услуги</div>
+          <div className="table_wrap">
+            <table className="table_fixed">
+                <thead>
+                    <tr>
+                        <th style={{ width: 40 }}>№</th>
+                        <th style={{ minWidth: 300 }}>Наименование услуги</th>
+                        <th style={{ width: 100 }}>Кол-во</th>
+                        <th style={{ width: 120 }}>Цена (тг)</th>
+                        <th style={{ width: 120 }}>Сумма (тг)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {act.warehouseServices.map((s, idx) => (
+                        <tr key={s.id || idx}>
+                            <td>{idx + 1}</td>
+                            <td>{s.name || "—"}</td>
+                            <td>{s.qty}</td>
+                            <td>{s.price?.toLocaleString()}</td>
+                            <td style={{ fontWeight: 700 }}>{s.total?.toLocaleString()}</td>
+                        </tr>
+                    ))}
+                </tbody>
+                <tfoot>
+                    <tr style={{ fontWeight: 700, background: '#f5f5f5' }}>
+                        <td colSpan={4} style={{ textAlign: 'right' }}>Итого:</td>
+                        <td style={{ fontWeight: 900, color: '#000' }}>
+                          {act.warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
+                        </td>
+                    </tr>
+                </tfoot>
+            </table>
+          </div>
+        </div>
+      )}
     </>
   );
 }

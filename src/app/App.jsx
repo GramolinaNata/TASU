@@ -7,6 +7,10 @@ import ActDetailsPage from "../pages/acts/ActDetailsPage.jsx";
 import RequestsPage from "../pages/requests/RequestsPage.jsx";
 import SmrPage from "../pages/smr/SMRPage.jsx";
 import CompaniesPage from "../pages/companies/CompaniesPage.jsx";
+import WarehousePage from "../pages/acts/WarehousePage.jsx";
+import ContractsPage from "../pages/contracts/ContractsPage.jsx";
+import ContractCreatePage from "../pages/contracts/ContractCreatePage.jsx";
+import ContractDetailsPage from "../pages/contracts/ContractDetailsPage.jsx";
 
 export default function App() {
   return (
@@ -21,6 +25,10 @@ export default function App() {
         <Route path="/requests/:id" element={<ActDetailsPage />} />
         <Route path="/smr" element={<SmrPage />} />
         <Route path="/smr/:id" element={<ActDetailsPage />} />
+        <Route path="/warehouse" element={<WarehousePage />} />
+        <Route path="/contracts" element={<ContractsPage />} />
+        <Route path="/contracts/new" element={<ContractCreatePage />} />
+        <Route path="/contracts/:id" element={<ContractDetailsPage />} />
         <Route path="/companies" element={<CompaniesPage />} />
       </Route>
     </Routes>

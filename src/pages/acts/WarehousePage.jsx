@@ -23,7 +23,7 @@ function normalizeIsoDate(val) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export default function ActsListPage() {
+export default function WarehousePage() {
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -31,19 +31,43 @@ export default function ActsListPage() {
   const [acts, setActs] = useState([]);
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(true);
-// ...
-  // Фильтрация
-  const filtered = useMemo(() => {
-    let list = acts;
 
-    // 1. Фильтр по компании и отсутствие docType, и исключение склада
+  const loadActs = async () => {
+    setLoading(true);
+    try {
+      const list = await api.acts.list();
+      if (Array.isArray(list)) {
+        setActs(list);
+      } else {
+        setActs([]);
+      }
+    } catch (e) {
+      setActs([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadActs();
+    const unsubscribe = subscribeSelectedCompany(setCompany);
+    setCompany(getSelectedCompany());
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (company) loadActs();
+  }, [company]);
+
+  const filtered = useMemo(() => {
+    let list = acts.filter(a => a.isWarehouse);
+
     if (company) {
-       list = list.filter(a => a.companyId === company.id && !a.docType && !a.isWarehouse);
+       list = list.filter(a => a.companyId === company.id);
     } else {
        return [];
     }
 
-    // 2. По дате (используем дату создания для фильтрации в списке)
     if (dateFrom) {
        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
     }
@@ -51,11 +75,10 @@ export default function ActsListPage() {
        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) <= dateTo);
     }
 
-    // 3. Поиск (Номер, ФИО, Город)
     const s = q.trim().toLowerCase();
     if (s) {
        list = list.filter((a) => {
-        const hay = [a.number, a.date, a.customer?.fio, a.route?.fromCity, a.route?.toCity]
+        const hay = [a.number, a.customer?.fio]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -66,82 +89,35 @@ export default function ActsListPage() {
     return list;
   }, [acts, q, company, dateFrom, dateTo]);
 
-  const loadActs = async () => {
-    setLoading(true);
-    try {
-      const list = await api.acts.list();
-      // Проверка на массив, чтобы избежать краша map
-      if (Array.isArray(list)) {
-        setActs(list);
-      } else {
-        console.error("API returned non-array", list);
-        setActs([]);
-      }
-    } catch (e) {
-      console.error("Failed to load acts", e);
-      setActs([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    // 1. Загрузка заявок
-    loadActs(); // async call inside effect
-  }, []);
-
-  useEffect(() => {
-    // 2. Подписка на изменение компании
-    const unsubscribe = subscribeSelectedCompany(setCompany);
-    setCompany(getSelectedCompany());
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
-    // 3. Перезагрузка заявок при смене компании
-    if (company) {
-      loadActs();
-    } else {
-      setActs([]);
-    }
-  }, [company]);
-
   const handleAnnul = async (id, number) => {
-    if (window.confirm(`Аннулировать заявку №${number}?`)) {
+    if (window.confirm(`Аннулировать складскую заявку №${number}?`)) {
       await api.acts.update(id, { status: "canceled" });
       loadActs();
     }
   };
 
-  const handleRestore = async (id, number) => {
-    if (window.confirm(`Восстановить заявку №${number}?`)) {
-      await api.acts.update(id, { status: "draft" });
-      loadActs();
-    }
+  const getServicesTotal = (services) => {
+    if (!Array.isArray(services)) return 0;
+    return services.reduce((acc, s) => acc + (s.total || 0), 0);
   };
 
   return (
     <>
       <div className="navbar">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h1>Заявки</h1>
-          {company ? (
+          <h1>Складские услуги</h1>
+          {company && (
             <div className="chip" style={{ background: "#e6f7ff", borderColor: "#91caff", color: "#0050b3" }}>
-              Выбрано: {company.name}
-            </div>
-          ) : (
-            <div className="chip" style={{ background: "#fff1f0", borderColor: "#ffccc7", color: "#a8071a" }}>
-              Компания не выбрана
+              {company.name}
             </div>
           )}
-          
           <button className="btn btn--sm btn--ghost" onClick={openCompanySelector}>
             Сменить
           </button>
         </div>
 
         <Link className="btn btn--accent" to="/acts/new">
-          + Создать заявку
+          + Новая складская заявка
         </Link>
       </div>
 
@@ -151,7 +127,7 @@ export default function ActsListPage() {
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Номер, заказчик, страна, город..."
+            placeholder="Номер, заказчик..."
           />
         </div>
         <div className="field" style={{ width: 140 }}>
@@ -172,18 +148,17 @@ export default function ActsListPage() {
             <tr>
               <th style={{width: 100}}>Номер</th>
               <th style={{width: 100}}>Дата</th>
-              <th style={{width: 100}}>Статус</th>
-              <th>Страна, город (откуда)</th>
-              <th>Страна, город (куда)</th>
+              <th style={{width: 120}}>Статус</th>
               <th>Заказчик</th>
+              <th style={{ width: 150 }}>Сумма услуг</th>
               <th style={{ width: 180, textAlign: "right" }}>Действия</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="muted" style={{ padding: 16 }}>
-                  {company ? "В этой компании нет заявок." : "Выберите компанию."}
+                <td colSpan={6} className="muted" style={{ padding: 16 }}>
+                  {company ? "Складских заявок не найдено." : "Выберите компанию."}
                 </td>
               </tr>
             ) : (
@@ -196,16 +171,15 @@ export default function ActsListPage() {
                   <td>
                     {a.status === 'canceled' ? (
                        <span className="badge badge--danger">Аннулирована</span>
-                    ) : a.status === 'act' ? (
-                       <span className="badge badge--ttn">Заявка</span>
                     ) : (
-                       <span className="badge badge--draft">Черновик</span>
+                       <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
                     )}
                   </td>
-                  <td>{a.route?.fromCity || "—"}</td>
-                  <td>{a.route?.toCity || "—"}</td>
                   <td>
                     <div style={{fontWeight: 500}}>{a.customer?.fio || "—"}</div>
+                  </td>
+                  <td style={{ fontWeight: 700 }}>
+                    {getServicesTotal(a.warehouseServices).toLocaleString()} тг
                   </td>
                   <td
                     style={{
@@ -215,24 +189,13 @@ export default function ActsListPage() {
                       gap: 8,
                     }}
                   >
-                   
-                    
-                    {a.status !== 'canceled' ? (
+                    {a.status !== 'canceled' && (
                       <button
                         className="btn btn--sm btn--danger"
                         type="button"
                         onClick={() => handleAnnul(a.id, a.number)}
                       >
                         Аннулировать
-                      </button>
-                    ) : (
-                      <button
-                        className="btn btn--sm btn--primary" // или другой класс для восстановления
-                        style={{ borderColor: "#108ee9", color: "#108ee9" }}
-                        type="button"
-                        onClick={() => handleRestore(a.id, a.number)}
-                      >
-                        Восстановить
                       </button>
                     )}
                   </td>
