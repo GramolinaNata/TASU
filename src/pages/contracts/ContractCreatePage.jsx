@@ -150,7 +150,7 @@ export default function ContractCreatePage() {
 
                 <div className="field field--full">
                   <div className="label">
-                    {formData.type === 'warehouse' ? "Выберите складскую заявку (из Warehouse)" : "Выберите заявку (из списка Заявок)"}
+                    {formData.type === 'warehouse' ? "Выберите складскую заявку" : "Выберите заявку"}
                   </div>
                   <select 
                     value={formData.actId} 

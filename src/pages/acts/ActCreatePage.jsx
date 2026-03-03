@@ -960,36 +960,6 @@ export default function ActCreatePage() {
                           </>
                         )}
 
-                        <div className="field">
-                           <div className="label">Масса брутто (кг)</div>
-                           <input value={docAttrs.grossWeight} onChange={e => setDocAttrs({...docAttrs, grossWeight: e.target.value})} />
-                        </div>
-                        <div className="field">
-                           <div className="label">Количество мест</div>
-                           <input value={docAttrs.totalSeats} onChange={e => setDocAttrs({...docAttrs, totalSeats: e.target.value})} placeholder={totals.seats} />
-                        </div>
-
-                        <div className="field">
-                           <div className="label">Прибытие на погрузку</div>
-                           <input value={docAttrs.loadingArrival} onChange={e => setDocAttrs({...docAttrs, loadingArrival: e.target.value})} />
-                        </div>
-                        <div className="field">
-                           <div className="label">Окончание погрузки</div>
-                           <input value={docAttrs.loadingEnd} onChange={e => setDocAttrs({...docAttrs, loadingEnd: e.target.value})} />
-                        </div>
-                        <div className="field">
-                           <div className="label">Прибытие на выгрузку</div>
-                           <input value={docAttrs.unloadingArrival} onChange={e => setDocAttrs({...docAttrs, unloadingArrival: e.target.value})} />
-                        </div>
-                        <div className="field">
-                           <div className="label">Окончание выгрузки</div>
-                           <input value={docAttrs.unloadingEnd} onChange={e => setDocAttrs({...docAttrs, unloadingEnd: e.target.value})} />
-                        </div>
-
-                        <div className="field" style={{ gridColumn: 'span 2' }}>
-                           <div className="label">Сведения о грузе / Таможня</div>
-                           <input value={docAttrs.cargoNotes} onChange={e => setDocAttrs({...docAttrs, cargoNotes: e.target.value})} placeholder="Груз под таможенным контролем" />
-                        </div>
                     </div>
                  </div>
                  )}
