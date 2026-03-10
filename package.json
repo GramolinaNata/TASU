@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:server": "cd server && npm install && npx prisma generate",
+    "postinstall": "cd server && npx prisma generate",
     "lint": "eslint .",
     "preview": "vite preview",
     "seed": "npm run seed --prefix server"
