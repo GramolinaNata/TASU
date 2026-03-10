@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { addAct, getActs, getActById, updateAct } from "../../shared/storage/actsStorage.js";
+import { api } from "../../shared/api/api.js";
 import { getSelectedCompanyId, getSelectedCompany, getCompanies } from "../../shared/storage/companyStorage.js";
 
 function todayIso() {
@@ -23,25 +23,29 @@ function transliterate(word) {
   }).join("");
 }
 
-function genNumber(company) {
+async function genNumber(company) {
   let prefix = "TKS";
   if (company && company.name) {
     const cleanName = company.name.replace(/ТОО|ИП|OOO|LLP/gi, "").trim();
-    // Use first word or transliterated clean name
     const trans = transliterate(cleanName);
-    // Take up to 4 chars, upper case
     prefix = (trans.substring(0, 4) || "ACT").toUpperCase();
   }
   
-  // Find max existing number with this prefix
-  const allActs = getActs();
+  // Получаем актуальный список с сервера для гарантии уникальности
+  let allActs = [];
+  try {
+     allActs = await api.requests.list();
+  } catch (e) {
+     console.error("Failed to fetch acts for numbering", e);
+  }
+
   const prefixPattern = new RegExp(`^#${prefix}_(\\d+)$`);
-  
   let maxNum = 0;
   
   allActs.forEach(a => {
-      if (a.number) {
-          const match = a.number.match(prefixPattern);
+      const numStr = a.number || a.docNumber;
+      if (numStr) {
+          const match = numStr.match(prefixPattern);
           if (match) {
               const n = parseInt(match[1], 10);
               if (n > maxNum) maxNum = n;
@@ -178,42 +182,60 @@ export default function ActCreatePage() {
 
   // Load companies and act data
   useEffect(() => {
-    const companies = getCompanies();
-    setAllCompanies(companies);
+    const loadData = async () => {
+      const companies = getCompanies();
+      setAllCompanies(companies);
 
-    if (isEditMode) {
-      const act = getActById(id);
-      if (act) {
-        setDate(act.date || todayIso());
-        setCreatedAt(act.createdAt || todayIso());
-        setTotalSum(act.totalSum || "");
-        setSelectedCompanyId(act.companyId || "");
-        if (act.customer) setCustomer(act.customer);
-        if (act.receiver) setReceiver(act.receiver);
-        if (act.sender) setSender(act.sender);
-        if (typeof act.isSenderSameAsCustomer === 'boolean') {
-          setIsSenderSameAsCustomer(act.isSenderSameAsCustomer);
+      if (isEditMode) {
+        try {
+          const act = await api.requests.get(id);
+          if (act) {
+            setDate(act.date || todayIso());
+            setCreatedAt(act.createdAt || todayIso());
+            
+            // Парсим детали из JSON если нужно
+            let details = {};
+            if (act.details) {
+              try {
+                details = typeof act.details === 'string' ? JSON.parse(act.details) : act.details;
+              } catch (e) { console.error("Parse details error", e); }
+            }
+
+            setTotalSum(act.totalSum || details.totalSum || "");
+            setSelectedCompanyId(act.companyId || "");
+            
+            if (details.customer) setCustomer(details.customer);
+            if (details.receiver) setReceiver(details.receiver);
+            if (details.sender) setSender(details.sender);
+            
+            if (typeof details.isSenderSameAsCustomer === 'boolean') {
+              setIsSenderSameAsCustomer(details.isSenderSameAsCustomer);
+            }
+            if (details.route) setRoute(details.route);
+            if (act.cargo || details.cargoText) setCargoText(act.cargo || details.cargoText);
+            if (details.deliveryTerm) setDeliveryTerm(details.deliveryTerm || "");
+            
+            if (act.type) setDocType(act.type);
+            if (details.docAttrs) setDocAttrs(prev => ({ ...prev, ...details.docAttrs }));
+            
+            setInsured(!!details.insured);
+            if (Array.isArray(details.cargoRows)) setCargoRows(details.cargoRows);
+            
+            if (typeof details.isWarehouse === 'boolean') {
+              setIsWarehouse(details.isWarehouse);
+            }
+            if (Array.isArray(details.warehouseServices)) {
+              setWarehouseServices(details.warehouseServices);
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load act for edit", e);
         }
-        if (act.route) setRoute(act.route);
-        if (act.cargoText) setCargoText(act.cargoText);
-        if (act.deliveryTerm) setDeliveryTerm(act.deliveryTerm || "");
-        
-        if (act.docType) setDocType(act.docType);
-        if (act.docAttrs) setDocAttrs(prev => ({ ...prev, ...act.docAttrs }));
-        
-        setInsured(!!act.insured);
-        if (Array.isArray(act.cargoRows)) setCargoRows(act.cargoRows);
-        
-        if (typeof act.isWarehouse === 'boolean') {
-          setIsWarehouse(act.isWarehouse);
-        }
-        if (Array.isArray(act.warehouseServices)) {
-          setWarehouseServices(act.warehouseServices);
-        }
+      } else {
+        setSelectedCompanyId(getSelectedCompanyId() || "");
       }
-    } else {
-      setSelectedCompanyId(getSelectedCompanyId() || "");
-    }
+    };
+    loadData();
   }, [id, isEditMode]);
 
   // Хелперы для изменения строк
@@ -278,7 +300,7 @@ export default function ActCreatePage() {
 
   const [attemptedSave, setAttemptedSave] = useState(false);
 
-  const onSave = () => {
+  const onSave = async () => {
     setAttemptedSave(true);
     
     // Find selected company object
@@ -291,7 +313,6 @@ export default function ActCreatePage() {
     }
 
     // 2. Реквизиты (Нужны для статуса "Заявка")
-    // Проверяем наличие ключевых реквизитов у обоих сторон
     const checkReqs = (obj) => {
         return obj.jurAddress && obj.bin && obj.account && obj.bank && obj.bik;
     };
@@ -321,25 +342,26 @@ export default function ActCreatePage() {
       status, 
     };
 
-    if (isEditMode) {
-      const oldAct = getActById(id);
-      // Если компания изменилась - генерируем новый номер
-      if (oldAct && oldAct.companyId !== selectedCompanyId) {
-          actData.number = genNumber(company);
+    try {
+      if (isEditMode) {
+        // Если компания изменилась - генерируем новый номер
+        const currentAct = await api.requests.get(id);
+        if (currentAct && currentAct.companyId !== selectedCompanyId) {
+            actData.docNumber = await genNumber(company);
+        }
+        await api.requests.update(id, actData);
+      } else {
+        const docNumber = await genNumber(company);
+        await api.requests.create({
+          docNumber,
+          ...actData
+        });
       }
-      updateAct(id, actData);
-    } else {
-      const number = genNumber(company);
-      addAct({
-        id: safeUuid(),
-        number,
-        createdAt: Date.now(),
-        docType: null,
-        ...actData
-      });
+      nav("/acts");
+    } catch (err) {
+      console.error('Save error:', err);
+      alert('Ошибка при сохранении: ' + err.message);
     }
-    
-    nav("/acts");
   };
 
   return (

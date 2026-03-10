@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:server": "cd server && npm install && npx prisma generate",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "seed": "npm run seed --prefix server"
   },
   "dependencies": {
     "docxtemplater": "^3.68.2",

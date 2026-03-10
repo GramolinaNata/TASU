@@ -3,13 +3,10 @@ import { Link } from "react-router-dom";
 import {
   subscribeCompanies,
   getSelectedCompanyId,
+  loadCompanies as reloadGlobalCompanies
 } from "../../shared/storage/companyStorage.js";
-import { api } from "../../shared/api/mockClient.js";
+import { api } from "../../shared/api/api.js";
 import Modal from "../../shared/ui/Modal.jsx";
-
-function safeUuid() {
-  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
 
 export default function CompaniesPage() {
   const [list, setList] = useState([]);
@@ -22,14 +19,10 @@ export default function CompaniesPage() {
     name: "",
     bin: "",
     address: "",
-    factAddress: "",
-    account: "",
-    bank: "",
-    bik: "",
-    kbe: "",
     director: "",
     email: "",
-    phone: "",
+    bankDetails: "",
+    managerDetails: "",
   });
 
   const loadCompanies = async () => {
@@ -37,6 +30,8 @@ export default function CompaniesPage() {
     try {
       const data = await api.companies.list();
       setList(data);
+    } catch (err) {
+      console.error('Error loading companies:', err);
     } finally {
       setLoading(false);
     }
@@ -58,14 +53,10 @@ export default function CompaniesPage() {
       name: "",
       bin: "",
       address: "",
-      factAddress: "",
-      account: "",
-      bank: "",
-      bik: "",
-      kbe: "",
       director: "",
       email: "",
-      phone: "",
+      bankDetails: "",
+      managerDetails: "",
     });
     setModalOpen(true);
   };
@@ -76,32 +67,38 @@ export default function CompaniesPage() {
       name: c.name,
       bin: c.bin,
       address: c.address,
-      factAddress: c.factAddress || "",
-      account: c.account || "",
-      bank: c.bank || "",
-      bik: c.bik || "",
-      kbe: c.kbe || "",
       director: c.director || "",
       email: c.email || "",
-      phone: c.phone || "",
+      bankDetails: c.bankDetails || "",
+      managerDetails: c.managerDetails || "",
     });
     setModalOpen(true);
   };
 
   const onSave = async () => {
-    if (editId) {
-      await api.companies.update(editId, form);
-    } else {
-      await api.companies.create({ id: safeUuid(), ...form });
+    try {
+      if (editId) {
+        await api.companies.update(editId, form);
+      } else {
+        await api.companies.create(form);
+      }
+      loadCompanies();
+      reloadGlobalCompanies(); // Обновляем кеш в сторадже
+      setModalOpen(false);
+    } catch (err) {
+      alert(err.message);
     }
-    loadCompanies();
-    setModalOpen(false);
   };
 
   const onDelete = async (id, name) => {
     if (!window.confirm(`Удалить компанию "${name}"?`)) return;
-    await api.companies.delete(id);
-    loadCompanies();
+    try {
+      await api.companies.delete(id);
+      loadCompanies();
+      reloadGlobalCompanies(); // Обновляем кеш в сторадже
+    } catch (err) {
+      alert(err.message);
+    }
   };
 
   return (
@@ -194,46 +191,16 @@ export default function CompaniesPage() {
               />
             </div>
             <div className="field">
-              <div className="label">Фактический Адрес</div>
-              <input
-                value={form.factAddress}
-                onChange={(e) => setForm({ ...form, factAddress: e.target.value })}
-                placeholder="Город, улица (Фактический)"
+              <div className="label">Реквизиты (Банк, Счет, БИК и т.д.)</div>
+              <textarea
+                className="input"
+                style={{ minHeight: '80px', padding: '8px' }}
+                value={form.bankDetails}
+                onChange={(e) => setForm({ ...form, bankDetails: e.target.value })}
+                placeholder="АО Kaspi Bank, KZ..., БИК, КБЕ"
               />
             </div>
-
-            <div className="field">
-              <div className="label">Банк</div>
-              <input
-                value={form.bank}
-                onChange={(e) => setForm({ ...form, bank: e.target.value })}
-                placeholder="Kaspi Bank"
-              />
-            </div>
-            <div className="field">
-              <div className="label">БИК</div>
-              <input
-                value={form.bik}
-                onChange={(e) => setForm({ ...form, bik: e.target.value })}
-                placeholder="KZK..."
-              />
-            </div>
-            <div className="field">
-              <div className="label">Номер счета (IBAN)</div>
-              <input
-                value={form.account}
-                onChange={(e) => setForm({ ...form, account: e.target.value })}
-                placeholder="KZ..."
-              />
-            </div>
-            <div className="field">
-              <div className="label">КБЕ</div>
-              <input
-                value={form.kbe}
-                onChange={(e) => setForm({ ...form, kbe: e.target.value })}
-                placeholder="17"
-              />
-            </div>
+            
             <div className="field">
               <div className="label">Директор</div>
               <input
@@ -242,20 +209,22 @@ export default function CompaniesPage() {
                 placeholder="Иванов И.И."
               />
             </div>
+
+            <div className="field">
+              <div className="label">Контакты (Телефон / Менеджер)</div>
+              <input
+                value={form.managerDetails}
+                onChange={(e) => setForm({ ...form, managerDetails: e.target.value })}
+                placeholder="+7 (707) ..."
+              />
+            </div>
+
             <div className="field">
               <div className="label">Электронная почта (Email)</div>
               <input
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="info@company.kz"
-              />
-            </div>
-            <div className="field">
-              <div className="label">Телефон компании</div>
-              <input
-                value={form.phone}
-                onChange={(e) => setForm({ ...form, phone: e.target.value })}
-                placeholder="+7..."
               />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { api } from "../../shared/api/mockClient.js";
+import { api } from "../../shared/api/api.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -63,16 +63,27 @@ export default function ActDetailsPage() {
     if (!id) return;
     setLoading(true);
     try {
-      const found = await api.acts.get(id);
-      setAct(found);
+      const found = await api.requests.get(id);
       if (found) {
+        // Парсим детали из JSON если нужно
+        let details = {};
+        if (found.details) {
+          try {
+            details = typeof found.details === 'string' ? JSON.parse(found.details) : found.details;
+          } catch (e) { console.error("Parse details error", e); }
+        }
+
+        // Объединяем объект заявки с распарсенными деталями
+        const mergedAct = { ...found, ...details };
+        setAct(mergedAct);
+
         setServices(
-          Array.isArray(found.services) && found.services.length
-            ? found.services
+          Array.isArray(details.services) && details.services.length
+            ? details.services
             : [{ id: safeUuid(), name: "Доставка", qty: "1", sum: "0" }]
         );
-        setTotal(found.total || { price: "" });
-        if (found.docAttrs) setDocAttrs(found.docAttrs);
+        setTotal(details.total || { price: "" });
+        if (details.docAttrs) setDocAttrs(details.docAttrs);
       }
     } finally {
       setLoading(false);
@@ -94,39 +105,40 @@ export default function ActDetailsPage() {
     }
 
     // Если это СМР — формируем мгновенно + меняем статус на 'act'
-    const updated = await api.acts.update(id, { 
+    const updated = await api.requests.update(id, { 
       docType: type,
       status: "act" 
     });
-    setAct(updated);
+    await loadAct();
     if (type === "smr") nav("/smr");
   };
 
   const confirmDocType = async () => {
     if (!id || !showDocForm) return;
-    const updated = await api.acts.update(id, { 
-      docType: showDocForm,
-      docAttrs,
-      status: "act"
-    });
-    setAct(updated);
-    
-    const type = showDocForm;
-    setShowDocForm(null);
-    
-    // Навигация
-    if (type === "ttn") nav("/requests");
+    try {
+      await api.requests.update(id, { 
+        docType: showDocForm,
+        docAttrs,
+        status: "act"
+      });
+      await loadAct();
+      const type = showDocForm;
+      setShowDocForm(null);
+      if (type === "ttn") nav("/requests");
+    } catch (err) {
+      alert("Ошибка: " + err.message);
+    }
   };
   
   const handleCancelFormation = async () => {
     if (!id) return;
     if (window.confirm("Отменить формирование документа? Заявка вернется в общий список.")) {
-      const updated = await api.acts.update(id, {
+      const updated = await api.requests.update(id, {
         docType: null,
         docAttrs: {},
         status: "act" // Убеждаемся, что статус остается активным
       });
-      setAct(updated);
+      await loadAct();
       setDocAttrs({
         doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
         vehicle: "", driver: "", grossWeight: "", totalSeats: "",
@@ -151,7 +163,7 @@ export default function ActDetailsPage() {
 
   const saveExtra = async () => {
     if (!id) return;
-    const updated = await api.acts.update(id, {
+    const updated = await api.requests.update(id, {
       services,
       total,
     });
@@ -179,8 +191,8 @@ export default function ActDetailsPage() {
     <>
       <div className="topbar">
         <div>
-          <div className="crumbs">{crumbLabel} / {act.number}</div>
-          <h1>{act.number}</h1>
+          <div className="crumbs">{crumbLabel} / {act.docNumber || act.number}</div>
+          <h1>{act.docNumber || act.number}</h1>
         </div>
 
         <div className="topbar_actions">
@@ -232,7 +244,7 @@ export default function ActDetailsPage() {
               style={{ borderColor: "#108ee9", color: "#108ee9" }}
               onClick={async () => {
                 if(window.confirm("Восстановить заявку?")) {
-                  const updated = await api.acts.update(act.id, { status: "draft" });
+                  const updated = await api.requests.update(act.id, { status: "draft" });
                   setAct(updated);
                 }
               }}
@@ -349,7 +361,7 @@ export default function ActDetailsPage() {
       <div className="summary_grid" style={{marginTop: 16}}>
           <div className="summary_item">
               <div className="label">Номер</div>
-              <div className="v">{act.number}</div>
+              <div className="v">{act.docNumber || act.number}</div>
           </div>
           <div className="summary_item">
               <div className="label">Дата погрузки</div>

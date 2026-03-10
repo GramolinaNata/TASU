@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("MANAGER") // ADMIN или MANAGER
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests  Request[] // Заявки, которые создал этот менеджер
+}
+
+model Company {
+  id              String   @id @default(uuid())
+  name            String
+  bin             String   @unique
+  address         String
+  director        String   @default("")
+  bankDetails     String   @default("")
+  managerDetails  String   @default("")
+  email           String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  requests        Request[]
+}
+
+// Заявка - это базовая сущность. 
+// В ней указывается тип документа (CMR, TTN и т.д.) или будут отдельные таблицы.
+model Request {
+  id          String   @id @default(uuid())
+  status      String   @default("Заявка")
+  date        String
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  managerId   Int
+  manager     User     @relation(fields: [managerId], references: [id])
+  type        String   @default("CMR") // CMR, TTN, Warehouse, Contract
+  route       String?
+  cargo       String?
+  docNumber   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Здесь можно также хранить связи с таблицами CMR/TTN, если они будут выделены отдельно, 
+  // но для простоты на первом этапе данные могут храниться прямо здесь или в JSON.
+  details     String?  // JSON строка со специфичными полями (веса, адреса для TTN и т.д.)
+}

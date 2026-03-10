@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { api } from "../../shared/api/mockClient.js";
+import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 
 function formatDisplayDate(val) {
@@ -35,10 +35,24 @@ export default function SmrPage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const list = await api.acts.list();
+      const list = await api.requests.list(company?.id);
       if (Array.isArray(list)) {
-        setAllActs(list);
+        const parsed = list.map(a => {
+           let details = {};
+           if (a.details) {
+              try {
+                details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
+              } catch (e) { console.error("Parse error", e); }
+           }
+           return { ...a, ...details };
+        });
+        setAllActs(parsed);
+      } else {
+        setAllActs([]);
       }
+    } catch (e) {
+      console.error("Load SMR error:", e);
+      setAllActs([]);
     } finally {
       setLoading(false);
     }
@@ -46,15 +60,23 @@ export default function SmrPage() {
 
   const handleAnnul = async (id, number) => {
     if (window.confirm(`Аннулировать СМР №${number}?`)) {
-      await api.acts.update(id, { status: "canceled" });
-      loadData();
+      try {
+        await api.requests.update(id, { status: "canceled" });
+        loadData();
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
     }
   };
 
   const handleRestore = async (id, number) => {
     if (window.confirm(`Восстановить СМР №${number}?`)) {
-      await api.acts.update(id, { status: "draft" });
-      loadData();
+      try {
+        await api.requests.update(id, { status: "draft" });
+        loadData();
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
     }
   };
 
@@ -163,7 +185,7 @@ export default function SmrPage() {
                filtered.map((a) => (
                 <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
                   <td className="num">
-                    <Link to={`/smr/${a.id}`}>{a.number}</Link>
+                    <Link to={`/smr/${a.id}`}>{a.docNumber || a.number}</Link>
                   </td>
                   <td className="date">{formatDisplayDate(a.createdAt || a.date)}</td>
                   <td>

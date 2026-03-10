@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { api } from "../../shared/api/mockClient.js";
+import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 
 function formatDisplayDate(val) {
@@ -35,13 +35,23 @@ export default function WarehousePage() {
   const loadActs = async () => {
     setLoading(true);
     try {
-      const list = await api.acts.list();
+      const list = await api.requests.list(company?.id);
       if (Array.isArray(list)) {
-        setActs(list);
+        const parsed = list.map(a => {
+           let details = {};
+           if (a.details) {
+              try {
+                details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
+              } catch (e) { console.error("Parse error", e); }
+           }
+           return { ...a, ...details };
+        });
+        setActs(parsed);
       } else {
         setActs([]);
       }
     } catch (e) {
+      console.error("Load warehouse acts error:", e);
       setActs([]);
     } finally {
       setLoading(false);
@@ -91,8 +101,12 @@ export default function WarehousePage() {
 
   const handleAnnul = async (id, number) => {
     if (window.confirm(`Аннулировать складскую заявку №${number}?`)) {
-      await api.acts.update(id, { status: "canceled" });
-      loadActs();
+      try {
+        await api.requests.update(id, { status: "canceled" });
+        loadActs();
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
     }
   };
 
@@ -165,7 +179,7 @@ export default function WarehousePage() {
               filtered.map((a) => (
                 <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
                   <td className="num">
-                    <Link to={`/acts/${a.id}`}>{a.number}</Link>
+                    <Link to={`/acts/${a.id}`}>{a.docNumber || a.number}</Link>
                   </td>
                   <td>{formatDisplayDate(a.createdAt || a.date)}</td>
                   <td>

@@ -1,42 +1,58 @@
-export const getContracts = () => {
-    const contracts = localStorage.getItem("tasu_contracts");
-    return contracts ? JSON.parse(contracts) : [];
-};
+import { api } from "../api/api";
 
-export const saveContracts = (contracts) => {
-    localStorage.setItem("tasu_contracts", JSON.stringify(contracts));
-};
+const EVT = "tasu_contracts_changed";
+let contractsCache = [];
 
-export const addContract = (contract) => {
-    const contracts = getContracts();
-    const newContract = {
-        ...contract,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-    };
-    contracts.push(newContract);
-    saveContracts(contracts);
-    return newContract;
-};
+function emit() {
+    window.dispatchEvent(new Event(EVT));
+}
 
-export const updateContract = (id, data) => {
-    const contracts = getContracts();
-    const index = contracts.findIndex((c) => c.id === id);
-    if (index !== -1) {
-        contracts[index] = { ...contracts[index], ...data, updatedAt: new Date().toISOString() };
-        saveContracts(contracts);
-        return contracts[index];
+export async function loadContracts() {
+    try {
+        const list = await api.requests.list();
+        // Фильтруем только договоры, если на бекенде они все в одной таблице requests
+        contractsCache = list.filter(r => r.type === 'Contract');
+        emit();
+        return contractsCache;
+    } catch (err) {
+        console.error("Failed to load contracts:", err);
+        return contractsCache;
     }
-    return null;
+}
+
+export const getContracts = () => {
+    return contractsCache;
 };
 
-export const deleteContract = (id) => {
-    const contracts = getContracts();
-    const filtered = contracts.filter((c) => c.id !== id);
-    saveContracts(filtered);
+export const addContract = async (contractData) => {
+    const newContract = await api.requests.create({
+        ...contractData,
+        type: 'Contract'
+    });
+    await loadContracts();
+    return newAct;
+};
+
+export const updateContract = async (id, data) => {
+    const updated = await api.requests.update(id, data);
+    await loadContracts();
+    return updated;
+};
+
+export const deleteContract = async (id) => {
+    await api.requests.delete(id);
+    await loadContracts();
 };
 
 export const getContractById = (id) => {
-    const contracts = getContracts();
-    return contracts.find((c) => c.id === id);
+    return contractsCache.find((c) => c.id === id);
 };
+
+export function subscribeContracts(cb) {
+    const handler = () => cb(contractsCache);
+    window.addEventListener(EVT, handler);
+    return () => {
+        window.removeEventListener(EVT, handler);
+    };
+}
+

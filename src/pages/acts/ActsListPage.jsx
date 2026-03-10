@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { api } from "../../shared/api/mockClient.js";
+import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
+import { useAuth } from "../../shared/auth/AuthContext";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -24,6 +25,7 @@ function normalizeIsoDate(val) {
 }
 
 export default function ActsListPage() {
+  const { isAdmin } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -55,7 +57,7 @@ export default function ActsListPage() {
     const s = q.trim().toLowerCase();
     if (s) {
        list = list.filter((a) => {
-        const hay = [a.number, a.date, a.customer?.fio, a.route?.fromCity, a.route?.toCity]
+        const hay = [a.number, a.docNumber, a.date, a.customer?.fio, a.route?.fromCity, a.route?.toCity]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -69,12 +71,19 @@ export default function ActsListPage() {
   const loadActs = async () => {
     setLoading(true);
     try {
-      const list = await api.acts.list();
-      // Проверка на массив, чтобы избежать краша map
+      const list = await api.requests.list(company?.id);
       if (Array.isArray(list)) {
-        setActs(list);
+        const parsed = list.map(a => {
+           let details = {};
+           if (a.details) {
+              try {
+                details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
+              } catch (e) { console.error("Parse error", e); }
+           }
+           return { ...a, ...details };
+        });
+        setActs(parsed);
       } else {
-        console.error("API returned non-array", list);
         setActs([]);
       }
     } catch (e) {
@@ -108,15 +117,34 @@ export default function ActsListPage() {
 
   const handleAnnul = async (id, number) => {
     if (window.confirm(`Аннулировать заявку №${number}?`)) {
-      await api.acts.update(id, { status: "canceled" });
-      loadActs();
+      try {
+        await api.requests.update(id, { status: "canceled" });
+        loadActs();
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
     }
   };
 
   const handleRestore = async (id, number) => {
     if (window.confirm(`Восстановить заявку №${number}?`)) {
-      await api.acts.update(id, { status: "draft" });
-      loadActs();
+      try {
+        await api.requests.update(id, { status: "draft" });
+        loadActs();
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
+    }
+  };
+
+  const handleDelete = async (id, number) => {
+    if (window.confirm(`ВНИМАНИЕ: Удалить заявку №${number} БЕЗВОЗВРАТНО?`)) {
+      try {
+        await api.requests.delete(id);
+        loadActs();
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
     }
   };
 
@@ -190,7 +218,7 @@ export default function ActsListPage() {
               filtered.map((a) => (
                 <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
                   <td className="num">
-                    <Link to={`/acts/${a.id}`}>{a.number}</Link>
+                    <Link to={`/acts/${a.id}`}>{a.docNumber || a.number}</Link>
                   </td>
                   <td>{formatDisplayDate(a.createdAt || a.date)}</td>
                   <td>
@@ -217,9 +245,20 @@ export default function ActsListPage() {
                   >
                    
                     
-                    {a.status !== 'canceled' ? (
+                    {isAdmin && (
                       <button
                         className="btn btn--sm btn--danger"
+                        type="button"
+                        onClick={() => handleDelete(a.id, a.number)}
+                        style={{ background: '#ff4d4f', color: '#fff' }}
+                      >
+                        Удалить
+                      </button>
+                    )}
+
+                    {a.status !== 'canceled' ? (
+                      <button
+                        className="btn btn--sm btn--ghost"
                         type="button"
                         onClick={() => handleAnnul(a.id, a.number)}
                       >
@@ -227,7 +266,7 @@ export default function ActsListPage() {
                       </button>
                     ) : (
                       <button
-                        className="btn btn--sm btn--primary" // или другой класс для восстановления
+                        className="btn btn--sm btn--primary"
                         style={{ borderColor: "#108ee9", color: "#108ee9" }}
                         type="button"
                         onClick={() => handleRestore(a.id, a.number)}

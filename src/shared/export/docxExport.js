@@ -83,12 +83,12 @@ export async function exportToDocx(act) {
       contractDate: act.contractDate ? new Date(act.contractDate).toLocaleDateString("ru-RU") : "",
       contractDateLong: act.contractDate ? formatRussianDate(act.contractDate) : "",
       contractDateQuotes: act.contractDate ? formatContractDate(act.contractDate) : "",
-      number: act.number || "",
+      number: act.docNumber || act.number || "",
       date: act.date || "",
       dateLong: formatRussianDate(act.date),
       loadingDate: act.date || "",
       createdAtDate: act.createdAt ? new Date(act.createdAt).toLocaleDateString("ru-RU") : "",
-      ttn_header: `ТОВАРНО-ТРАНСПОРТНАЯ НАКЛАДНАЯ _${act.number}_`,
+      ttn_header: `ТОВАРНО-ТРАНСПОРТНАЯ НАКЛАДНАЯ _${act.docNumber || act.number}_`,
       customer_company: act.customer?.companyName || act.customer?.fio || "",
       customer_fio: act.customer?.fio || "",
       customer_phone: act.customer?.phone || "",
@@ -244,9 +244,9 @@ export async function exportToDocx(act) {
       mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
 
-    let fileName = act.docType ? `${act.docType.toUpperCase()}_${act.number}.docx` : `Заявка_${act.number}.docx`;
+    let fileName = act.docType ? `${act.docType.toUpperCase()}_${act.docNumber || act.number}.docx` : `Заявка_${act.docNumber || act.number}.docx`;
     if (act.isContract) {
-      fileName = `dogovor_${act.contractNumber || act.number}.docx`;
+      fileName = `dogovor_${act.contractNumber || act.docNumber || act.number}.docx`;
     }
     saveAs(out, fileName);
   } catch (error) {
