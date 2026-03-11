@@ -97,11 +97,11 @@
 [data-theme='dark'] textarea::placeholder { color: #64748b; }
 
 /* Badges */
-[data-theme='dark'] .badge { background: #1e293b; border-color: #334155; color: #cbd5e1; }
-[data-theme='dark'] .badge--draft { background: #292008; border-color: #7a5c00; color: #fde68a; }
-[data-theme='dark'] .badge--ttn { background: #052e16; border-color: #166534; color: #86efac; }
-[data-theme='dark'] .badge--smr { background: #1e1b4b; border-color: #3730a3; color: #a5b4fc; }
-[data-theme='dark'] .badge--danger { background: #450a0a; color: #fca5a5; border-color: #7f1d1d; }
+[data-theme='dark'] .badge { background: #1e293b !important; border-color: #334155 !important; }
+[data-theme='dark'] .badge--draft { background: #292008 !important; border-color: #7a5c00 !important; color: #fde68a !important; }
+[data-theme='dark'] .badge--ttn { background: #052e16 !important; border-color: #166534 !important; color: #86efac !important; }
+[data-theme='dark'] .badge--smr { background: #1e1b4b !important; border-color: #3730a3 !important; color: #a5b4fc !important; }
+[data-theme='dark'] .badge--danger { background: #450a0a !important; color: #fca5a5 !important; border-color: #7f1d1d !important; }
 
 /* Modern Modal inputs */
 [data-theme='dark'] .input_clean {
@@ -122,12 +122,19 @@
 [data-theme='dark'] .manager_badge { background: #334155; color: #94a3b8; }
 
 /* Activity feed */
-[data-theme='dark'] .activity_item { border-color: #334155; }
+[data-theme='dark'] .activity_item { border-color: #334155;  background: #1e293b; }
 [data-theme='dark'] .activity_item:hover { background: #293548; }
 
 /* Stats page secondary table cells */
-[data-theme='dark'] td[style*='background: #fcfcfc'],
-[data-theme='dark'] td[style*='background:#f9f9f9'] { background: #1a2540 !important; }
+.manager_total_td { background: #fcfcfc; }
+[data-theme='dark'] .manager_total_td { background: #1a2540 !important; }
+
+.manager_total_th { background: #1e293b; color: #f1f5f9; }
+[data-theme='dark'] .manager_total_th { background: #0f172a !important; color: #f1f5f9; }
+
+/* Selected row (e.g., current company) */
+.row_selected { background: #fffbe6 !important; }
+[data-theme='dark'] .row_selected { background: #0f172a  !important; }
 
 /* Modal */
 [data-theme='dark'] .modal_content {
@@ -153,7 +160,7 @@ body {
 }
 
 .container {
-    max-width: 90%;
+    max-width: 98%;
     margin: 0 auto;
     padding: 24px;
 }
@@ -172,16 +179,49 @@ body {
     box-shadow: var(--shadow);
     padding: 18px;
     height: fit-content;
+    transition: width 0.3s ease, padding 0.3s ease;
+    overflow: hidden;
+}
+
+.sidebar--collapsed {
+    width: 68px;
+    padding: 18px 8px;
+}
+
+.sidebar_toggle_btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: 0.2s;
+}
+
+.sidebar_toggle_btn:hover {
+    background: var(--line);
+    color: var(--text);
 }
 
 .sidebar_logo {
     padding-bottom: 14px;
     border-bottom: 1px solid var(--line);
     margin-bottom: 14px;
+    display: flex;
+    align-items: center;
 }
 
 .sidebar_logo img {
     height: 26px;
+    transition: 0.3s;
+}
+
+.sidebar--collapsed .sidebar_logo img {
+    opacity: 0;
+    width: 0;
 }
 
 .sidebar_menu {
@@ -200,6 +240,42 @@ body {
     font-weight: 600;
     text-decoration: none;
     transition: .15s ease;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.sidebar--collapsed .sidebar_menu a {
+    padding: 0;
+    justify-content: center;
+}
+
+.menu_icon {
+    font-size: 16px;
+    width: 24px;
+    text-align: center;
+    margin-right: 8px;
+    display: inline-block;
+}
+
+.sidebar--collapsed .menu_icon {
+    margin-right: 0;
+    font-size: 18px;
+}
+
+.menu_text {
+    transition: opacity 0.2s;
+}
+
+.sidebar--collapsed .menu_text {
+    opacity: 0;
+    width: 0;
+    display: none;
+}
+
+.sidebar--collapsed .menu_section_title {
+    text-align: center;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
 }
 
 .sidebar_menu a:hover {
@@ -215,6 +291,7 @@ body {
 .content {
     flex: 1;
     min-width: 0;
+    transition: max-width 0.3s ease;
 }
 
 .content_wrapper {
@@ -804,7 +881,7 @@ textarea.error {
 .theme_toggle_btn {
     position: fixed;
     bottom: 24px;
-    right: 24px;
+    left: 24px;
     width: 48px;
     height: 48px;
     border-radius: 50%;

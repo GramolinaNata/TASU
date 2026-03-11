@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
+import { useAuth } from "../../shared/auth/AuthContext";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -23,6 +24,7 @@ export default function ActDetailsPage() {
   const nav = useNavigate();
   const { id } = useParams();
   const location = useLocation();
+  const { isAdmin, isAccountant } = useAuth();
   const [act, setAct] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -221,28 +223,33 @@ export default function ActDetailsPage() {
         <div className="topbar_actions">
           <button className="btn" onClick={() => nav(basePath)}>← Назад</button>
           
+          {(!isAccountant || isAdmin) && (
+            <button 
+              className="btn" 
+              onClick={() => nav(`${basePath}/${act.id}/edit`)} // Edit button
+              disabled={act.status === 'canceled'}
+              style={act.status === 'canceled' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
+            >
+              Редактировать
+            </button>
+          )}
+
           {act.status !== 'canceled' ? (
             <>
-              <button 
-                className="btn" 
-                onClick={() => nav(`/acts/${act.id}/edit`)} // Edit button
-              >
-                Редактировать
-              </button>
 
-              {act.type !== "ttn" && act.docType !== "ttn" && !act.isWarehouse && (
+              {(!isAccountant || isAdmin) && act.type !== "ttn" && act.docType !== "ttn" && !act.isWarehouse && (
                 <button className="btn btn--accent" onClick={() => chooseDocType("ttn")}>
                   Сформировать ТТН
                 </button>
               )}
               
-              {act.type !== "smr" && act.docType !== "smr" && !act.isWarehouse && (
+              {(!isAccountant || isAdmin) && act.type !== "smr" && act.docType !== "smr" && !act.isWarehouse && (
                 <button className="btn btn--accent" onClick={() => chooseDocType("smr")}>
                   Сформировать СМР
                 </button>
               )}
 
-              {act.docType && (
+              {(!isAccountant || isAdmin) && act.docType && (
                 <button className="btn btn--danger" onClick={handleCancelFormation}>
                   Отменить формирование
                 </button>
@@ -295,7 +302,7 @@ export default function ActDetailsPage() {
                 </div>
               )}
             </>
-          ) : (
+          ) : isAdmin ? (
             <button 
               className="btn" 
               style={{ borderColor: "#108ee9", color: "#108ee9" }}
@@ -308,7 +315,7 @@ export default function ActDetailsPage() {
             >
               Восстановить
             </button>
-          )}
+          ) : null}
         </div>
       </div>
 
@@ -429,6 +436,45 @@ export default function ActDetailsPage() {
       </div>
 
       <div className="split_2" style={{ marginTop: 14 }}>
+        {/* SECTION: Бухгалтерия */}
+        {isAccountant && (
+          <div className="info_card" style={{ gridColumn: 'span 2', background: '#f5f5f5', border: '1px solid #d9d9d9', overflow: 'hidden' }}>
+            <div className="info_title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
+              <span>Отметка Бухгалтерии</span>
+            </div>
+            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 16 }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 500 }}>
+                 <input 
+                   type="checkbox" 
+                   style={{ width: 18, height: 18, cursor: 'pointer' }}
+                   checked={!!act.snoIssued} 
+                   onChange={async (e) => {
+                     const val = e.target.checked;
+                     setAct(prev => ({ ...prev, snoIssued: val }));
+                     try { await api.requests.update(act.id, { snoIssued: val }); }
+                     catch (err) { alert(err.message); setAct(prev => ({ ...prev, snoIssued: !val })); }
+                   }}
+                 />
+                 <span>Счет на оплату (СНО) выставлен</span>
+              </label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 500 }}>
+                 <input 
+                   type="checkbox" 
+                   style={{ width: 18, height: 18, cursor: 'pointer' }}
+                   checked={!!act.avrSent} 
+                   onChange={async (e) => {
+                     const val = e.target.checked;
+                     setAct(prev => ({ ...prev, avrSent: val }));
+                     try { await api.requests.update(act.id, { avrSent: val }); }
+                     catch (err) { alert(err.message); setAct(prev => ({ ...prev, avrSent: !val })); }
+                   }}
+                 />
+                 <span>Акт выполненных работ (АВР) отправлен</span>
+              </label>
+            </div>
+          </div>
+        )}
+
         {/* Заказчик */}
         <div className="info_card">
           <div className="info_title">Заказчик</div>
@@ -640,7 +686,7 @@ export default function ActDetailsPage() {
 
       {act.isWarehouse && Array.isArray(act.warehouseServices) && (
         <div className="info_card" style={{ marginTop: 14 }}>
-          <div className="info_title" style={{ color: '#000' }}>Складские услуги</div>
+          <div className="info_title">Складские услуги</div>
           <div className="table_wrap">
             <table className="table_fixed">
                 <thead>
@@ -664,9 +710,9 @@ export default function ActDetailsPage() {
                     ))}
                 </tbody>
                 <tfoot>
-                    <tr style={{ fontWeight: 700, background: '#f5f5f5' }}>
+                    <tr style={{ fontWeight: 700 }}>
                         <td colSpan={4} style={{ textAlign: 'right' }}>Итого:</td>
-                        <td style={{ fontWeight: 900, color: '#000' }}>
+                        <td style={{ fontWeight: 900 }}>
                           {act.warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
                         </td>
                     </tr>

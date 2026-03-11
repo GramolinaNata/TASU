@@ -24,11 +24,20 @@ function transliterate(word) {
 }
 
 async function genNumber(company) {
-  let prefix = "TKS";
+  let prefix = "T"; // Default for TASU KAZAKHSTAN
   if (company && company.name) {
-    const cleanName = company.name.replace(/ТОО|ИП|OOO|LLP/gi, "").trim();
-    const trans = transliterate(cleanName);
-    prefix = (trans.substring(0, 4) || "ACT").toUpperCase();
+    const n = company.name.toLowerCase();
+    if (n.includes("алдияр")) {
+      prefix = "A";
+    } else if (n.includes("tasu kz") && n.includes("ип")) {
+      prefix = "IPT";
+    } else if (n.includes("tasu kazakhstan")) {
+      prefix = "T";
+    } else {
+      const cleanName = company.name.replace(/ТОО|ИП|OOO|LLP/gi, "").trim();
+      const trans = transliterate(cleanName);
+      prefix = (trans.substring(0, 3) || "ACT").toUpperCase();
+    }
   }
   
   // Получаем актуальный список с сервера для гарантии уникальности
@@ -39,7 +48,7 @@ async function genNumber(company) {
      console.error("Failed to fetch acts for numbering", e);
   }
 
-  const prefixPattern = new RegExp(`^#${prefix}_(\\d+)$`);
+  const prefixPattern = new RegExp(`^${prefix}(\\d+)$`);
   let maxNum = 0;
   
   allActs.forEach(a => {
@@ -54,9 +63,9 @@ async function genNumber(company) {
   });
   
   const nextNum = maxNum + 1;
-  const nextStr = String(nextNum).padStart(4, "0");
+  const nextStr = String(nextNum).padStart(6, "0");
   
-  return `#${prefix}_${nextStr}`;
+  return `${prefix}${nextStr}`;
 }
 
 // Поля реквизитов, общие для Customer и Receiver
@@ -379,7 +388,7 @@ export default function ActCreatePage() {
       if (isWarehouse) {
         alert("Складская заявка успешно создана!");
       }
-      nav("/acts");
+      nav(-1);
     } catch (err) {
       console.error('Save error:', err);
       alert('Ошибка при сохранении: ' + err.message);

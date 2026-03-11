@@ -82,6 +82,13 @@ export default function ContractsPage() {
     }
   };
 
+  const handleRestore = async (id, number) => {
+    if (window.confirm(`Восстановить договор №${number}?`)) {
+      await api.contracts.update(id, { status: "active" });
+      loadContracts();
+    }
+  };
+
   const handleDelete = async (id, number) => {
     if (window.confirm(`Удалить договор №${number} безвозвратно?`)) {
         await api.contracts.delete(id);
@@ -198,16 +205,27 @@ export default function ContractsPage() {
                     </td>
                     <td>{c.customerName || "—"}</td>
                     <td style={{ textAlign: "right", display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                        {!isAdmin && c.status === 'canceled' && (
+                            <Link className="btn btn--sm btn--ghost" to={`/contracts/${c.id}`}>Посмотреть</Link>
+                        )}
                         {c.status !== 'canceled' && (
+                            <button className="btn btn--sm btn--accent" onClick={() => handleExport(c)}>Экспорт</button>
+                        )}
+                        
+                        {isAdmin ? (
                             <>
-                                <button className="btn btn--sm btn--accent" onClick={() => handleExport(c)}>Экспорт</button>
-                                {!isAdmin && (
+                                {c.status === 'canceled' && (
+                                    <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} onClick={() => handleRestore(c.id, c.number)}>Восстановить</button>
+                                )}
+                                {c.status !== 'canceled' && (
                                     <button className="btn btn--sm btn--danger" onClick={() => handleAnnul(c.id, c.number)}>Аннулировать</button>
                                 )}
+                                <button className="btn btn--sm btn--danger" style={{ background: '#ff4d4f', color: '#fff' }} onClick={() => handleDelete(c.id, c.number)}>Удалить</button>
                             </>
-                        )}
-                        {isAdmin && (
-                            <button className="btn btn--sm btn--danger" style={{ background: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' }} onClick={() => handleDelete(c.id, c.number)}>Удалить</button>
+                        ) : (
+                            c.status !== 'canceled' && (
+                                <button className="btn btn--sm btn--danger" onClick={() => handleAnnul(c.id, c.number)}>Аннулировать</button>
+                            )
                         )}
                     </td>
                   </tr>

@@ -103,8 +103,8 @@ export default function UsersPage() {
                   <td>{user.name}</td>
                   <td>{user.email}</td>
                   <td>
-                    <span className={`badge ${user.role === 'ADMIN' ? 'badge-primary' : 'badge-secondary'}`}>
-                      {user.role === 'ADMIN' ? 'Админ' : 'Менеджер'}
+                    <span className={`badge ${user.role === 'ADMIN' ? 'badge-primary' : user.role === 'ACCOUNTANT' ? 'badge-info' : 'badge-secondary'}`}>
+                      {user.role === 'ADMIN' ? 'Админ' : user.role === 'ACCOUNTANT' ? 'Бухгалтер' : 'Менеджер'}
                     </span>
                   </td>
                   <td>{new Date(user.createdAt).toLocaleDateString()}</td>
@@ -179,6 +179,7 @@ export default function UsersPage() {
                   onChange={e => setFormData({...formData, role: e.target.value})}
                 >
                   <option value="MANAGER">Менеджер</option>
+                  <option value="ACCOUNTANT">Бухгалтер</option>
                   <option value="ADMIN">Администратор</option>
                 </select>
               </div>
@@ -274,6 +275,7 @@ export default function UsersPage() {
           font-weight: 600;
         }
         .badge-primary { background: #f0f7ff; color: #0066ff; border: 1px solid #cce3ff; }
+        .badge-info { background: #e6fffb; color: #08979c; border: 1px solid #87e8de; }
         .badge-secondary { background: #f5f5f5; color: #666; border: 1px solid #e0e0e0; }
       `}</style>
     </div>

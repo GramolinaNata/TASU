@@ -25,6 +25,9 @@ import { RequireAuth } from "../shared/auth/RequireAuth.jsx";
 import AdminStatsPage from "../pages/admin/AdminStatsPage.jsx";
 import UsersPage from "../pages/admin/UsersPage.jsx";
 
+import AccountantGeneralPage from "../pages/accountant/AccountantGeneralPage.jsx";
+import AccountantDeferredPage from "../pages/accountant/AccountantDeferredPage.jsx";
+
 export default function App() {
   useEffect(() => {
     const initData = async () => {
@@ -46,10 +49,14 @@ export default function App() {
           <Route path="/acts/:id/edit" element={<ActCreatePage />} />
           <Route path="/acts/:id" element={<ActDetailsPage />} />
           <Route path="/requests" element={<RequestsPage />} />
+          <Route path="/requests/:id/edit" element={<ActCreatePage />} />
           <Route path="/requests/:id" element={<ActDetailsPage />} />
           <Route path="/smr" element={<SmrPage />} />
+          <Route path="/smr/:id/edit" element={<ActCreatePage />} />
           <Route path="/smr/:id" element={<ActDetailsPage />} />
           <Route path="/warehouse" element={<WarehousePage />} />
+          <Route path="/warehouse/new" element={<ActCreatePage />} />
+          <Route path="/warehouse/:id/edit" element={<ActCreatePage />} />
           <Route path="/warehouse/:id" element={<ActDetailsPage />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route path="/contracts/new" element={<ContractCreatePage />} />
@@ -59,6 +66,10 @@ export default function App() {
           <Route path="/companies" element={<RequireAuth adminOnly><CompaniesPage /></RequireAuth>} />
           <Route path="/admin" element={<RequireAuth adminOnly><AdminStatsPage /></RequireAuth>} />
           <Route path="/admin/users" element={<RequireAuth adminOnly><UsersPage /></RequireAuth>} />
+          
+          {/* Accountant and Admin routes */}
+          <Route path="/accountant/general" element={<RequireAuth accountantOrAdminOnly><AccountantGeneralPage /></RequireAuth>} />
+          <Route path="/accountant/deferred" element={<RequireAuth accountantOrAdminOnly><AccountantDeferredPage /></RequireAuth>} />
         </Route>
       </Routes>
     </AuthProvider>

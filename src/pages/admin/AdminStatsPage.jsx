@@ -279,7 +279,7 @@ export default function AdminStatsPage() {
                           {stats.chartData.map(d => (
                               <th key={d.key} style={{ textAlign: 'center', fontSize: 11 }}>{d.label}</th>
                           ))}
-                          <th style={{ textAlign: 'center', background: '#f9f9f9' }}>Итого</th>
+                          <th style={{ textAlign: 'center' }}>Итого</th>
                       </tr>
                   </thead>
                   <tbody>
@@ -297,7 +297,7 @@ export default function AdminStatsPage() {
                                       </div>
                                   </td>
                               ))}
-                              <td style={{ textAlign: 'center', background: '#fcfcfc' }}>
+                              <td style={{ textAlign: 'center' }}>
                                   <div style={{ fontWeight: 900, color: 'var(--info)' }}>{m.totalCount}</div>
                                   <div style={{ fontSize: 12, fontWeight: 900 }}>{formatCurrency(m.totalTurnover)}</div>
                               </td>

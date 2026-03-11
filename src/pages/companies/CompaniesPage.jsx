@@ -142,7 +142,7 @@ export default function CompaniesPage() {
           </thead>
           <tbody>
             {list.map((c) => (
-              <tr key={c.id} style={c.id === selectedId ? { background: "#fffbe6" } : {}}>
+              <tr key={c.id} className={c.id === selectedId ? "row_selected" : ""}>
                 <td>
                   <span style={{ fontWeight: 700 }}>{c.name}</span>
                   {c.id === selectedId && (

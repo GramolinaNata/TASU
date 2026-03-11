@@ -25,7 +25,7 @@ function normalizeIsoDate(val) {
 }
 
 export default function ActsListPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAccountant } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -243,34 +243,56 @@ export default function ActsListPage() {
                       gap: 8,
                     }}
                   >
-                   
+                    {(!isAccountant || isAdmin) && (
+                      a.status === 'canceled' ? (
+                        <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+                          Редактировать
+                        </button>
+                      ) : (
+                        <Link className="btn btn--sm" to={`/acts/${a.id}/edit`}>
+                          Редактировать
+                        </Link>
+                      )
+                    )}
                     
                     {isAdmin ? (
-                      <button
-                        className="btn btn--sm btn--danger"
-                        type="button"
-                        onClick={() => handleDelete(a.id, a.number)}
-                        style={{ background: '#ff4d4f', color: '#fff' }}
-                      >
-                        Удалить
-                      </button>
+                      <>
+                        <button
+                          className="btn btn--sm btn--danger"
+                          type="button"
+                          onClick={() => handleDelete(a.id, a.number)}
+                          style={{ background: '#ff4d4f', color: '#fff' }}
+                        >
+                          Удалить
+                        </button>
+                        {a.status === 'canceled' && (
+                          <button
+                            className="btn btn--sm btn--primary"
+                            style={{ borderColor: "#108ee9", color: "#108ee9", background: "transparent" }}
+                            type="button"
+                            onClick={() => handleRestore(a.id, a.number)}
+                          >
+                            Восстановить
+                          </button>
+                        )}
+                        {a.status !== 'canceled' && (
+                          <button
+                            className="btn btn--sm btn--ghost"
+                            type="button"
+                            onClick={() => handleAnnul(a.id, a.number)}
+                          >
+                            Аннулировать
+                          </button>
+                        )}
+                      </>
                     ) : (
-                      a.status !== 'canceled' ? (
+                      a.status !== 'canceled' && (
                         <button
                           className="btn btn--sm btn--ghost"
                           type="button"
                           onClick={() => handleAnnul(a.id, a.number)}
                         >
                           Аннулировать
-                        </button>
-                      ) : (
-                        <button
-                          className="btn btn--sm btn--primary"
-                          style={{ borderColor: "#108ee9", color: "#108ee9" }}
-                          type="button"
-                          onClick={() => handleRestore(a.id, a.number)}
-                        >
-                          Восстановить
                         </button>
                       )
                     )}

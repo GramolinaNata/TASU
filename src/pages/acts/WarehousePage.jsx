@@ -25,7 +25,7 @@ function normalizeIsoDate(val) {
 }
 
 export default function WarehousePage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAccountant } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -143,7 +143,7 @@ export default function WarehousePage() {
           </button>
         </div>
 
-        <Link className="btn btn--accent" to="/acts/new?type=warehouse">
+        <Link className="btn btn--accent" to="/warehouse/new?type=warehouse">
           + Новая складская заявка
         </Link>
       </div>
@@ -218,19 +218,39 @@ export default function WarehousePage() {
                       gap: 8,
                     }}
                   >
-                    <Link className="btn btn--sm" to={`/acts/${a.id}/edit`}>
-                      Редактировать
-                    </Link>
+                    {(!isAccountant || isAdmin) && (
+                      a.status === 'canceled' ? (
+                        <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+                          Редактировать
+                        </button>
+                      ) : (
+                        <Link className="btn btn--sm" to={`/warehouse/${a.id}/edit`}>
+                          Редактировать
+                        </Link>
+                      )
+                    )}
                     
                     {isAdmin ? (
-                      <button 
-                        className="btn btn--sm btn--danger" 
-                        type="button" 
-                        onClick={() => handleDelete(a.id, a.number)}
-                        style={{ background: '#ff4d4f', color: '#fff' }}
-                      >
-                        Удалить
-                      </button>
+                      <>
+                        <button 
+                          className="btn btn--sm btn--danger" 
+                          type="button" 
+                          onClick={() => handleDelete(a.id, a.number)}
+                          style={{ background: '#ff4d4f', color: '#fff' }}
+                        >
+                          Удалить
+                        </button>
+                        {a.status === 'canceled' && (
+                          <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.number)}>
+                            Восстановить
+                          </button>
+                        )}
+                        {a.status !== 'canceled' && (
+                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.number)}>
+                            Аннулировать
+                          </button>
+                        )}
+                      </>
                     ) : (
                       a.status !== 'canceled' && (
                         <button
