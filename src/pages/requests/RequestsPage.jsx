@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
+import { useAuth } from "../../shared/auth/AuthContext";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -24,6 +25,7 @@ function normalizeIsoDate(val) {
 }
 
 export default function RequestsPage() {
+  const { isAdmin } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -79,6 +81,17 @@ export default function RequestsPage() {
       }
     }
   };
+  
+  const handleDelete = async (id, number) => {
+    if (window.confirm(`ВНИМАНИЕ: Удалить ТТН №${number} БЕЗВОЗВРАТНО?`)) {
+      try {
+        await api.requests.delete(id);
+        loadData();
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
+    }
+  };
 
   useEffect(() => {
     loadData();
@@ -88,7 +101,7 @@ export default function RequestsPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    let list = allActs.filter(a => a.docType === "ttn");
+    let list = allActs.filter(a => a.type === "ttn" || a.docType === "ttn");
 
     if (company) {
       list = list.filter(a => a.companyId === company.id);
@@ -191,6 +204,8 @@ export default function RequestsPage() {
                   <td>
                     {a.status === 'canceled' ? (
                        <span className="badge badge--danger">Аннулирована</span>
+                    ) : (a.status === 'draft' || a.type === 'REQUEST') ? (
+                       <span className="badge badge--draft">Черновик</span>
                     ) : (
                        <span className="badge badge--ttn" style={{ background: '#52c41a' }}>ТТН</span>
                     )}
@@ -206,18 +221,30 @@ export default function RequestsPage() {
                       gap: 8,
                     }}
                   >
-                     <Link className="btn btn--sm" to={`/acts/${a.id}/edit`}>
-                       Редактировать
-                     </Link>
-                     {a.status !== 'canceled' ? (
-                       <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.number)}>
-                         Аннулировать
-                       </button>
-                     ) : (
-                       <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.number)}>
-                         Восстановить
-                       </button>
-                     )}
+                      <Link className="btn btn--sm" to={`/acts/${a.id}/edit`}>
+                        Редактировать
+                      </Link>
+                      
+                      {isAdmin ? (
+                        <button 
+                          className="btn btn--sm btn--danger" 
+                          type="button" 
+                          onClick={() => handleDelete(a.id, a.number)}
+                          style={{ background: '#ff4d4f', color: '#fff' }}
+                        >
+                          Удалить
+                        </button>
+                      ) : (
+                        a.status !== 'canceled' ? (
+                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.number)}>
+                            Аннулировать
+                          </button>
+                        ) : (
+                          <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.number)}>
+                            Восстановить
+                          </button>
+                        )
+                      )}
                   </td>
                 </tr>
               ))

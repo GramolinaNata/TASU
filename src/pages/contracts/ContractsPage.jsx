@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { api } from "../../shared/api/mockClient.js";
+import { useAuth } from "../../shared/auth/AuthContext.jsx";
+import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { exportToDocx } from "../../shared/export/docxExport.js";
 
@@ -15,6 +16,7 @@ function formatDisplayDate(val) {
 }
 
 export default function ContractsPage() {
+  const { isAdmin } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("all"); // 'all' | 'warehouse' | 'transport'
@@ -25,7 +27,7 @@ export default function ContractsPage() {
   const loadContracts = async () => {
     setLoading(true);
     try {
-      const list = await api.contracts.list();
+      const list = await api.contracts.list(company?.id);
       setContracts(Array.isArray(list) ? list : []);
     } catch (e) {
       console.error("Failed to load contracts", e);
@@ -80,20 +82,36 @@ export default function ContractsPage() {
     }
   };
 
+  const handleDelete = async (id, number) => {
+    if (window.confirm(`Удалить договор №${number} безвозвратно?`)) {
+        await api.contracts.delete(id);
+        loadContracts();
+    }
+  };
+
   const handleExport = async (contract) => {
-    if (contract.actData) {
+    let actData = null;
+    if (contract.details) {
+      try {
+        actData = typeof contract.details === 'string' ? JSON.parse(contract.details) : contract.details;
+      } catch (e) { console.error("Parse contract details error", e); }
+    }
+
+    if (actData) {
       // Находим актуальные данные компании
-      const allCompanies = api.companies ? await api.companies.list() : [];
-      const company = allCompanies.find(c => c.id === contract.companyId);
+      const allCompanies = await api.companies.list();
+      const comp = allCompanies.find(c => c.id === contract.companyId);
 
       await exportToDocx({
-        ...contract.actData,
-        company: company, // Передаем полный объект компании
+        ...actData,
+        company: comp, // Передаем полный объект компании
         contractNumber: contract.number,
         contractDate: contract.date,
         isContract: true,
         type: contract.type // Передаем тип для выбора шаблона
       });
+    } else {
+      alert("Данные заявки для экспорта не найдены");
     }
   };
 
@@ -180,12 +198,16 @@ export default function ContractsPage() {
                     </td>
                     <td>{c.customerName || "—"}</td>
                     <td style={{ textAlign: "right", display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                        <Link className="btn btn--sm btn--ghost" to={`/contracts/${c.id}`}>Просмотр</Link>
                         {c.status !== 'canceled' && (
                             <>
                                 <button className="btn btn--sm btn--accent" onClick={() => handleExport(c)}>Экспорт</button>
-                                <button className="btn btn--sm btn--danger" onClick={() => handleAnnul(c.id, c.number)}>Аннулировать</button>
+                                {!isAdmin && (
+                                    <button className="btn btn--sm btn--danger" onClick={() => handleAnnul(c.id, c.number)}>Аннулировать</button>
+                                )}
                             </>
+                        )}
+                        {isAdmin && (
+                            <button className="btn btn--sm btn--danger" style={{ background: '#fff1f0', color: '#f5222d', borderColor: '#ffa39e' }} onClick={() => handleDelete(c.id, c.number)}>Удалить</button>
                         )}
                     </td>
                   </tr>

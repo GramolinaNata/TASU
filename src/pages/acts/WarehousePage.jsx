@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
+import { useAuth } from "../../shared/auth/AuthContext";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -24,6 +25,7 @@ function normalizeIsoDate(val) {
 }
 
 export default function WarehousePage() {
+  const { isAdmin } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -110,6 +112,17 @@ export default function WarehousePage() {
     }
   };
 
+  const handleDelete = async (id, number) => {
+    if (window.confirm(`ВНИМАНИЕ: Удалить складскую заявку №${number} БЕЗВОЗВРАТНО?`)) {
+      try {
+        await api.requests.delete(id);
+        loadActs();
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
+    }
+  };
+
   const getServicesTotal = (services) => {
     if (!Array.isArray(services)) return 0;
     return services.reduce((acc, s) => acc + (s.total || 0), 0);
@@ -130,7 +143,7 @@ export default function WarehousePage() {
           </button>
         </div>
 
-        <Link className="btn btn--accent" to="/acts/new">
+        <Link className="btn btn--accent" to="/acts/new?type=warehouse">
           + Новая складская заявка
         </Link>
       </div>
@@ -179,12 +192,14 @@ export default function WarehousePage() {
               filtered.map((a) => (
                 <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
                   <td className="num">
-                    <Link to={`/acts/${a.id}`}>{a.docNumber || a.number}</Link>
+                    <Link to={`/warehouse/${a.id}`}>{a.docNumber || a.number}</Link>
                   </td>
                   <td>{formatDisplayDate(a.createdAt || a.date)}</td>
                   <td>
                     {a.status === 'canceled' ? (
                        <span className="badge badge--danger">Аннулирована</span>
+                    ) : (a.status === 'draft' || a.type === 'REQUEST') ? (
+                       <span className="badge badge--draft">Черновик</span>
                     ) : (
                        <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
                     )}
@@ -203,14 +218,29 @@ export default function WarehousePage() {
                       gap: 8,
                     }}
                   >
-                    {a.status !== 'canceled' && (
-                      <button
-                        className="btn btn--sm btn--danger"
-                        type="button"
-                        onClick={() => handleAnnul(a.id, a.number)}
+                    <Link className="btn btn--sm" to={`/acts/${a.id}/edit`}>
+                      Редактировать
+                    </Link>
+                    
+                    {isAdmin ? (
+                      <button 
+                        className="btn btn--sm btn--danger" 
+                        type="button" 
+                        onClick={() => handleDelete(a.id, a.number)}
+                        style={{ background: '#ff4d4f', color: '#fff' }}
                       >
-                        Аннулировать
+                        Удалить
                       </button>
+                    ) : (
+                      a.status !== 'canceled' && (
+                        <button
+                          className="btn btn--sm btn--danger"
+                          type="button"
+                          onClick={() => handleAnnul(a.id, a.number)}
+                        >
+                          Аннулировать
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>

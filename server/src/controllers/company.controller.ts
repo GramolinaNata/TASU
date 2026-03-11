@@ -12,6 +12,21 @@ export const getCompanies = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const getCompanyById = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const company = await prisma.company.findUnique({
+      where: { id: id as string }
+    });
+    if (!company) {
+      return res.status(404).json({ message: 'Компания не найдена' });
+    }
+    res.json(company);
+  } catch (error) {
+    res.status(500).json({ message: 'Ошибка при получении данных компании' });
+  }
+};
+
 export const createCompany = async (req: AuthRequest, res: Response) => {
   try {
     const { id, ...restData } = req.body;
@@ -21,10 +36,16 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       name: restData.name,
       bin: restData.bin,
       address: restData.address,
+      factAddress: restData.factAddress || "",
+      phone: restData.phone || "",
       director: restData.director || "",
+      email: restData.email || "",
+      bank: restData.bank || "",
+      bik: restData.bik || "",
+      account: restData.account || "",
+      kbe: restData.kbe || "",
       bankDetails: restData.bankDetails || "",
-      managerDetails: restData.managerDetails || "",
-      email: restData.email || ""
+      managerDetails: restData.managerDetails || ""
     };
 
     if (id && typeof id === 'string') {
@@ -48,13 +69,15 @@ export const updateCompany = async (req: AuthRequest, res: Response) => {
     
     // Подготовка данных для Prisma
     const dataToUpdate: any = {};
-    if (restData.name !== undefined) dataToUpdate.name = restData.name;
-    if (restData.bin !== undefined) dataToUpdate.bin = restData.bin;
-    if (restData.address !== undefined) dataToUpdate.address = restData.address;
-    if (restData.director !== undefined) dataToUpdate.director = restData.director;
-    if (restData.bankDetails !== undefined) dataToUpdate.bankDetails = restData.bankDetails;
-    if (restData.managerDetails !== undefined) dataToUpdate.managerDetails = restData.managerDetails;
-    if (restData.email !== undefined) dataToUpdate.email = restData.email;
+    const fields = [
+      'name', 'bin', 'address', 'factAddress', 'phone', 
+      'director', 'email', 'bank', 'bik', 'account', 'kbe',
+      'bankDetails', 'managerDetails'
+    ];
+
+    fields.forEach(f => {
+      if (restData[f] !== undefined) dataToUpdate[f] = restData[f];
+    });
 
     const updatedCompany = await prisma.company.update({
       where: { id: id as string },

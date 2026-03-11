@@ -39,13 +39,17 @@ function formatContractDate(isoString) {
 /**
  * Экспорт данных акта в Word по шаблону.
  */
-export async function exportToDocx(act) {
+export async function exportToDocx(act, templateOverride = null) {
   try {
     // 1. Определяем файл шаблона
-    let templateFile = "/templates/template.docx";
-    if (act.docType === "ttn") templateFile = "/templates/template_ttn.docx";
-    if (act.docType === "smr") templateFile = "/templates/template_smr.docx";
-    if (act.isContract) {
+    let typeToUse = templateOverride || act.docType || "Заявка";
+    
+    let templateFile = "/templates/template.docx"; // По умолчанию - Заявка
+    
+    if (typeToUse === "ttn") templateFile = "/templates/template_ttn.docx";
+    if (typeToUse === "smr") templateFile = "/templates/template_smr.docx";
+    
+    if (act.isContract && !templateOverride) {
         templateFile = act.type === 'warehouse' ? "/templates/warehouse_contract.docx" : "/templates/transport_contract.docx";
     }
 
@@ -83,6 +87,7 @@ export async function exportToDocx(act) {
       contractDate: act.contractDate ? new Date(act.contractDate).toLocaleDateString("ru-RU") : "",
       contractDateLong: act.contractDate ? formatRussianDate(act.contractDate) : "",
       contractDateQuotes: act.contractDate ? formatContractDate(act.contractDate) : "",
+      document_label: typeToUse === "Заявка" ? "ЗАЯВКА" : typeToUse.toUpperCase(),
       number: act.docNumber || act.number || "",
       date: act.date || "",
       dateLong: formatRussianDate(act.date),
@@ -137,12 +142,12 @@ export async function exportToDocx(act) {
       packaging: act.packaging || "",
       deliveryTerm: act.deliveryTerm || "",
       fastening: act.fastening || "",
+      stackable: act.stackable || act.fastening || "",
       transportType: act.docAttrs?.transportType === "auto_console" ? "Авто перевозки консол" :
                      act.docAttrs?.transportType === "auto_separate" ? "Авто перевозки отдельно" :
                      act.docAttrs?.transportType === "plane" ? "Самолет" :
                      act.docAttrs?.transportType === "train" ? "Поезд рейс" : "",
-      billableWeight: Math.max(act.totals?.weight || 0, act.totals?.volWeight || 0).toFixed(2),
-      isPlane: act.docAttrs?.transportType === "plane",
+      total_seats: act.totals?.seats || 0,
       total_seats: act.totals?.seats || 0,
       total_weight: act.totals?.weight || 0,
       total_volume: act.totals?.volume ? act.totals.volume.toFixed(0) : 0,
@@ -150,6 +155,7 @@ export async function exportToDocx(act) {
       total_volWeight: act.totals?.volWeight ? act.totals.volWeight.toFixed(2) : "0.00",
       insured_yes: act.insured ? "☑" : "☐",
       insured_no: !act.insured ? "☑" : "☐",
+      cargoValue: act.cargoValue || "",
       services_total: act.total?.price || (act.totalSum ? act.totalSum + " тг." : "0 тг."),
       doc5: act.docAttrs?.doc5 || "",
       doc6: act.docAttrs?.doc6 || "",
@@ -158,14 +164,7 @@ export async function exportToDocx(act) {
       doc15: act.docAttrs?.doc15 || "",
       doc18: act.docAttrs?.doc18 || "",
       vehicle: act.docAttrs?.vehicle || act.docAttrs?.flightNumber || "",
-      driver: act.docAttrs?.driver || "",
-      grossWeight: act.docAttrs?.grossWeight || "",
-      totalSeatsTTN: act.docAttrs?.totalSeats || act.totals?.seats || "",
-      loadingArrival: act.docAttrs?.loadingArrival || "",
-      loadingEnd: act.docAttrs?.loadingEnd || "",
-      unloadingArrival: act.docAttrs?.unloadingArrival || "",
-      unloadingEnd: act.docAttrs?.unloadingEnd || "",
-      cargoNotes: act.docAttrs?.cargoNotes || "Груз под таможенным контролем",
+      driver: act.driver || act.docAttrs?.driver || "",
       flightNumber: act.docAttrs?.flightNumber || "",
 
       // --- SMR SPECIFIC BLOCKS ---
@@ -244,8 +243,11 @@ export async function exportToDocx(act) {
       mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
 
-    let fileName = act.docType ? `${act.docType.toUpperCase()}_${act.docNumber || act.number}.docx` : `Заявка_${act.docNumber || act.number}.docx`;
-    if (act.isContract) {
+    let outType = templateOverride || act.docType || "Заявка";
+    if (outType === "REQUEST") outType = "Заявка";
+    let fileName = `${outType.toUpperCase()}_${act.docNumber || act.number}.docx`;
+    
+    if (act.isContract && !templateOverride) {
       fileName = `dogovor_${act.contractNumber || act.docNumber || act.number}.docx`;
     }
     saveAs(out, fileName);

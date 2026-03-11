@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../../shared/api/mockClient.js";
+import { api } from "../../shared/api/api.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { exportToDocx } from "../../shared/export/docxExport.js";
 
@@ -22,14 +22,26 @@ export default function ContractCreatePage() {
     const loadData = async () => {
       try {
         const [actsList, contractsList] = await Promise.all([
-          api.acts.list(),
+          api.requests.list(),
           api.contracts.list()
         ]);
 
         // 1. Фильтруем заявки для этой компании согласно типу договора
         const filtered = actsList.filter(a => {
-            if (formData.type === 'warehouse') return a.isWarehouse && a.companyId === company?.id;
-            return !a.isWarehouse && a.companyId === company?.id;
+            let details = {};
+            if (a.details) {
+              try {
+                details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
+              } catch (e) { console.error("Parse details error", e); }
+            }
+
+            if (formData.type === 'warehouse') {
+              return details.isWarehouse && a.companyId === company?.id;
+            }
+            
+            // Для транспорта показываем только те, по которым сформированы документы (ТТН или СМР)
+            const docType = a.docType || details.docType;
+            return (docType === 'ttn' || docType === 'smr') && a.companyId === company?.id;
         });
         setAvailableActs(filtered);
 
@@ -50,8 +62,10 @@ export default function ContractCreatePage() {
           });
 
           const nextNum = maxNum + 1;
-          const suffix = formData.type === 'warehouse' ? '-С' : '-Т';
-          setFormData(prev => ({ ...prev, number: `${nextNum}${suffix}` }));
+          const yearSuffix = new Date().getFullYear().toString().slice(-2);
+          const typeSuffix = formData.type === 'warehouse' ? 'С' : 'Т';
+          const formattedNum = `№ ${String(nextNum).padStart(3, '0')}/${yearSuffix}-${typeSuffix}`;
+          setFormData(prev => ({ ...prev, number: formattedNum }));
         }
       } catch (e) {
         console.error(e);
@@ -158,11 +172,15 @@ export default function ContractCreatePage() {
                     style={{ fontWeight: 'bold' }}
                   >
                     <option value="">-- Выберите заявку --</option>
-                    {availableActs.map(a => (
-                        <option key={a.id} value={a.id}>
-                            №{a.number} {a.docType ? `(${a.docType.toUpperCase()})` : ""} от {formatDisplayDate(a.date)} — {a.customer?.companyName || a.customer?.fio}
-                        </option>
-                    ))}
+                    {availableActs.map(a => {
+                        const details = typeof a.details === 'string' ? JSON.parse(a.details) : (a.details || {});
+                        const actualDocType = a.docType || details.docType;
+                        return (
+                          <option key={a.id} value={a.id}>
+                              №{a.docNumber || a.number} {actualDocType ? `(${actualDocType.toUpperCase()})` : ""} от {formatDisplayDate(a.date)} — {a.customer?.companyName || a.customer?.fio}
+                          </option>
+                        );
+                    })}
                   </select>
                 </div>
             </div>

@@ -19,8 +19,14 @@ export default function CompaniesPage() {
     name: "",
     bin: "",
     address: "",
+    factAddress: "",
+    phone: "",
     director: "",
     email: "",
+    bank: "",
+    bik: "",
+    account: "",
+    kbe: "",
     bankDetails: "",
     managerDetails: "",
   });
@@ -53,8 +59,14 @@ export default function CompaniesPage() {
       name: "",
       bin: "",
       address: "",
+      factAddress: "",
+      phone: "",
       director: "",
       email: "",
+      bank: "",
+      bik: "",
+      account: "",
+      kbe: "",
       bankDetails: "",
       managerDetails: "",
     });
@@ -67,8 +79,14 @@ export default function CompaniesPage() {
       name: c.name,
       bin: c.bin,
       address: c.address,
+      factAddress: c.factAddress || "",
+      phone: c.phone || "",
       director: c.director || "",
       email: c.email || "",
+      bank: c.bank || "",
+      bik: c.bik || "",
+      account: c.account || "",
+      kbe: c.kbe || "",
       bankDetails: c.bankDetails || "",
       managerDetails: c.managerDetails || "",
     });
@@ -202,6 +220,14 @@ export default function CompaniesPage() {
             </div>
             
             <div className="field">
+              <div className="label">Фактический адрес</div>
+              <input
+                value={form.factAddress}
+                onChange={(e) => setForm({ ...form, factAddress: e.target.value })}
+                placeholder="Город, улица (Фактический)"
+              />
+            </div>
+            <div className="field">
               <div className="label">Директор</div>
               <input
                 value={form.director}
@@ -209,22 +235,68 @@ export default function CompaniesPage() {
                 placeholder="Иванов И.И."
               />
             </div>
-
             <div className="field">
-              <div className="label">Контакты (Телефон / Менеджер)</div>
+              <div className="label">Телефон</div>
               <input
-                value={form.managerDetails}
-                onChange={(e) => setForm({ ...form, managerDetails: e.target.value })}
+                value={form.phone}
+                onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 placeholder="+7 (707) ..."
               />
             </div>
-
             <div className="field">
               <div className="label">Электронная почта (Email)</div>
               <input
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 placeholder="info@company.kz"
+              />
+            </div>
+
+            <hr style={{ margin: '8px 0', border: '0', borderTop: '1px dashed #ccc' }} />
+            
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div className="field">
+                <div className="label">Банк</div>
+                <input
+                  value={form.bank}
+                  onChange={(e) => setForm({ ...form, bank: e.target.value })}
+                  placeholder="АО Kaspi Bank"
+                />
+              </div>
+              <div className="field">
+                <div className="label">БИК</div>
+                <input
+                  value={form.bik}
+                  onChange={(e) => setForm({ ...form, bik: e.target.value })}
+                  placeholder="KASPKZKA"
+                />
+              </div>
+              <div className="field">
+                <div className="label">Расчетный счет (KZ...)</div>
+                <input
+                  value={form.account}
+                  onChange={(e) => setForm({ ...form, account: e.target.value })}
+                  placeholder="KZ..."
+                />
+              </div>
+              <div className="field">
+                <div className="label">КБЕ</div>
+                <input
+                  value={form.kbe}
+                  onChange={(e) => setForm({ ...form, kbe: e.target.value })}
+                  placeholder="17"
+                />
+              </div>
+            </div>
+
+            <div className="field">
+              <div className="label">Общие реквизиты (Доп. информация)</div>
+              <textarea
+                className="input"
+                style={{ minHeight: '60px', padding: '8px' }}
+                value={form.bankDetails}
+                onChange={(e) => setForm({ ...form, bankDetails: e.target.value })}
+                placeholder="Прочие данные для документов"
               />
             </div>
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 10 }}>

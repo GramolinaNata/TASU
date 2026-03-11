@@ -6,6 +6,7 @@ import { useAuth } from "../shared/auth/AuthContext";
 
 export default function Layout() {
   const [selectorOpen, setSelectorOpen] = useState(false);
+  const [theme, setTheme] = useState(localStorage.getItem('tasu_theme') || 'light');
   const { user, logout, isAdmin } = useAuth();
 
   useEffect(() => {
@@ -13,6 +14,15 @@ export default function Layout() {
       setSelectorOpen(true);
     }
   }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem('tasu_theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => prev === 'light' ? 'dark' : 'light');
+  };
 
   return (
     <main className="main">
@@ -64,7 +74,7 @@ export default function Layout() {
                     end
                     className={({ isActive }) => (isActive ? "selected_menu" : "")}
                   >
-                    Статистика
+                    Аналитика
                   </NavLink>
                   <NavLink
                     to="/admin/users"
@@ -116,6 +126,10 @@ export default function Layout() {
           </section>
         </div>
       </div>
+
+      <button className="theme_toggle_btn" onClick={toggleTheme} title="Переключить тему">
+        {theme === 'light' ? '🌙' : '☀️'}
+      </button>
     </main>
   );
 }

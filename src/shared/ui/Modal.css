@@ -19,7 +19,7 @@
     box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
     animation: modalSlide 0.2s ease;
     height: 80vh;
-    overflow-x: scroll;
+    overflow-y: scroll;
 }
 
 @keyframes modalSlide {
@@ -84,4 +84,42 @@
 .company_meta {
     font-size: 12px;
     color: #6f6f6f;
+}
+
+/* Dark theme overrides */
+[data-theme='dark'] .modal_content {
+    background: #1e293b;
+    color: #f1f5f9;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme='dark'] .modal_header {
+    border-bottom-color: #334155;
+}
+
+[data-theme='dark'] .modal_close {
+    color: #64748b;
+}
+
+[data-theme='dark'] .modal_close:hover {
+    color: #f1f5f9;
+}
+
+[data-theme='dark'] .company_item {
+    border-color: #334155;
+    background: #0f172a;
+}
+
+[data-theme='dark'] .company_item:hover {
+    background: #293548;
+    border-color: #475569;
+}
+
+[data-theme='dark'] .company_meta {
+    color: #94a3b8;
+}
+
+[data-theme='dark'] .table_wrap {
+    background: #1e293b;
+    border-color: #334155;
 }

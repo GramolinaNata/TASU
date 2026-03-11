@@ -40,6 +40,7 @@ export const api = {
   },
   companies: {
     list: () => request('/companies'),
+    get: (id) => request(`/companies/${id}`),
     create: (data) => request('/companies', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -78,6 +79,21 @@ export const api = {
       body: JSON.stringify(data),
     }),
     delete: (id) => request(`/users/${id}`, {
+      method: 'DELETE',
+    }),
+  },
+  contracts: {
+    list: (companyId) => request(`/contracts${companyId ? `?companyId=${companyId}` : ''}`),
+    get: (id) => request(`/contracts/${id}`),
+    create: (data) => request('/contracts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    update: (id, data) => request(`/contracts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+    delete: (id) => request(`/contracts/${id}`, {
       method: 'DELETE',
     }),
   }

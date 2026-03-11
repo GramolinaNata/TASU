@@ -50,6 +50,7 @@ export default function App() {
           <Route path="/smr" element={<SmrPage />} />
           <Route path="/smr/:id" element={<ActDetailsPage />} />
           <Route path="/warehouse" element={<WarehousePage />} />
+          <Route path="/warehouse/:id" element={<ActDetailsPage />} />
           <Route path="/contracts" element={<ContractsPage />} />
           <Route path="/contracts/new" element={<ContractCreatePage />} />
           <Route path="/contracts/:id" element={<ContractDetailsPage />} />

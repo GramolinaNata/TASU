@@ -120,44 +120,61 @@ export default function UsersPage() {
       )}
 
       {isModalOpen && (
-        <div className="modal_overlay">
-          <div className="modal_content card" style={{ width: '450px' }}>
-            <h2>{editingUser ? 'Редактировать пользователя' : 'Новый пользователь'}</h2>
-            <form onSubmit={handleSubmit} style={{ marginTop: '1.5rem' }}>
-              <div className="form-group">
-                <label>ФИО</label>
+        <div className="modal_overlay animate_fade">
+          <div className="modal_content card animate_slide_up" style={{ width: '440px', padding: '32px', border: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '28px' }}>
+                <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700, letterSpacing: '-0.5px' }}>
+                    {editingUser ? 'Редактирование профиля' : 'Добавление сотрудника'}
+                </h2>
+                <button 
+                    className="modal_close_btn" 
+                    onClick={() => setIsModalOpen(false)}
+                >✕</button>
+            </div>
+
+            <form onSubmit={handleSubmit}>
+              <div className="form_group_clean">
+                <label className="label_clean">Полное имя</label>
                 <input 
                   type="text" 
-                  className="input" 
+                  className="input_clean" 
+                  placeholder="Имя Фамилия"
                   value={formData.name}
                   onChange={e => setFormData({...formData, name: e.target.value})}
                   required 
                 />
               </div>
-              <div className="form-group" style={{ marginTop: '1rem' }}>
-                <label>Email</label>
+
+              <div className="form_group_clean" style={{ marginTop: '18px' }}>
+                <label className="label_clean">Электронная почта</label>
                 <input 
                   type="email" 
-                  className="input" 
+                  className="input_clean" 
+                  placeholder="name@company.com"
                   value={formData.email}
                   onChange={e => setFormData({...formData, email: e.target.value})}
                   required 
                 />
               </div>
-              <div className="form-group" style={{ marginTop: '1rem' }}>
-                <label>Пароль {editingUser && '(оставьте пустым, если не хотите менять)'}</label>
+
+              <div className="form_group_clean" style={{ marginTop: '18px' }}>
+                <label className="label_clean">
+                    Пароль {editingUser && <span style={{ fontWeight: 400, fontSize: '12px', color: 'var(--muted)' }}>(оставьте пустым для сохранения)</span>}
+                </label>
                 <input 
                   type="password" 
-                  className="input" 
+                  className="input_clean" 
+                  placeholder="••••••••"
                   value={formData.password}
                   onChange={e => setFormData({...formData, password: e.target.value})}
                   required={!editingUser} 
                 />
               </div>
-              <div className="form-group" style={{ marginTop: '1rem' }}>
-                <label>Роль</label>
+
+              <div className="form_group_clean" style={{ marginTop: '18px' }}>
+                <label className="label_clean">Уровень доступа</label>
                 <select 
-                  className="input" 
+                  className="input_clean" 
                   value={formData.role}
                   onChange={e => setFormData({...formData, role: e.target.value})}
                 >
@@ -166,9 +183,11 @@ export default function UsersPage() {
                 </select>
               </div>
 
-              <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
-                <button type="button" className="btn" style={{ flex: 1 }} onClick={() => setIsModalOpen(false)}>Отмена</button>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Сохранить</button>
+              <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
+                <button type="button" className="btn btn--ghost" style={{ flex: 1 }} onClick={() => setIsModalOpen(false)}>Отмена</button>
+                <button type="submit" className="btn btn--primary" style={{ flex: 1 }}>
+                    {editingUser ? 'Сохранить изменения' : 'Создать сотрудника'}
+                </button>
               </div>
             </form>
           </div>
@@ -179,23 +198,83 @@ export default function UsersPage() {
         .modal_overlay {
           position: fixed;
           top: 0; left: 0; right: 0; bottom: 0;
-          background: rgba(0,0,0,0.7);
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(4px);
           display: flex;
           justify-content: center;
           align-items: center;
           z-index: 1000;
         }
-        .modal_content {
-          padding: 2rem;
-          max-width: 90%;
+        
+        .modal_close_btn {
+            background: none;
+            border: none;
+            font-size: 18px;
+            color: var(--muted);
+            cursor: pointer;
+            transition: color 0.2s;
+            padding: 4px;
         }
+        .modal_close_btn:hover { color: var(--text-main); }
+
+        .form_group_clean {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .label_clean {
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input_clean {
+            width: 100%;
+            padding: 10px 12px;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            background: #fef7c1;
+            font-size: 14px;
+            transition: all 0.2s ease;
+            outline: none;
+            color: #333;
+        }
+
+        .input_clean:focus {
+            border-color: var(--primary);
+            background: #fffef0;
+            box-shadow: 0 0 0 3px rgba(0, 102, 255, 0.1);
+        }
+
+        .btn--primary {
+            background: #2563eb;
+            color: #fff;
+            border: none;
+            font-weight: 700;
+            box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+        }
+        .btn--primary:hover {
+            background: #1d4ed8;
+            transform: translateY(-1px);
+        }
+
+        .animate_fade { animation: fadeIn 0.2s ease; }
+        .animate_slide_up { animation: slideUp 0.3s ease-out; }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
         .badge {
-          padding: 2px 8px;
+          padding: 3px 8px;
           border-radius: 4px;
-          font-size: 0.75rem;
+          font-size: 11px;
+          font-weight: 600;
         }
-        .badge-primary { background: var(--primary); color: white; }
-        .badge-secondary { background: var(--bg-hover); color: var(--text-main); }
+        .badge-primary { background: #f0f7ff; color: #0066ff; border: 1px solid #cce3ff; }
+        .badge-secondary { background: #f5f5f5; color: #666; border: 1px solid #e0e0e0; }
       `}</style>
     </div>
   );

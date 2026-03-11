@@ -40,7 +40,7 @@ export default function ActsListPage() {
 
     // 1. Фильтр по компании и отсутствие docType, и исключение склада
     if (company) {
-       list = list.filter(a => a.companyId === company.id && !a.docType && !a.isWarehouse);
+       list = list.filter(a => a.companyId === company.id && (!a.docType || a.type === 'REQUEST') && !a.isWarehouse);
     } else {
        return [];
     }
@@ -245,7 +245,7 @@ export default function ActsListPage() {
                   >
                    
                     
-                    {isAdmin && (
+                    {isAdmin ? (
                       <button
                         className="btn btn--sm btn--danger"
                         type="button"
@@ -254,25 +254,25 @@ export default function ActsListPage() {
                       >
                         Удалить
                       </button>
-                    )}
-
-                    {a.status !== 'canceled' ? (
-                      <button
-                        className="btn btn--sm btn--ghost"
-                        type="button"
-                        onClick={() => handleAnnul(a.id, a.number)}
-                      >
-                        Аннулировать
-                      </button>
                     ) : (
-                      <button
-                        className="btn btn--sm btn--primary"
-                        style={{ borderColor: "#108ee9", color: "#108ee9" }}
-                        type="button"
-                        onClick={() => handleRestore(a.id, a.number)}
-                      >
-                        Восстановить
-                      </button>
+                      a.status !== 'canceled' ? (
+                        <button
+                          className="btn btn--sm btn--ghost"
+                          type="button"
+                          onClick={() => handleAnnul(a.id, a.number)}
+                        >
+                          Аннулировать
+                        </button>
+                      ) : (
+                        <button
+                          className="btn btn--sm btn--primary"
+                          style={{ borderColor: "#108ee9", color: "#108ee9" }}
+                          type="button"
+                          onClick={() => handleRestore(a.id, a.number)}
+                        >
+                          Восстановить
+                        </button>
+                      )
                     )}
                   </td>
                 </tr>

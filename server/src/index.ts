@@ -5,6 +5,7 @@ import authRoutes from './routes/auth.route';
 import companyRoutes from './routes/company.route';
 import requestRoutes from './routes/request.route';
 import userRoutes from './routes/user.route';
+import contractRoutes from './routes/contract.route';
 
 dotenv.config();
 
@@ -25,6 +26,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/contracts', contractRoutes);
 
 // Basic test route
 app.get('/api/health', (req, res) => {
@@ -40,7 +42,7 @@ app.use((req, res) => {
   console.log(`!!! 404 NOT FOUND !!! - ${req.method} ${req.url}`);
   res.status(404).json({ 
     message: `Маршрут ${req.method} ${req.url} не найден на этом сервере.`,
-    availableRoutes: ['/api/auth', '/api/users', '/api/companies', '/api/requests', '/api/health']
+    availableRoutes: ['/api/auth', '/api/users', '/api/companies', '/api/requests', '/api/contracts', '/api/health']
   });
 });
 

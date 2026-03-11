@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompanyId, getSelectedCompany, getCompanies } from "../../shared/storage/companyStorage.js";
 
@@ -74,6 +74,7 @@ const initialRequisites = {
 export default function ActCreatePage() {
   const nav = useNavigate();
   const { id } = useParams();
+  const location = useLocation();
   const isEditMode = !!id;
 
   const [date, setDate] = useState(todayIso());
@@ -119,8 +120,11 @@ export default function ActCreatePage() {
   });
 
   const [cargoText, setCargoText] = useState("");
+  const [packaging, setPackaging] = useState("");
+  const [fastening, setFastening] = useState(""); // Combined field: Крепление / Штабелирование
   const [deliveryTerm, setDeliveryTerm] = useState("");
   const [insured, setInsured] = useState(false);
+  const [cargoValue, setCargoValue] = useState(""); // Стоимость груза по инвойсу
 
   const [cargoRows, setCargoRows] = useState([
     {
@@ -165,16 +169,10 @@ export default function ActCreatePage() {
 
   // Состояния для сформированных документов (ТТН/СМР)
   const [docType, setDocType] = useState(null);
+  const [dbType, setDbType] = useState("REQUEST");
   const [docAttrs, setDocAttrs] = useState({
     vehicle: "",
     driver: "",
-    grossWeight: "",
-    totalSeats: "",
-    loadingArrival: "",
-    loadingEnd: "",
-    unloadingArrival: "",
-    unloadingEnd: "",
-    cargoNotes: "",
     transportType: "auto_console",
     flightNumber: "",
     doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: ""
@@ -215,10 +213,21 @@ export default function ActCreatePage() {
             if (act.cargo || details.cargoText) setCargoText(act.cargo || details.cargoText);
             if (details.deliveryTerm) setDeliveryTerm(details.deliveryTerm || "");
             
-            if (act.type) setDocType(act.type);
+            setPackaging(details.packaging || "");
+            // Merge existing data if both were present, otherwise use fastening
+            const combinedFastening = details.stackable 
+              ? `${details.fastening || ""} / ${details.stackable}`.replace(/^ \/ /, "")
+              : (details.fastening || "");
+            setFastening(combinedFastening);
+            
+            if (act.type) {
+              setDbType(act.type);
+              if (["ttn", "smr"].includes(act.type)) setDocType(act.type);
+            }
             if (details.docAttrs) setDocAttrs(prev => ({ ...prev, ...details.docAttrs }));
             
             setInsured(!!details.insured);
+            setCargoValue(details.cargoValue || "");
             if (Array.isArray(details.cargoRows)) setCargoRows(details.cargoRows);
             
             if (typeof details.isWarehouse === 'boolean') {
@@ -233,10 +242,16 @@ export default function ActCreatePage() {
         }
       } else {
         setSelectedCompanyId(getSelectedCompanyId() || "");
+        
+        // Check for warehouse type in query params
+        const params = new URLSearchParams(location.search);
+        if (params.get("type") === "warehouse") {
+          setIsWarehouse(true);
+        }
       }
     };
     loadData();
-  }, [id, isEditMode]);
+  }, [id, isEditMode, location.search]);
 
   // Хелперы для изменения строк
   const updateRow = (id, field, val) => {
@@ -329,10 +344,13 @@ export default function ActCreatePage() {
       isSenderSameAsCustomer,
       route,
       cargoText,
+      packaging,
+      fastening,
       cargoRows,
       totals,
       deliveryTerm,
       insured,
+      cargoValue,
       docType,
       docAttrs,
       totalSum,
@@ -340,6 +358,7 @@ export default function ActCreatePage() {
       warehouseServices,
       companyId: selectedCompanyId, 
       status, 
+      type: docType || dbType || 'REQUEST',
     };
 
     try {
@@ -356,6 +375,9 @@ export default function ActCreatePage() {
           docNumber,
           ...actData
         });
+      }
+      if (isWarehouse) {
+        alert("Складская заявка успешно создана!");
       }
       nav("/acts");
     } catch (err) {
@@ -813,7 +835,7 @@ export default function ActCreatePage() {
                 padding: 12,
                 display: "flex",
                 justifyContent: "flex-end",
-                background: "#fbfbfb",
+                background: "transparent",
                 borderTop: "1px solid var(--line)",
               }}
             >
@@ -845,7 +867,7 @@ export default function ActCreatePage() {
                            <td>
                              <input 
                                className="cell_input" 
-                               style={{ width: '100%' }}
+                               style={{ maxWidth: '100%', width: '100%'}}
                                value={s.name} 
                                onChange={e => {
                                  const next = [...warehouseServices];
@@ -893,18 +915,18 @@ export default function ActCreatePage() {
                       ))}
                    </tbody>
                    <tfoot>
-                       <tr style={{ fontWeight: 700, background: '#f5f5f5' }}>
+                       <tr style={{ fontWeight: 700, background: 'transparent' }}>
                            <td colSpan={2} style={{ textAlign: 'right' }}>Итого:</td>
                            <td>{warehouseServices.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0)}</td>
                            <td></td>
-                           <td style={{ fontWeight: 900, color: '#000' }}>
+                           <td className="card_title" style={{ fontWeight: 900, color: '#000' }}>
                              {warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
                            </td>
                            <td></td>
                        </tr>
                    </tfoot>
                 </table>
-                <div style={{ padding: 12, display: "flex", justifyContent: "flex-end", background: "#fbfbfb" }}>
+                <div style={{ padding: 12, display: "flex", justifyContent: "flex-end", background: "transparent" }}>
                   <button className="btn" type="button" onClick={() => setWarehouseServices([...warehouseServices, { id: safeUuid(), name: "", qty: 1, price: 0, total: 0 }])}>
                     + Добавить услугу
                   </button>
@@ -917,6 +939,30 @@ export default function ActCreatePage() {
       </div>
       
       <div className="form_grid" style={{marginTop: 20}}>
+            <div className="field" style={{ gridColumn: 'span 2' }}>
+              <div className="label">Наименование и характер груза</div>
+              <textarea 
+                className="input" 
+                style={{ minHeight: '60px', padding: '8px' }}
+                value={cargoText} 
+                onChange={e => setCargoText(e.target.value)} 
+                placeholder="Напр. Оборудование, 10 паллет"
+              />
+            </div>
+            
+            <div className="field" style={{ gridColumn: 'span 2' }}>
+              <div className="label">Вид упаковки</div>
+              <input value={packaging} onChange={e => setPackaging(e.target.value)} placeholder="Напр. Паллеты, Коробки" />
+            </div>
+            <div className="field" style={{ gridColumn: 'span 2' }}>
+              <div className="label">Крепление и штабелирование</div>
+              <input 
+                value={fastening} 
+                onChange={e => setFastening(e.target.value)} 
+                placeholder="Напр. Ремни, в 2 яруса" 
+              />
+            </div>
+
              <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, gridColumn: "span 1" }}>
               <input
                 type="checkbox"
@@ -925,8 +971,20 @@ export default function ActCreatePage() {
               />
               Имеется ли страховка?
             </label>
+
+            {insured && (
+              <div className="field" style={{ gridColumn: "span 1" }}>
+                <div className="label">Стоимость груза по инвойсу</div>
+                <input 
+                  type="text" 
+                  value={cargoValue} 
+                  onChange={e => setCargoValue(e.target.value)} 
+                  placeholder="Напр. 5 000 000 тенге" 
+                />
+              </div>
+            )}
             
-            {docType && (
+            {(docType === 'ttn' || docType === 'smr' || dbType === 'ttn' || dbType === 'smr') && (
               <div className="card" style={{ gridColumn: 'span 2', marginTop: 20, border: '2px solid var(--accent)', background: '#f0faff' }}>
                  <div className="card_head" style={{ background: '#f0faff', cursor: 'pointer' }} onClick={() => setShowTransportCard(!showTransportCard)}>
                     <div className="card_title">

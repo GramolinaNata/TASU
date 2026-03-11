@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { api } from "../../shared/api/mockClient.js";
+import { api } from "../../shared/api/api.js";
 import { exportToDocx } from "../../shared/export/docxExport.js";
 import { getCompanies } from "../../shared/storage/companyStorage.js";
 
@@ -25,6 +25,11 @@ export default function ContractDetailsPage() {
     setLoading(true);
     try {
       const found = await api.contracts.get(id);
+      if (found && found.details) {
+        try {
+          found.actData = typeof found.details === 'string' ? JSON.parse(found.details) : found.details;
+        } catch (e) { console.error("Parse details error", e); }
+      }
       setContract(found);
     } catch (e) {
       console.error(e);
@@ -39,12 +44,12 @@ export default function ContractDetailsPage() {
 
   const handleExport = async () => {
     if (contract?.actData) {
-      const allCompanies = getCompanies();
-      const company = allCompanies.find(c => c.id === contract.companyId);
+      const allCompanies = await api.companies.list();
+      const comp = allCompanies.find(c => c.id === contract.companyId);
 
       await exportToDocx({
         ...contract.actData,
-        company: company,
+        company: comp,
         contractNumber: contract.number,
         contractDate: contract.date,
         isContract: true,

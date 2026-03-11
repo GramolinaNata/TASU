@@ -29,34 +29,23 @@ export default function ActDetailsPage() {
   // Определяем контекст (из какого списка пришли)
   const isSMRPath = location.pathname.startsWith('/smr');
   const isTTNPath = location.pathname.startsWith('/requests');
+  const isWarehousePath = location.pathname.startsWith('/warehouse');
   
-  const basePath = isSMRPath ? "/smr" : (isTTNPath ? "/requests" : "/acts");
-  const crumbLabel = isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : "Заявки");
+  const basePath = isSMRPath ? "/smr" : (isTTNPath ? "/requests" : (isWarehousePath ? "/warehouse" : "/acts"));
+  const crumbLabel = isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : (isWarehousePath ? "Склад" : "Заявки"));
   
   const [services, setServices] = useState([]);
   const [total, setTotal] = useState({ price: "" });
 
   // Состояния для формирования доп. полей ТТН/CMR (Поля 2-18)
   const [showDocForm, setShowDocForm] = useState(null); // 'ttn' | 'smr' | null
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [docAttrs, setDocAttrs] = useState({
-    doc5: "",  // 5. Прилагаемые документы
-    doc6: "",  // 6. Маркировка и номера
-    doc13: "", // 13. Указания отправителя
-    doc14: "", // 14. Возврат
-    doc15: "", // 15. Условия оплаты
-    doc18: "", // 18. Оговорки и замечания перевозчика
-    // Поля для ТТН
+    doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
     vehicle: "",
     driver: "",
-    grossWeight: "",
-    totalSeats: "",
-    loadingArrival: "",
-    loadingEnd: "",
-    unloadingArrival: "",
-    unloadingEnd: "",
-    cargoNotes: "",
     transportType: "auto_console",
-    flightNumber: "", // Для самолета / поезда
+    flightNumber: "",
   });
 
   const loadAct = async () => {
@@ -83,7 +72,9 @@ export default function ActDetailsPage() {
             : [{ id: safeUuid(), name: "Доставка", qty: "1", sum: "0" }]
         );
         setTotal(details.total || { price: "" });
-        if (details.docAttrs) setDocAttrs(details.docAttrs);
+        if (details.docAttrs) {
+          setDocAttrs(prev => ({ ...prev, ...details.docAttrs }));
+        }
       }
     } finally {
       setLoading(false);
@@ -106,25 +97,27 @@ export default function ActDetailsPage() {
 
     // Если это СМР — формируем мгновенно + меняем статус на 'act'
     const updated = await api.requests.update(id, { 
+      type: type,
       docType: type,
       status: "act" 
     });
     await loadAct();
-    if (type === "smr") nav("/smr");
+    alert("СМР успешно сформирована!");
   };
 
   const confirmDocType = async () => {
     if (!id || !showDocForm) return;
     try {
       await api.requests.update(id, { 
+        type: showDocForm,
         docType: showDocForm,
         docAttrs,
         status: "act"
       });
       await loadAct();
-      const type = showDocForm;
       setShowDocForm(null);
-      if (type === "ttn") nav("/requests");
+      alert(showDocForm === "ttn" ? "ТТН успешно сформирована!" : "СМР успешно сформирована!");
+      // stay on page to show result
     } catch (err) {
       alert("Ошибка: " + err.message);
     }
@@ -134,6 +127,7 @@ export default function ActDetailsPage() {
     if (!id) return;
     if (window.confirm("Отменить формирование документа? Заявка вернется в общий список.")) {
       const updated = await api.requests.update(id, {
+        type: 'REQUEST',
         docType: null,
         docAttrs: {},
         status: "act" // Убеждаемся, что статус остается активным
@@ -141,9 +135,7 @@ export default function ActDetailsPage() {
       await loadAct();
       setDocAttrs({
         doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
-        vehicle: "", driver: "", grossWeight: "", totalSeats: "",
-        loadingArrival: "", loadingEnd: "", unloadingArrival: "", unloadingEnd: "",
-        cargoNotes: "", transportType: "auto_console", flightNumber: ""
+        vehicle: "", driver: "", transportType: "auto_console", flightNumber: ""
       });
       nav("/acts"); // Возвращаем в список заявок
     }
@@ -169,6 +161,37 @@ export default function ActDetailsPage() {
     });
     setAct(updated);
     alert("Сохранено!");
+  };
+
+  const handleExport = async (docTypeOverride = null) => {
+    if (!act || !act.companyId) {
+      alert("Не указана компания экспедитор");
+      return;
+    }
+    
+    try {
+      // Пытаемся загрузить актуальные данные компании с сервера (новый эндпоинт)
+      let comp = null;
+      try {
+        comp = await api.companies.get(act.companyId);
+      } catch (e) {
+        console.warn("New getCompany endpoint not found, falling back to list...", e);
+        // Fallback: если новый маршрут не найден (сервер не перезапущен), используем старый list()
+        const allComps = await api.companies.list();
+        comp = allComps.find(c => c.id === act.companyId);
+      }
+      
+      if (!comp) {
+        alert("Данные компании не найдены на сервере");
+        return;
+      }
+      
+      exportToDocx({ ...act, company: comp }, docTypeOverride || act.docType);
+      setShowExportMenu(false);
+    } catch (err) {
+      console.error("Export error:", err);
+      alert("Ошибка при загрузке данных компании: " + err.message);
+    }
   };
 
   if (loading) return <div className="muted" style={{padding: 20}}>Загрузка...</div>;
@@ -207,13 +230,13 @@ export default function ActDetailsPage() {
                 Редактировать
               </button>
 
-              {act.docType !== "ttn" && !act.isWarehouse && (
+              {act.type !== "ttn" && act.docType !== "ttn" && !act.isWarehouse && (
                 <button className="btn btn--accent" onClick={() => chooseDocType("ttn")}>
                   Сформировать ТТН
                 </button>
               )}
               
-              {act.docType !== "smr" && !act.isWarehouse && (
+              {act.type !== "smr" && act.docType !== "smr" && !act.isWarehouse && (
                 <button className="btn btn--accent" onClick={() => chooseDocType("smr")}>
                   Сформировать СМР
                 </button>
@@ -225,17 +248,51 @@ export default function ActDetailsPage() {
                 </button>
               )}
               {!act.isWarehouse && (
-                <button 
-                  className="btn" 
-                  style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
-                  onClick={() => {
-                    const companies = getCompanies();
-                    const comp = companies.find(c => c.id === act.companyId);
-                    exportToDocx({ ...act, company: comp });
-                  }}
-                >
-                  Экспорт в Word
-                </button>
+                <div style={{ position: 'relative', display: 'inline-block' }}>
+                  <button 
+                    className="btn" 
+                    style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
+                    onClick={() => {
+                      if (act.docType) {
+                        setShowExportMenu(!showExportMenu);
+                      } else {
+                        handleExport();
+                      }
+                    }}
+                  >
+                    Экспорт в Word {act.docType ? "▼" : ""}
+                  </button>
+
+                  {showExportMenu && act.docType && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      right: 0,
+                      background: '#fff',
+                      border: '1px solid #ddd',
+                      borderRadius: 4,
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                      zIndex: 1000,
+                      minWidth: 200,
+                      marginTop: 5
+                    }}>
+                      <div 
+                        className="menu_item" 
+                        style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }}
+                        onClick={() => handleExport("Заявка")}
+                      >
+                        📄 Экспорт как Заявка
+                      </div>
+                      <div 
+                        className="menu_item" 
+                        style={{ padding: '10px 15px', cursor: 'pointer' }}
+                        onClick={() => handleExport(act.docType)}
+                      >
+                        🚛 Экспорт как {act.docType.toUpperCase()}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </>
           ) : (
@@ -309,46 +366,9 @@ export default function ActDetailsPage() {
                 </>
               )}
 
-              <div className="field">
-                <div className="label">Сведения о грузе / Отметки таможни</div>
-                <input value={docAttrs.cargoNotes} onChange={e => setDocAttrs({...docAttrs, cargoNotes: e.target.value})} placeholder="Груз под таможенным контролем" />
-              </div>
-              <div className="field">
-                <div className="label">Масса брутто (кг)</div>
-                <input value={docAttrs.grossWeight} onChange={e => setDocAttrs({...docAttrs, grossWeight: e.target.value})} />
-              </div>
-              <div className="field">
-                <div className="label">Количество мест (ТТН)</div>
-                <input value={docAttrs.totalSeats} onChange={e => setDocAttrs({...docAttrs, totalSeats: e.target.value})} placeholder={act.totals?.seats || ""} />
-              </div>
-              <div className="field">
-                <div className="label">Прибытие под загрузку</div>
-                <input value={docAttrs.loadingArrival} onChange={e => setDocAttrs({...docAttrs, loadingArrival: e.target.value})} placeholder="28.05.2024 09:00" />
-              </div>
-              <div className="field">
-                <div className="label">Окончание погрузки</div>
-                <input value={docAttrs.loadingEnd} onChange={e => setDocAttrs({...docAttrs, loadingEnd: e.target.value})} />
-              </div>
-              <div className="field">
-                <div className="label">Прибытие под разгрузку</div>
-                <input value={docAttrs.unloadingArrival} onChange={e => setDocAttrs({...docAttrs, unloadingArrival: e.target.value})} />
-              </div>
-              <div className="field">
-                <div className="label">Окончание разгрузки</div>
-                <input value={docAttrs.unloadingEnd} onChange={e => setDocAttrs({...docAttrs, unloadingEnd: e.target.value})} />
-              </div>
+              {/* Удалены: Масса, Места, Прибытие/Окончание погрузки/разгрузки, Сведения о грузе по просьбе пользователя */}
 
-              {docAttrs.transportType === "plane" && (
-                <div className="field" style={{ gridColumn: 'span 2', background: '#fffbe6', padding: 12, borderRadius: 8, border: '1px solid #ffe58f', marginTop: 10 }}>
-                  <div className="label" style={{ color: '#856404' }}>Расчет для авиа-отправки</div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
-                     <span style={{ fontSize: 13 }}>Оплачиваемый вес (макс. из {act.totals?.weight}кг и {act.totals?.volWeight}кг):</span>
-                     <span style={{ fontSize: 18, fontWeight: 900, color: '#d48806' }}>
-                       {Math.max(act.totals?.weight || 0, act.totals?.volWeight || 0).toFixed(2)} кг
-                     </span>
-                  </div>
-                </div>
-              )}
+              {/* Расчет для авиа-отправки удален по просьбе пользователя */}
             </div>
             <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
               <button className="btn btn--accent" onClick={confirmDocType}>Подтвердить и Сформировать</button>
@@ -379,8 +399,8 @@ export default function ActDetailsPage() {
                 ) : act.status === "act" ? (
                    <>
                     {!act.docType && <span className="badge badge--ttn">Заявка</span>}
-                    {act.docType === "ttn" && <span className="badge badge--ttn" style={{marginTop: 5, background: '#52c41a'}}>ТТН</span>}
-                    {act.docType === "smr" && <span className="badge badge--ttn" style={{marginTop: 5, background: '#1890ff'}}>СМР</span>}
+                    {act.type === "ttn" || act.docType === "ttn" ? <span className="badge badge--ttn" style={{marginTop: 5, background: '#52c41a'}}>ТТН</span> : null}
+                    {act.type === "smr" || act.docType === "smr" ? <span className="badge badge--ttn" style={{marginTop: 5, background: '#1890ff'}}>СМР</span> : null}
                    </>
                 ) : (
                   <span className="badge badge--draft">Черновик</span>
@@ -390,6 +410,11 @@ export default function ActDetailsPage() {
           <div className="summary_item">
               <div className="label">Страховка</div>
               <div className="v">{act.insured ? "Да" : "Нет"}</div>
+              {act.insured && act.cargoValue && (
+                <div className="v" style={{ fontSize: '0.85em', color: 'var(--accent)', fontWeight: 700 }}>
+                  ({act.cargoValue})
+                </div>
+              )}
           </div>
           <div className="summary_item">
               <div className="label">Сумма (заявленная)</div>
@@ -492,10 +517,10 @@ export default function ActDetailsPage() {
        </div>
        )}
 
-      {act.docType === 'ttn' && (
+      {(act.type === 'ttn' || act.docType === 'ttn') && (
         <div className="card" style={{ marginTop: 14, border: '1px solid var(--accent)' }}>
           <div className="card_head" style={{ background: '#f0faff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div className="card_title">Транспортная информация ({act.docType.toUpperCase()})</div>
+            <div className="card_title">Транспортная информация ({(act.type || act.docType).toUpperCase()})</div>
           </div>
           <div className="card_body">
             <div className="form_grid">
@@ -530,51 +555,15 @@ export default function ActDetailsPage() {
                 </div>
               )}
 
-              <div className="field">
-                <div className="label">Масса брутто (кг)</div>
-                <div className="v">{act.docAttrs?.grossWeight || "—"}</div>
-              </div>
+              {/* Удалена Масса брутто по просьбе пользователя */}
 
               <div className="field">
-                <div className="label">Мест (ТТН)</div>
-                <div className="v">{act.docAttrs?.totalSeats || act.totals?.seats || "—"}</div>
+              {/* Удалены: Масса, Места, Прибытие/Выгрузка по просьбе пользователя */}
               </div>
 
-              <div className="field">
-                <div className="label">Прибытие на погрузку</div>
-                <div className="v">{act.docAttrs?.loadingArrival || "—"}</div>
-              </div>
+              {/* Удален Оплачиваемый вес (Авиа) по просьбе пользователя */}
 
-              <div className="field">
-                <div className="label">Окончание погрузки</div>
-                <div className="v">{act.docAttrs?.loadingEnd || "—"}</div>
-              </div>
-
-              <div className="field">
-                <div className="label">Прибытие на выгрузку</div>
-                <div className="v">{act.docAttrs?.unloadingArrival || "—"}</div>
-              </div>
-
-              <div className="field">
-                <div className="label">Окончание выгрузки</div>
-                <div className="v">{act.docAttrs?.unloadingEnd || "—"}</div>
-              </div>
-
-              {act.docAttrs?.transportType === "plane" && (
-                <div className="field" style={{ gridColumn: 'span 2', background: '#fffbe6', padding: 10, borderRadius: 8, border: '1px solid #ffe58f' }}>
-                   <div className="label" style={{color: '#856404'}}>Оплачиваемый вес (Авиа)</div>
-                   <div className="v" style={{ color: '#d48806', fontSize: 20, fontWeight: 900 }}>
-                     {Math.max(act.totals?.weight || 0, act.totals?.volWeight || 0).toFixed(2)} кг
-                   </div>
-                </div>
-              )}
-
-              {act.docAttrs?.cargoNotes && (
-                <div className="field" style={{gridColumn: 'span 2'}}>
-                  <div className="label">Сведения о грузе / Таможня</div>
-                  <div className="v">{act.docAttrs.cargoNotes}</div>
-                </div>
-              )}
+              {/* Удалены сведения о грузе по просьбе пользователя */}
 
             </div>
           </div>
@@ -585,6 +574,17 @@ export default function ActDetailsPage() {
       <div className="info_card" style={{ marginTop: 14 }}>
         <div className="info_title">Груз</div>
         <div className="text_block" style={{marginBottom: 10}}>{act.cargoText || "—"}</div>
+        
+        <div className="kv" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 15, background: '#f9f9f9', padding: 10, borderRadius: 4 }}>
+          <div>
+            <div className="k">Вид упаковки</div>
+            <div className="v">{act.packaging || "—"}</div>
+          </div>
+          <div>
+            <div className="k">Крепление и штабелирование</div>
+            <div className="v">{act.fastening || "—"}</div>
+          </div>
+        </div>
         
 
 
