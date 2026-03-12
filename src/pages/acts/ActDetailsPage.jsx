@@ -46,6 +46,8 @@ export default function ActDetailsPage() {
     doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
     vehicle: "",
     driver: "",
+    hasTrailer: false,
+    trailerNumber: "",
     transportType: "auto_console",
     flightNumber: "",
   });
@@ -91,20 +93,19 @@ export default function ActDetailsPage() {
   const chooseDocType = async (type) => {
     if (!id) return;
     
-    // Если это ТТН — сначала показываем форму
-    if (type === "ttn") {
-       setShowDocForm("ttn");
+    // Если это ТТН или СМР — сначала показываем форму
+    if (type === "ttn" || type === "smr") {
+       setShowDocForm(type);
        return;
     }
 
-    // Если это СМР — формируем мгновенно + меняем статус на 'act'
     const updated = await api.requests.update(id, { 
       type: type,
       docType: type,
       status: "act" 
     });
     await loadAct();
-    alert("СМР успешно сформирована!");
+    alert("Документ успешно сформирован!");
   };
 
   const confirmDocType = async () => {
@@ -137,7 +138,7 @@ export default function ActDetailsPage() {
       await loadAct();
       setDocAttrs({
         doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
-        vehicle: "", driver: "", transportType: "auto_console", flightNumber: ""
+        vehicle: "", driver: "", hasTrailer: false, trailerNumber: "", transportType: "auto_console", flightNumber: ""
       });
       nav("/acts"); // Возвращаем в список заявок
     }
@@ -319,10 +320,10 @@ export default function ActDetailsPage() {
         </div>
       </div>
 
-      {showDocForm === "ttn" && (
+      {showDocForm && (
         <div className="card" style={{ marginTop: 16, border: '2px solid var(--accent)', background: '#f0faff' }}>
           <div className="card_head">
-            <div className="card_title">Заполнение данных для ТТН</div>
+            <div className="card_title">Заполнение данных для {showDocForm.toUpperCase()}</div>
           </div>
           <div className="card_body">
             <div className="form_grid">
@@ -350,6 +351,26 @@ export default function ActDetailsPage() {
                     <div className="label">Водитель (Ф.И.О.)</div>
                     <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
                   </div>
+                  <div className="field" style={{ gridColumn: 'span 2' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={!!docAttrs.hasTrailer} 
+                        onChange={e => setDocAttrs({...docAttrs, hasTrailer: e.target.checked})} 
+                      />
+                      Имеется прицеп
+                    </label>
+                  </div>
+                  {docAttrs.hasTrailer && (
+                    <div className="field" style={{ gridColumn: 'span 2' }}>
+                      <div className="label">Номер (описание) прицепа</div>
+                      <input 
+                        value={docAttrs.trailerNumber || ""} 
+                        onChange={e => setDocAttrs({...docAttrs, trailerNumber: e.target.value})} 
+                        placeholder="Напр. KZ 123 ABC 02"
+                      />
+                    </div>
+                  )}
                 </>
               )}
 
@@ -438,39 +459,72 @@ export default function ActDetailsPage() {
       <div className="split_2" style={{ marginTop: 14 }}>
         {/* SECTION: Бухгалтерия */}
         {isAccountant && (
-          <div className="info_card" style={{ gridColumn: 'span 2', background: '#f5f5f5', border: '1px solid #d9d9d9', overflow: 'hidden' }}>
-            <div className="info_title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0 }}>
-              <span>Отметка Бухгалтерии</span>
+          <div className="info_card" style={{ gridColumn: 'span 2', borderRadius: 8, padding: 20 }}>
+            <div className="info_title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 16 }}>
+              <span style={{ fontSize: '1.2rem', color: 'var(--info)' }}>Отметка Бухгалтерии</span>
             </div>
-            <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 16 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 500 }}>
-                 <input 
-                   type="checkbox" 
-                   style={{ width: 18, height: 18, cursor: 'pointer' }}
-                   checked={!!act.snoIssued} 
-                   onChange={async (e) => {
-                     const val = e.target.checked;
-                     setAct(prev => ({ ...prev, snoIssued: val }));
-                     try { await api.requests.update(act.id, { snoIssued: val }); }
-                     catch (err) { alert(err.message); setAct(prev => ({ ...prev, snoIssued: !val })); }
-                   }}
-                 />
-                 <span>Счет на оплату (СНО) выставлен</span>
-              </label>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 500 }}>
-                 <input 
-                   type="checkbox" 
-                   style={{ width: 18, height: 18, cursor: 'pointer' }}
-                   checked={!!act.avrSent} 
-                   onChange={async (e) => {
-                     const val = e.target.checked;
-                     setAct(prev => ({ ...prev, avrSent: val }));
-                     try { await api.requests.update(act.id, { avrSent: val }); }
-                     catch (err) { alert(err.message); setAct(prev => ({ ...prev, avrSent: !val })); }
-                   }}
-                 />
-                 <span>Акт выполненных работ (АВР) отправлен</span>
-              </label>
+            <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
+              
+              {/* СНО Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
+                 <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
+                    Счет на оплату (СНО) выставлен
+                 </div>
+                 <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      style={{ display: 'none' }}
+                      checked={!!act.snoIssued} 
+                      onChange={async (e) => {
+                        const val = e.target.checked;
+                        setAct(prev => ({ ...prev, snoIssued: val }));
+                        try { await api.requests.update(act.id, { snoIssued: val }); }
+                        catch (err) { alert(err.message); setAct(prev => ({ ...prev, snoIssued: !val })); }
+                      }}
+                    />
+                    <div className="toggle_slider" style={{
+                      width: 44, height: 24, background: act.snoIssued ? 'var(--success)' : 'var(--muted)', 
+                      borderRadius: 24, position: 'relative', transition: 'background 0.3s'
+                    }}>
+                      <div className="toggle_knob" style={{
+                        width: 20, height: 20, background: '#fff', borderRadius: '50%',
+                        position: 'absolute', top: 2, left: act.snoIssued ? 22 : 2,
+                        transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                      }} />
+                    </div>
+                 </label>
+              </div>
+
+              {/* АВР Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
+                 <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
+                    Акт выполненных работ (АВР) отправлен
+                 </div>
+                 <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                    <input 
+                      type="checkbox" 
+                      style={{ display: 'none' }}
+                      checked={!!act.avrSent} 
+                      onChange={async (e) => {
+                        const val = e.target.checked;
+                        setAct(prev => ({ ...prev, avrSent: val }));
+                        try { await api.requests.update(act.id, { avrSent: val }); }
+                        catch (err) { alert(err.message); setAct(prev => ({ ...prev, avrSent: !val })); }
+                      }}
+                    />
+                    <div className="toggle_slider" style={{
+                      width: 44, height: 24, background: act.avrSent ? 'var(--info)' : 'var(--muted)', 
+                      borderRadius: 24, position: 'relative', transition: 'background 0.3s'
+                    }}>
+                      <div className="toggle_knob" style={{
+                        width: 20, height: 20, background: '#fff', borderRadius: '50%',
+                        position: 'absolute', top: 2, left: act.avrSent ? 22 : 2,
+                        transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                      }} />
+                    </div>
+                 </label>
+              </div>
+
             </div>
           </div>
         )}
@@ -563,7 +617,7 @@ export default function ActDetailsPage() {
        </div>
        )}
 
-      {(act.type === 'ttn' || act.docType === 'ttn') && (
+      {(act.type === 'ttn' || act.docType === 'ttn' || act.type === 'smr' || act.docType === 'smr') && (
         <div className="card" style={{ marginTop: 14, border: '1px solid var(--accent)' }}>
           <div className="card_head" style={{ background: '#f0faff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="card_title">Транспортная информация ({(act.type || act.docType).toUpperCase()})</div>
@@ -591,6 +645,13 @@ export default function ActDetailsPage() {
                 <div className="field">
                   <div className="label">Автомобиль</div>
                   <div className="v" style={{fontWeight: 700}}>{act.docAttrs.vehicle}</div>
+                </div>
+              )}
+
+              {act.docAttrs?.hasTrailer && (
+                <div className="field">
+                  <div className="label">Прицеп</div>
+                  <div className="v" style={{fontWeight: 700}}>{act.docAttrs.trailerNumber || "Да"}</div>
                 </div>
               )}
 

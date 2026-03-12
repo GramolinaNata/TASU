@@ -168,9 +168,11 @@ export default function ActsListPage() {
           </button>
         </div>
 
-        <Link className="btn btn--accent" to="/acts/new">
-          + Создать заявку
-        </Link>
+        {(!isAccountant || isAdmin) && (
+          <Link className="btn btn--accent" to="/acts/new">
+            + Создать заявку
+          </Link>
+        )}
       </div>
 
       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -204,7 +206,9 @@ export default function ActsListPage() {
               <th>Страна, город (откуда)</th>
               <th>Страна, город (куда)</th>
               <th>Заказчик</th>
-              <th style={{ width: 180, textAlign: "right" }}>Действия</th>
+              <th>Груз</th>
+              <th style={{ width: 100 }}>Сумма (тг)</th>
+              {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
             </tr>
           </thead>
           <tbody>
@@ -235,6 +239,15 @@ export default function ActsListPage() {
                   <td>
                     <div style={{fontWeight: 500}}>{a.customer?.fio || "—"}</div>
                   </td>
+                  <td>
+                    <div style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.cargoText}>
+                      {a.cargoText || "—"}
+                    </div>
+                  </td>
+                  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                  </td>
+                  {(!isAccountant || isAdmin) && (
                   <td
                     style={{
                       textAlign: "right",
@@ -297,6 +310,7 @@ export default function ActsListPage() {
                       )
                     )}
                   </td>
+                  )}
                 </tr>
               ))
             )}

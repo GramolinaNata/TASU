@@ -143,9 +143,11 @@ export default function WarehousePage() {
           </button>
         </div>
 
-        <Link className="btn btn--accent" to="/warehouse/new?type=warehouse">
-          + Новая складская заявка
-        </Link>
+        {(!isAccountant || isAdmin) && (
+          <Link className="btn btn--accent" to="/warehouse/new?type=warehouse">
+            + Новая складская заявка
+          </Link>
+        )}
       </div>
 
       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -178,7 +180,7 @@ export default function WarehousePage() {
               <th style={{width: 120}}>Статус</th>
               <th>Заказчик</th>
               <th style={{ width: 150 }}>Сумма услуг</th>
-              <th style={{ width: 180, textAlign: "right" }}>Действия</th>
+              {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
             </tr>
           </thead>
           <tbody>
@@ -210,6 +212,7 @@ export default function WarehousePage() {
                   <td style={{ fontWeight: 700 }}>
                     {getServicesTotal(a.warehouseServices).toLocaleString()} тг
                   </td>
+                  {(!isAccountant || isAdmin) && (
                   <td
                     style={{
                       textAlign: "right",
@@ -263,6 +266,7 @@ export default function WarehousePage() {
                       )
                     )}
                   </td>
+                  )}
                 </tr>
               ))
             )}

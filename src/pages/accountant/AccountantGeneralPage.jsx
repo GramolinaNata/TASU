@@ -30,6 +30,8 @@ export default function AccountantGeneralPage() {
   const [dateTo, setDateTo] = useState("");
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [snoFilter, setSnoFilter] = useState("all");
+  const [avrFilter, setAvrFilter] = useState("all");
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -92,6 +94,24 @@ export default function AccountantGeneralPage() {
         }
     }
 
+    // Фильтр по СНО
+    if (snoFilter !== "all") {
+        if (snoFilter === "done") {
+             list = list.filter(a => a.snoStatus === true);
+        } else if (snoFilter === "pending") {
+             list = list.filter(a => !a.snoStatus);
+        }
+    }
+
+    // Фильтр по АВР
+    if (avrFilter !== "all") {
+        if (avrFilter === "done") {
+             list = list.filter(a => a.avrStatus === true);
+        } else if (avrFilter === "pending") {
+             list = list.filter(a => !a.avrStatus);
+        }
+    }
+
     // 2. По дате
     if (dateFrom) {
        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
@@ -113,7 +133,7 @@ export default function AccountantGeneralPage() {
     }
     
     return list;
-  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter]);
+  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, snoFilter, avrFilter]);
 
   const handleDefer = async (id, number) => {
     if (window.confirm(`Переместить документ №${number} в отложенные?`)) {
@@ -166,6 +186,22 @@ export default function AccountantGeneralPage() {
            </select>
         </div>
         <div className="field" style={{ width: 140 }}>
+           <div className="label">СНО</div>
+           <select value={snoFilter} onChange={e => setSnoFilter(e.target.value)}>
+               <option value="all">Все</option>
+               <option value="pending">Ожидает СНО</option>
+               <option value="done">Выставлен</option>
+           </select>
+        </div>
+        <div className="field" style={{ width: 140 }}>
+           <div className="label">АВР</div>
+           <select value={avrFilter} onChange={e => setAvrFilter(e.target.value)}>
+               <option value="all">Все</option>
+               <option value="pending">Ожидает АВР</option>
+               <option value="done">Отправлен</option>
+           </select>
+        </div>
+        <div className="field" style={{ width: 140 }}>
            <div className="label">Дата с</div>
            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         </div>
@@ -186,6 +222,8 @@ export default function AccountantGeneralPage() {
               <th>Компания</th>
               <th>Заказчик</th>
               <th>Маршрут</th>
+              <th style={{width: 80, textAlign: 'center'}}>СНО</th>
+              <th style={{width: 80, textAlign: 'center'}}>АВР</th>
               <th style={{ width: 120, textAlign: "right" }}>Действия</th>
             </tr>
           </thead>
@@ -221,6 +259,20 @@ export default function AccountantGeneralPage() {
                         <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>
                             {a.route?.fromCity || "—"} → {a.route?.toCity || "—"}
                         </div>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    {a.snoStatus ? (
+                      <span className="badge" style={{background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem'}}>Да</span>
+                    ) : (
+                      <span className="badge" style={{background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem'}}>Нет</span>
+                    )}
+                  </td>
+                  <td style={{ textAlign: "center" }}>
+                    {a.avrStatus ? (
+                      <span className="badge" style={{background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem'}}>Да</span>
+                    ) : (
+                      <span className="badge" style={{background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem'}}>Нет</span>
                     )}
                   </td>
                   <td style={{ textAlign: "right" }}>

@@ -16,7 +16,7 @@ function formatDisplayDate(val) {
 }
 
 export default function ContractsPage() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, isAccountant } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("all"); // 'all' | 'warehouse' | 'transport'
@@ -137,9 +137,11 @@ export default function ContractsPage() {
           </button>
         </div>
 
-        <Link className="btn btn--accent" to="/contracts/new">
-          + Создать договор
-        </Link>
+        {(!isAccountant || isAdmin) && (
+          <Link className="btn btn--accent" to="/contracts/new">
+            + Создать договор
+          </Link>
+        )}
       </div>
 
       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
@@ -172,7 +174,7 @@ export default function ContractsPage() {
                 <th style={{ width: 120 }}>Статус</th>
                 <th>Тип</th>
                 <th>Заказчик</th>
-                <th style={{ width: 220, textAlign: "right" }}>Действия</th>
+                {(!isAccountant || isAdmin) && <th style={{ width: 220, textAlign: "right" }}>Действия</th>}
               </tr>
             </thead>
             <tbody>
@@ -204,6 +206,7 @@ export default function ContractsPage() {
                         )}
                     </td>
                     <td>{c.customerName || "—"}</td>
+                    {(!isAccountant || isAdmin) && (
                     <td style={{ textAlign: "right", display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {!isAdmin && c.status === 'canceled' && (
                             <Link className="btn btn--sm btn--ghost" to={`/contracts/${c.id}`}>Посмотреть</Link>
@@ -228,6 +231,7 @@ export default function ContractsPage() {
                             )
                         )}
                     </td>
+                    )}
                   </tr>
                 ))
               )}

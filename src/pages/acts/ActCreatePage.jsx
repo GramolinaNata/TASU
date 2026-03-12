@@ -168,13 +168,11 @@ export default function ActCreatePage() {
   const [showSendReq, setShowSendReq] = useState(false);
   const [showRecReq, setShowRecReq] = useState(false);
 
-  // Автозаполнение totalSum из складских услуг
+  // Автозаполнение totalSum из услуг (Складских или обычных)
   useEffect(() => {
-    if (isWarehouse) {
-      const sum = warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0);
-      setTotalSum(sum > 0 ? sum.toString() : "");
-    }
-  }, [warehouseServices, isWarehouse]);
+    const sum = warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0);
+    setTotalSum(sum > 0 ? sum.toString() : "");
+  }, [warehouseServices]);
 
   // Состояния для сформированных документов (ТТН/СМР)
   const [docType, setDocType] = useState(null);
@@ -182,6 +180,8 @@ export default function ActCreatePage() {
   const [docAttrs, setDocAttrs] = useState({
     vehicle: "",
     driver: "",
+    hasTrailer: false,
+    trailerNumber: "",
     transportType: "auto_console",
     flightNumber: "",
     doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: ""
@@ -854,9 +854,11 @@ export default function ActCreatePage() {
             </div>
           </div>
 
-          {isWarehouse && (
-            <div style={{ marginTop: 24 }}>
-              <div className="card_title" style={{ marginBottom: 12, color: '#000' }}>Складские услуги</div>
+          {/* Услуги (Складские или обычные) */}
+          <div style={{ marginTop: 24 }}>
+            <div className="card_title" style={{ marginBottom: 12, color: 'var(--text)' }}>
+              {isWarehouse ? "Складские услуги" : "Услуги"}
+            </div>
               <div className="table_wrap">
                 <table className="table_fixed">
                    <thead>
@@ -942,7 +944,6 @@ export default function ActCreatePage() {
                 </div>
               </div>
             </div>
-          )}
           </div>
         )}
       </div>
@@ -1026,6 +1027,26 @@ export default function ActCreatePage() {
                               <div className="label">Водитель</div>
                               <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
                             </div>
+                            <div className="field" style={{ gridColumn: 'span 2' }}>
+                              <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, cursor: 'pointer' }}>
+                                <input 
+                                  type="checkbox" 
+                                  checked={!!docAttrs.hasTrailer} 
+                                  onChange={e => setDocAttrs({...docAttrs, hasTrailer: e.target.checked})} 
+                                />
+                                Имеется прицеп
+                              </label>
+                            </div>
+                            {docAttrs.hasTrailer && (
+                              <div className="field" style={{ gridColumn: 'span 2' }}>
+                                <div className="label">Номер (описание) прицепа</div>
+                                <input 
+                                  value={docAttrs.trailerNumber || ""} 
+                                  onChange={e => setDocAttrs({...docAttrs, trailerNumber: e.target.value})} 
+                                  placeholder="Напр. KZ 123 ABC 02"
+                                />
+                              </div>
+                            )}
                           </>
                         )}
 

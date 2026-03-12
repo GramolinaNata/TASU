@@ -184,7 +184,9 @@ export default function RequestsPage() {
               <th>Страна, город (откуда)</th>
               <th>Страна, город (куда)</th>
               <th>Заказчик</th>
-              <th style={{ width: 170, textAlign: "right" }}>Действия</th>
+              <th>Груз</th>
+              <th>Сумма (тг)</th>
+              {(!isAccountant || isAdmin) && <th style={{ width: 170, textAlign: "right" }}>Действия</th>}
             </tr>
           </thead>
           <tbody>
@@ -213,6 +215,15 @@ export default function RequestsPage() {
                   <td>{a.route?.fromCity || "—"}</td>
                   <td>{a.route?.toCity || "—"}</td>
                   <td>{a.customer?.fio || "—"}</td>
+                  <td>
+                    <div style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.cargoText}>
+                      {a.cargoText || "—"}
+                    </div>
+                  </td>
+                  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                  </td>
+                  {(!isAccountant || isAdmin) && (
                   <td
                     style={{
                       textAlign: "right",
@@ -262,6 +273,7 @@ export default function RequestsPage() {
                         )
                       )}
                   </td>
+                  )}
                 </tr>
               ))
             )}
