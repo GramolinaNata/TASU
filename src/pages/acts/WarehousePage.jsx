@@ -200,7 +200,7 @@ export default function WarehousePage() {
                   <td>
                     {a.status === 'canceled' ? (
                        <span className="badge badge--danger">Аннулирована</span>
-                    ) : (a.status === 'draft' || a.type === 'REQUEST') ? (
+                    ) : a.status === 'draft' ? (
                        <span className="badge badge--draft">Черновик</span>
                     ) : (
                        <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
@@ -238,7 +238,7 @@ export default function WarehousePage() {
                         <button 
                           className="btn btn--sm btn--danger" 
                           type="button" 
-                          onClick={() => handleDelete(a.id, a.number)}
+                          onClick={() => handleDelete(a.id, a.docNumber || a.number)}
                           style={{ background: '#ff4d4f', color: '#fff' }}
                         >
                           Удалить
@@ -249,18 +249,18 @@ export default function WarehousePage() {
                           </button>
                         )}
                         {a.status !== 'canceled' && (
-                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.number)}>
+                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
                             Аннулировать
                           </button>
                         )}
                       </>
                     ) : (
                       a.status !== 'canceled' && (
-                        <button
-                          className="btn btn--sm btn--danger"
-                          type="button"
-                          onClick={() => handleAnnul(a.id, a.number)}
-                        >
+                          <button
+                            className="btn btn--sm btn--danger"
+                            type="button"
+                            onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
+                          >
                           Аннулировать
                         </button>
                       )

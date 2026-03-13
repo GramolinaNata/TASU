@@ -342,7 +342,7 @@ export default function ActCreatePage() {
     };
 
     const reqsComplete = checkReqs(customer) && checkReqs(receiver);
-    const status = reqsComplete ? "act" : "draft";
+    const status = (isWarehouse || reqsComplete) ? "act" : "draft";
     
     const actData = {
       date,
@@ -640,7 +640,6 @@ export default function ActCreatePage() {
       )}
 
       {/* 2. Получатель */}
-      {!isWarehouse && (
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card_head" style={{ cursor: 'pointer' }} onClick={() => setShowRecCard(!showRecCard)}>
           <div className="card_title">
@@ -721,14 +720,11 @@ export default function ActCreatePage() {
                    <input value={receiver.kbe} onChange={e => setReceiver({...receiver, kbe: e.target.value})} />
                  </div>
                </>
-             )}
-          </div>
-        </div>
-        )}
+              )}
+           </div>
+         </div>
+         )}
       </div>
-      )}
-
-      {/* 3. Доставка и груз */}
       <div className="card" style={{ marginTop: 14 }}>
         <div className="card_head" style={{ cursor: 'pointer' }} onClick={() => setShowRouteCard(!showRouteCard)}>
           <div className="card_title">
@@ -736,261 +732,254 @@ export default function ActCreatePage() {
           </div>
         </div>
         {showRouteCard && (
-        <div className="card_body">
-          {!isWarehouse ? (
-          <div className="form_grid">
-            <div className="field">
-              <div className="label">Страна, город отправителя</div>
-              <input
-                value={route.fromCity}
-                onChange={(e) => setRoute({...route, fromCity: e.target.value})}
-                placeholder="Алматы"
-              />
-            </div>
-            <div className="field">
-              <div className="label">Страна, город получателя</div>
-              <input
-                value={route.toCity}
-                onChange={(e) => setRoute({...route, toCity: e.target.value})}
-                placeholder="Астана"
-              />
-            </div>
-            <div className="field">
-              <div className="label">Адрес отправителя</div>
-              <input
-                value={route.fromAddress}
-                onChange={(e) => setRoute({...route, fromAddress: e.target.value})}
-              />
-            </div>
-            <div className="field">
-              <div className="label">Адрес получателя</div>
-              <input
-                value={route.toAddress}
-                onChange={(e) => setRoute({...route, toAddress: e.target.value})}
-              />
-            </div>
-            <div className="field field--full">
-              <div className="label">Комментарии</div>
-              <textarea
-                value={route.comment}
-                onChange={(e) => setRoute({...route, comment: e.target.value})}
-                placeholder="Звонить за 30 минут..."
-              />
-            </div>
-            <div className="field field--full">
-              <div className="label">Наименование и характер груза</div>
-              <textarea
-                value={cargoText}
-                onChange={(e) => setCargoText(e.target.value)}
-                placeholder="Бытовая техника, хрупкое..."
-              />
-            </div>
-
-            <div className="field field--full">
-              <div className="label">Срок доставки</div>
-              <input 
-                value={deliveryTerm}
-                onChange={e => setDeliveryTerm(e.target.value)}
-                placeholder="Напр. 3-5 дней"
-              />
-            </div>
-          </div>
-          ) : (
-            <div className="muted" style={{ padding: '10px 0' }}>Данные маршрута и груза скрыты для складской заявки.</div>
-          )}
-
-          <div className="table_wrap" style={{ marginTop: 16, maxHeight: "500px", overflowY: "auto", overflowX: "auto" }}>
-            <table className="table_fixed">
-              <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1, boxShadow: "0 1px 2px rgba(0,0,0,0.1)" }}>
-                <tr>
-                  <th style={{width: 40}}>№</th>
-                  <th>Название</th>
-                  <th>Кол-во</th>
-                  <th>Длина (см)</th>
-                  <th>Ширина (см)</th>
-                  <th>Высота (см)</th>
-                  <th>Вес (кг)</th>
-                  <th>Объем (см³)</th>
-                  <th>Об. вес (кг)</th>
-                  <th style={{width: 80}}></th>
-                </tr>
-              </thead>
-              <tbody>
-                {cargoRows.map((r, i) => (
-                  <tr key={r.id}>
-                    <td>{i+1}</td>
-                    <td><input className="cell_input" value={r.title} onChange={e => updateRow(r.id, 'title', e.target.value)} placeholder="Напр. Коробки" /></td>
-                    <td><input type="number" className="cell_input" value={r.seats} onChange={e => updateRow(r.id, 'seats', e.target.value)} /></td>
-                    <td><input type="number" className="cell_input" value={r.length} onChange={e => updateRow(r.id, 'length', e.target.value)} placeholder="" /></td>
-                    <td><input type="number" className="cell_input" value={r.width} onChange={e => updateRow(r.id, 'width', e.target.value)} placeholder="" /></td>
-                    <td><input type="number" className="cell_input" value={r.height} onChange={e => updateRow(r.id, 'height', e.target.value)} placeholder="" /></td>
-                    <td><input type="number" className="cell_input" value={r.weight} onChange={e => updateRow(r.id, 'weight', e.target.value)} placeholder="" /></td>
-                    <td>{r.volume}</td>
-                    <td>{r.volWeight}</td>
-                    <td><button className="btn btn--sm btn--danger" onClick={() => delRow(r.id)}>x</button></td>
-                  </tr>
-                ))}
-              </tbody>
-              <tfoot style={{background: '#f5f5f5', fontWeight: 700, position: "sticky", bottom: 0}}>
-                <tr>
-                  <td colSpan={2}>Итого:</td>
-                  <td>{totals.seats}</td>
-                  <td></td>
-                  <td></td>
-                  <td></td>
-                  <td>{totals.weight}</td>
-                  <td>{totals.volume.toFixed(0)}</td>
-                  <td>{totals.volWeight.toFixed(2)}</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-             <div
-              style={{
-                padding: 12,
-                display: "flex",
-                justifyContent: "flex-end",
-                background: "transparent",
-                borderTop: "1px solid var(--line)",
-              }}
-            >
-              <button className="btn" type="button" onClick={addRow}>
-                + Добавить строку
-              </button>
-            </div>
-          </div>
-
-          {/* Услуги (Складские или обычные) */}
-          <div style={{ marginTop: 24 }}>
-            <div className="card_title" style={{ marginBottom: 12, color: 'var(--text)' }}>
-              {isWarehouse ? "Складские услуги" : "Услуги"}
-            </div>
-              <div className="table_wrap">
-                <table className="table_fixed">
-                   <thead>
-                      <tr>
-                        <th style={{ width: 40 }}>№</th>
-                        <th style={{ minWidth: 300 }}>Наименование услуги</th>
-                        <th style={{ width: 100 }}>Кол-во</th>
-                        <th style={{ width: 120 }}>Цена</th>
-                        <th style={{ width: 120 }}>Сумма</th>
-                        <th style={{ width: 50 }}></th>
-                      </tr>
-                   </thead>
-                   <tbody>
-                      {warehouseServices.map((s, idx) => (
-                        <tr key={s.id}>
-                           <td>{idx + 1}</td>
-                           <td>
-                             <input 
-                               className="cell_input" 
-                               style={{ maxWidth: '100%', width: '100%'}}
-                               value={s.name} 
-                               onChange={e => {
-                                 const next = [...warehouseServices];
-                                 next[idx].name = e.target.value;
-                                 setWarehouseServices(next);
-                               }}
-                               placeholder="Приемка, хранение, паллетирование..."
-                             />
-                           </td>
-                           <td>
-                             <input 
-                               type="number" 
-                               className="cell_input" 
-                               value={s.qty} 
-                               onChange={e => {
-                                 const next = [...warehouseServices];
-                                 next[idx].qty = parseFloat(e.target.value) || 0;
-                                 next[idx].total = next[idx].qty * next[idx].price;
-                                 setWarehouseServices(next);
-                               }}
-                             />
-                           </td>
-                           <td>
-                             <input 
-                               type="number" 
-                               className="cell_input" 
-                               value={s.price} 
-                               onChange={e => {
-                                 const next = [...warehouseServices];
-                                 next[idx].price = parseFloat(e.target.value) || 0;
-                                 next[idx].total = next[idx].qty * next[idx].price;
-                                 setWarehouseServices(next);
-                               }}
-                             />
-                           </td>
-                           <td style={{ fontWeight: 700 }}>{s.total.toLocaleString()}</td>
-                           <td>
-                             <button className="btn btn--sm btn--danger" onClick={() => {
-                               if (warehouseServices.length > 1) {
-                                 setWarehouseServices(warehouseServices.filter(x => x.id !== s.id));
-                               }
-                             }}>x</button>
-                           </td>
-                        </tr>
-                      ))}
-                   </tbody>
-                   <tfoot>
-                       <tr style={{ fontWeight: 700, background: 'transparent' }}>
-                           <td colSpan={2} style={{ textAlign: 'right' }}>Итого:</td>
-                           <td>{warehouseServices.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0)}</td>
-                           <td></td>
-                           <td className="card_title card_title--total">
-                             {warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
-                           </td>
-                           <td></td>
-                       </tr>
-                   </tfoot>
-                </table>
-                 <div className="table_actions_clean">
-                  <button className="btn" type="button" onClick={() => setWarehouseServices([...warehouseServices, { id: safeUuid(), name: "", qty: 1, price: 0, total: 0 }])}>
-                    + Добавить услугу
-                  </button>
-                </div>
+          <div className="card_body">
+            <div className="form_grid">
+              <div className="field">
+                <div className="label">Страна, город отправителя</div>
+                <input
+                  value={route.fromCity}
+                  onChange={(e) => setRoute({...route, fromCity: e.target.value})}
+                  placeholder="Алматы"
+                />
               </div>
+              <div className="field">
+                <div className="label">Страна, город получателя</div>
+                <input
+                  value={route.toCity}
+                  onChange={(e) => setRoute({...route, toCity: e.target.value})}
+                  placeholder="Астана"
+                />
+              </div>
+              <div className="field">
+                <div className="label">Адрес отправителя</div>
+                <input
+                  value={route.fromAddress}
+                  onChange={(e) => setRoute({...route, fromAddress: e.target.value})}
+                />
+              </div>
+              <div className="field">
+                <div className="label">Адрес получателя</div>
+                <input
+                  value={route.toAddress}
+                  onChange={(e) => setRoute({...route, toAddress: e.target.value})}
+                />
+              </div>
+              <div className="field field--full">
+                <div className="label">Комментарии</div>
+                <textarea
+                  value={route.comment}
+                  onChange={(e) => setRoute({...route, comment: e.target.value})}
+                  placeholder="Звонить за 30 минут..."
+                />
+              </div>
+              <div className="field field--full">
+                <div className="label">Наименование и характер груза</div>
+                <textarea
+                  value={cargoText}
+                  onChange={(e) => setCargoText(e.target.value)}
+                  placeholder="Бытовая техника, хрупкое..."
+                />
+              </div>
+
+              <div className="field field--full">
+                <div className="label">Срок доставки</div>
+                <input 
+                  value={deliveryTerm}
+                  onChange={e => setDeliveryTerm(e.target.value)}
+                  placeholder="Напр. 3-5 дней"
+                />
+              </div>
+            </div>
+
+            <div className="table_wrap" style={{ marginTop: 16, maxHeight: "500px", overflowY: "auto", overflowX: "auto" }}>
+              <table className="table_fixed">
+                <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1, boxShadow: "0 1px 2px rgba(0,0,0,0.1)" }}>
+                  <tr>
+                    <th style={{width: 40}}>№</th>
+                    <th>Название</th>
+                    <th>Кол-во</th>
+                    <th>Длина (см)</th>
+                    <th>Ширина (см)</th>
+                    <th>Высота (см)</th>
+                    <th>Вес (кг)</th>
+                    <th>Объем (см³)</th>
+                    <th>Об. вес (кг)</th>
+                    <th style={{width: 80}}></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {cargoRows.map((r, i) => (
+                    <tr key={r.id}>
+                      <td>{i+1}</td>
+                      <td><input className="cell_input" value={r.title} onChange={e => updateRow(r.id, 'title', e.target.value)} placeholder="Напр. Коробки" /></td>
+                      <td><input type="number" className="cell_input" value={r.seats} onChange={e => updateRow(r.id, 'seats', e.target.value)} /></td>
+                      <td><input type="number" className="cell_input" value={r.length} onChange={e => updateRow(r.id, 'length', e.target.value)} placeholder="" /></td>
+                      <td><input type="number" className="cell_input" value={r.width} onChange={e => updateRow(r.id, 'width', e.target.value)} placeholder="" /></td>
+                      <td><input type="number" className="cell_input" value={r.height} onChange={e => updateRow(r.id, 'height', e.target.value)} placeholder="" /></td>
+                      <td><input type="number" className="cell_input" value={r.weight} onChange={e => updateRow(r.id, 'weight', e.target.value)} placeholder="" /></td>
+                      <td>{r.volume}</td>
+                      <td>{r.volWeight}</td>
+                      <td><button className="btn btn--sm btn--danger" onClick={() => delRow(r.id)}>x</button></td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot style={{background: '#f5f5f5', fontWeight: 700, position: "sticky", bottom: 0}}>
+                  <tr>
+                    <td colSpan={2}>Итого:</td>
+                    <td>{totals.seats}</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td>{totals.weight}</td>
+                    <td>{totals.volume.toFixed(0)}</td>
+                    <td>{totals.volWeight.toFixed(2)}</td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              </table>
+               <div
+                style={{
+                  padding: 12,
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  background: "transparent",
+                  borderTop: "1px solid var(--line)",
+                }}
+              >
+                <button className="btn" type="button" onClick={addRow}>
+                  + Добавить строку
+                </button>
+              </div>
+            </div>
+
+            <div style={{ marginTop: 24 }}>
+              <div className="card_title" style={{ marginBottom: 12, color: 'var(--text)' }}>
+                {isWarehouse ? "Складские услуги" : "Услуги"}
+              </div>
+                <div className="table_wrap">
+                  <table className="table_fixed">
+                     <thead>
+                        <tr>
+                          <th style={{ width: 40 }}>№</th>
+                          <th style={{ minWidth: 300 }}>Наименование услуги</th>
+                          <th style={{ width: 100 }}>Кол-во</th>
+                          <th style={{ width: 120 }}>Цена</th>
+                          <th style={{ width: 120 }}>Сумма</th>
+                          <th style={{ width: 50 }}></th>
+                        </tr>
+                     </thead>
+                     <tbody>
+                        {warehouseServices.map((s, idx) => (
+                          <tr key={s.id}>
+                             <td>{idx + 1}</td>
+                             <td>
+                               <input 
+                                 className="cell_input" 
+                                 style={{ maxWidth: '100%', width: '100%'}}
+                                 value={s.name} 
+                                 onChange={e => {
+                                   const next = [...warehouseServices];
+                                   next[idx].name = e.target.value;
+                                   setWarehouseServices(next);
+                                 }}
+                                 placeholder="Приемка, хранение, паллетирование..."
+                               />
+                             </td>
+                             <td>
+                               <input 
+                                 type="number" 
+                                 className="cell_input" 
+                                 value={s.qty} 
+                                 onChange={e => {
+                                   const next = [...warehouseServices];
+                                   next[idx].qty = parseFloat(e.target.value) || 0;
+                                   next[idx].total = next[idx].qty * next[idx].price;
+                                   setWarehouseServices(next);
+                                 }}
+                               />
+                             </td>
+                             <td>
+                               <input 
+                                 type="number" 
+                                 className="cell_input" 
+                                 value={s.price} 
+                                 onChange={e => {
+                                   const next = [...warehouseServices];
+                                   next[idx].price = parseFloat(e.target.value) || 0;
+                                   next[idx].total = next[idx].qty * next[idx].price;
+                                   setWarehouseServices(next);
+                                 }}
+                               />
+                             </td>
+                             <td style={{ fontWeight: 700 }}>{s.total.toLocaleString()}</td>
+                             <td>
+                               <button className="btn btn--sm btn--danger" onClick={() => {
+                                 if (warehouseServices.length > 1) {
+                                   setWarehouseServices(warehouseServices.filter(x => x.id !== s.id));
+                                 }
+                               }}>x</button>
+                             </td>
+                          </tr>
+                        ))}
+                     </tbody>
+                     <tfoot>
+                         <tr style={{ fontWeight: 700, background: 'transparent' }}>
+                             <td colSpan={2} style={{ textAlign: 'right' }}>Итого:</td>
+                             <td>{warehouseServices.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0)}</td>
+                             <td></td>
+                             <td className="card_title card_title--total">
+                               {warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
+                             </td>
+                             <td></td>
+                         </tr>
+                     </tfoot>
+                  </table>
+                   <div className="table_actions_clean">
+                    <button className="btn" type="button" onClick={() => setWarehouseServices([...warehouseServices, { id: safeUuid(), name: "", qty: 1, price: 0, total: 0 }])}>
+                      + Добавить услугу
+                    </button>
+                  </div>
+                </div>
+            </div>
+
+            <div className="form_grid" style={{marginTop: 20}}>
+              <div className="field" style={{ gridColumn: 'span 2' }}>
+                <div className="label">Вид упаковки</div>
+                <input value={packaging} onChange={e => setPackaging(e.target.value)} placeholder="Напр. Паллеты, Коробки" />
+              </div>
+              <div className="field" style={{ gridColumn: 'span 2' }}>
+                <div className="label">Крепление и штабелирование</div>
+                <input 
+                  value={fastening} 
+                  onChange={e => setFastening(e.target.value)} 
+                  placeholder="Напр. Ремни, в 2 яруса" 
+                />
+              </div>
+               <label style={{ gridColumn: "span 1" }} className="label_checkbox">
+                <input
+                  type="checkbox"
+                  checked={insured}
+                  onChange={(e) => setInsured(e.target.checked)}
+                />
+                Имеется ли страховка?
+              </label>
+              {insured && (
+                <div className="field" style={{ gridColumn: "span 1" }}>
+                  <div className="label">Стоимость груза по инвойсу</div>
+                  <input 
+                    type="text" 
+                    value={cargoValue} 
+                    onChange={e => setCargoValue(e.target.value)} 
+                    placeholder="Напр. 5 000 000 тенге" 
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
-      
-      <div className="form_grid" style={{marginTop: 20}}>
-            <div className="field" style={{ gridColumn: 'span 2' }}>
-              <div className="label">Вид упаковки</div>
-              <input value={packaging} onChange={e => setPackaging(e.target.value)} placeholder="Напр. Паллеты, Коробки" />
-            </div>
-            <div className="field" style={{ gridColumn: 'span 2' }}>
-              <div className="label">Крепление и штабелирование</div>
-              <input 
-                value={fastening} 
-                onChange={e => setFastening(e.target.value)} 
-                placeholder="Напр. Ремни, в 2 яруса" 
-              />
-            </div>
-
-             <label style={{ gridColumn: "span 1" }} className="label_checkbox">
-              <input
-                type="checkbox"
-                checked={insured}
-                onChange={(e) => setInsured(e.target.checked)}
-              />
-              Имеется ли страховка?
-            </label>
-
-            {insured && (
-              <div className="field" style={{ gridColumn: "span 1" }}>
-                <div className="label">Стоимость груза по инвойсу</div>
-                <input 
-                  type="text" 
-                  value={cargoValue} 
-                  onChange={e => setCargoValue(e.target.value)} 
-                  placeholder="Напр. 5 000 000 тенге" 
-                />
-              </div>
-            )}
             
-            {!isWarehouse && (
-              <div className="card card--transport" style={{ gridColumn: 'span 2', marginTop: 20 }}>
+            <div className="card card--transport" style={{ gridColumn: 'span 2', marginTop: 20 }}>
                  <div className="card_head card_head--transport">
                     <div className="card_title">
                       ВИД ТРАНСПОРТА
@@ -1078,13 +1067,11 @@ export default function ActCreatePage() {
                               <div className="label">Ответственный</div>
                               <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
                             </div>
-                          </>
-                        )}
+                          </>)}
                     </div>
                  </div>
               </div>
-            )}
-            
+
             <div className="field">
                <div className="label">Сумма (тг)</div>
                <input 
@@ -1102,7 +1089,6 @@ export default function ActCreatePage() {
                  onChange={e => setDate(e.target.value)} 
                />
             </div>
-          </div>
 
           <div className="page_actions" style={{ marginTop: 24, paddingBottom: 40 }}>
             <button className="btn btn--accent btn--lg" style={{ width: "100%" }} onClick={onSave}>

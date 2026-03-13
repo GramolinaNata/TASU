@@ -155,6 +155,41 @@ export default function ActDetailsPage() {
           isDeferredForAccountant: !isNowDeferred
         });
         setAct(updated);
+        // Если только что отложили - уходим в список отложенных
+        if (!isNowDeferred) {
+           nav('/deferred');
+        // Если вернули из отложенных - возвращаемся в соответствующий список (используем act, так как updated не смерджен)
+        } else {
+           if (act.isWarehouse) nav('/warehouse');
+           else if (act.type === 'smr' || act.docType === 'smr') nav('/smr');
+           else if (act.type === 'ttn' || act.docType === 'ttn') nav('/requests');
+           else nav('/acts');
+        }
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
+    }
+  };
+
+  const handleAnnul = async () => {
+    if (!id || !act) return;
+    const num = act.docNumber || act.number;
+    if (window.confirm(`Аннулировать складскую заявку №${num}?`)) {
+      try {
+        const updated = await api.requests.update(id, { status: "canceled" });
+        setAct(updated);
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!id || !act) return;
+    if (window.confirm("Восстановить заявку?")) {
+      try {
+        const updated = await api.requests.update(id, { status: "act" });
+        setAct(updated);
       } catch (err) {
         alert("Ошибка: " + err.message);
       }
@@ -272,6 +307,12 @@ export default function ActDetailsPage() {
                 </button>
               )}
 
+              {act.status !== 'canceled' && (
+                <button className="btn btn--danger" onClick={handleAnnul}>
+                  Аннулировать
+                </button>
+              )}
+
               {act.status !== 'canceled' && act.docType && (
                 <button className="btn btn--danger" onClick={handleCancelFormation}>
                   Отменить формирование
@@ -280,10 +321,19 @@ export default function ActDetailsPage() {
             </>
           )}
 
-          {act.status !== 'canceled' ? (
+          {act.status === 'canceled' && isAdmin && (
+            <button 
+              className="btn" 
+              style={{ borderColor: "#108ee9", color: "#108ee9" }}
+              onClick={handleRestore}
+            >
+              Восстановить
+            </button>
+          )}
+
+          {act.status !== 'canceled' && !act.isWarehouse ? (
             <>
-              {!act.isWarehouse && (
-                <div style={{ position: 'relative', display: 'inline-block' }}>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
                   <button 
                     className="btn" 
                     style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
@@ -328,21 +378,7 @@ export default function ActDetailsPage() {
                     </div>
                   )}
                 </div>
-              )}
             </>
-          ) : isAdmin ? (
-            <button 
-              className="btn" 
-              style={{ borderColor: "#108ee9", color: "#108ee9" }}
-              onClick={async () => {
-                if(window.confirm("Восстановить заявку?")) {
-                  const updated = await api.requests.update(act.id, { status: "act" });
-                  setAct(updated);
-                }
-              }}
-            >
-              Восстановить
-            </button>
           ) : null}
         </div>
       </div>
@@ -451,12 +487,18 @@ export default function ActDetailsPage() {
               <div>
                 {act.status === "canceled" ? (
                   <span className="badge badge--danger">Аннулирована</span>
-                ) : act.status === "act" ? (
-                   <>
-                    {!act.docType && <span className="badge badge--ttn">Заявка</span>}
-                    {act.type === "ttn" || act.docType === "ttn" ? <span className="badge badge--ttn" style={{marginTop: 5, background: '#52c41a'}}>ТТН</span> : null}
-                    {act.type === "smr" || act.docType === "smr" ? <span className="badge badge--ttn" style={{marginTop: 5, background: '#1890ff'}}>СМР</span> : null}
-                   </>
+                  ) : act.status === "act" ? (
+                     <>
+                      {!act.docType && (
+                        act.isWarehouse ? (
+                          <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
+                        ) : (
+                          <span className="badge badge--ttn">Заявка</span>
+                        )
+                      )}
+                      {(act.type === "ttn" || act.docType === "ttn") && <span className="badge badge--ttn" style={{marginTop: 5, background: '#52c41a'}}>ТТН</span>}
+                      {(act.type === "smr" || act.docType === "smr") && <span className="badge badge--ttn" style={{marginTop: 5, background: '#1890ff'}}>СМР</span>}
+                     </>
                 ) : (
                   <span className="badge badge--draft">Черновик</span>
                 )}
@@ -602,8 +644,7 @@ export default function ActDetailsPage() {
           )}
         </div>
 
-        {!act.isWarehouse && (
-        <div className="info_card">
+                <div className="info_card">
           <div className="info_title">Получатель</div>
            <div className="kv">
             <div className="k">ФИО / Название</div>
@@ -622,11 +663,10 @@ export default function ActDetailsPage() {
             <div className="v">{act.receiver?.account || "—"}</div>
           </div>
         </div>
-        )}
+        
       </div>
       
        {/* Маршрут */}
-       {!act.isWarehouse && (
        <div className="info_card" style={{ marginTop: 14 }}>
             <div className="info_title">Маршрут и сроки</div>
             <div className="kv">
@@ -642,7 +682,6 @@ export default function ActDetailsPage() {
                <div className="v">{act.route?.comment || "—"}</div>
             </div>
        </div>
-       )}
 
       {(act.type === 'ttn' || act.docType === 'ttn' || act.type === 'smr' || act.docType === 'smr' || (act.type === 'REQUEST' && act.docAttrs?.transportType)) && (
         <div className="card card--transport" style={{ marginTop: 14 }}>
@@ -667,29 +706,25 @@ export default function ActDetailsPage() {
                   <div className="v v--bold">{act.docAttrs.flightNumber}</div>
                 </div>
               )}
-
-              {act.docAttrs?.vehicle && (
+ {act.docAttrs?.vehicle && (
                 <div className="field">
                   <div className="label">Автомобиль</div>
                   <div className="v v--bold">{act.docAttrs.vehicle}</div>
                 </div>
               )}
-
-              {act.docAttrs?.hasTrailer && (
+ {act.docAttrs?.hasTrailer && (
                 <div className="field">
                   <div className="label">Прицеп</div>
                   <div className="v v--bold">{act.docAttrs.trailerNumber || "Да"}</div>
                 </div>
               )}
-
-              {act.docAttrs?.driver && (
+ {act.docAttrs?.driver && (
                 <div className="field">
                   <div className="label">{(act.docAttrs.transportType === 'train' || act.docAttrs.transportType === 'plane') ? 'Ответственный' : 'Водитель'}</div>
                   <div className="v">{act.docAttrs.driver}</div>
                 </div>
               )}
-
-              {/* Удалена Масса брутто по просьбе пользователя */}
+ {/* Удалена Масса брутто по просьбе пользователя */}
 
               <div className="field">
               {/* Удалены: Масса, Места, Прибытие/Выгрузка по просьбе пользователя */}
@@ -769,7 +804,7 @@ export default function ActDetailsPage() {
                     )}
                 </table>
             </div>
-        )}
+            )}
       </div>
 
       {Array.isArray(act.warehouseServices) && act.warehouseServices.length > 0 && (
@@ -807,7 +842,7 @@ export default function ActDetailsPage() {
                         </td>
                     </tr>
                 </tfoot>
-            </table>
+             </table>
           </div>
         </div>
       )}

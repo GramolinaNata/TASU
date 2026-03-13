@@ -229,7 +229,11 @@ export default function ActsListPage() {
                     {a.status === 'canceled' ? (
                        <span className="badge badge--danger">Аннулирована</span>
                     ) : a.status === 'act' ? (
-                       <span className="badge badge--ttn">Заявка</span>
+                       a.isWarehouse ? (
+                         <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
+                       ) : (
+                         <span className="badge badge--ttn">Заявка</span>
+                       )
                     ) : (
                        <span className="badge badge--draft">Черновик</span>
                     )}

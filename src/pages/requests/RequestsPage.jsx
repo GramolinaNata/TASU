@@ -206,7 +206,7 @@ export default function RequestsPage() {
                   <td>
                     {a.status === 'canceled' ? (
                        <span className="badge badge--danger">Аннулирована</span>
-                    ) : (a.status === 'draft' || a.type === 'REQUEST') ? (
+                    ) : a.status === 'draft' ? (
                        <span className="badge badge--draft">Черновик</span>
                     ) : (
                        <span className="badge badge--ttn" style={{ background: '#52c41a' }}>ТТН</span>
