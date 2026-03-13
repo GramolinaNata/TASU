@@ -101,7 +101,7 @@ export default function RequestsPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    let list = allActs.filter(a => a.type === "ttn" || a.docType === "ttn");
+    let list = allActs.filter(a => (a.type === "ttn" || a.docType === "ttn") && !a.isDeferredForAccountant);
 
     if (company) {
       list = list.filter(a => a.companyId === company.id);
@@ -184,7 +184,7 @@ export default function RequestsPage() {
               <th>Страна, город (откуда)</th>
               <th>Страна, город (куда)</th>
               <th>Заказчик</th>
-              <th>Груз</th>
+              <th>Вид транспорта</th>
               <th>Сумма (тг)</th>
               {(!isAccountant || isAdmin) && <th style={{ width: 170, textAlign: "right" }}>Действия</th>}
             </tr>
@@ -216,9 +216,9 @@ export default function RequestsPage() {
                   <td>{a.route?.toCity || "—"}</td>
                   <td>{a.customer?.fio || "—"}</td>
                   <td>
-                    <div style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.cargoText}>
-                      {a.cargoText || "—"}
-                    </div>
+                    {a.docAttrs?.transportType === 'auto_console' || a.docAttrs?.transportType === 'auto_separate' ? "Авто" :
+                     a.docAttrs?.transportType === 'plane' ? "Самолет" :
+                     a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
                   </td>
                   <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                     {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}

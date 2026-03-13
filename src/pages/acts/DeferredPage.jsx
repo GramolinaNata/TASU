@@ -23,15 +23,12 @@ function normalizeIsoDate(val) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export default function AccountantDeferredPage() {
-  const { isAccountant } = useAuth();
+export default function DeferredPage() {
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [snoFilter, setSnoFilter] = useState("all");
-  const [avrFilter, setAvrFilter] = useState("all");
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -93,23 +90,7 @@ export default function AccountantDeferredPage() {
         }
     }
 
-    // Фильтр по СНО
-    if (snoFilter !== "all") {
-        if (snoFilter === "done") {
-             list = list.filter(a => a.snoStatus === true);
-        } else if (snoFilter === "pending") {
-             list = list.filter(a => !a.snoStatus);
-        }
-    }
 
-    // Фильтр по АВР
-    if (avrFilter !== "all") {
-        if (avrFilter === "done") {
-             list = list.filter(a => a.avrStatus === true);
-        } else if (avrFilter === "pending") {
-             list = list.filter(a => !a.avrStatus);
-        }
-    }
 
     // 2. По дате
     if (dateFrom) {
@@ -132,10 +113,10 @@ export default function AccountantDeferredPage() {
     }
     
     return list;
-  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, snoFilter, avrFilter]);
+  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter]);
 
   const handleReturn = async (id, number) => {
-    if (window.confirm(`Вернуть документ №${number} во все заявки?`)) {
+    if (window.confirm(`Вернуть документ №${number} в общий список заявок?`)) {
       try {
         await api.requests.update(id, { isDeferredForAccountant: false });
         setActs(prev => prev.filter(a => a.id !== id));
@@ -184,22 +165,7 @@ export default function AccountantDeferredPage() {
                <option value="draft">Черновики</option>
            </select>
         </div>
-        <div className="field" style={{ width: 140 }}>
-           <div className="label">СНО</div>
-           <select value={snoFilter} onChange={e => setSnoFilter(e.target.value)}>
-               <option value="all">Все</option>
-               <option value="pending">Ожидает СНО</option>
-               <option value="done">Выставлен</option>
-           </select>
-        </div>
-        <div className="field" style={{ width: 140 }}>
-           <div className="label">АВР</div>
-           <select value={avrFilter} onChange={e => setAvrFilter(e.target.value)}>
-               <option value="all">Все</option>
-               <option value="pending">Ожидает АВР</option>
-               <option value="done">Отправлен</option>
-           </select>
-        </div>
+
         <div className="field" style={{ width: 140 }}>
            <div className="label">Дата с</div>
            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
@@ -221,8 +187,8 @@ export default function AccountantDeferredPage() {
               <th>Компания</th>
               <th>Заказчик</th>
               <th>Маршрут</th>
-              <th style={{width: 80, textAlign: 'center'}}>СНО</th>
-              <th style={{width: 80, textAlign: 'center'}}>АВР</th>
+              <th>Статус</th>
+              <th style={{ width: 100 }}>Сумма (тг)</th>
               <th style={{ width: 120, textAlign: "right" }}>Действия</th>
             </tr>
           </thead>
@@ -237,12 +203,7 @@ export default function AccountantDeferredPage() {
               filtered.map((a) => (
                 <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
                   <td className="num">
-                    <Link to={
-                        a.isWarehouse ? `/warehouse/${a.id}` :
-                        a.docType === 'ttn' ? `/requests/${a.id}` :
-                        a.docType === 'smr' ? `/smr/${a.id}` :
-                        `/acts/${a.id}`
-                    }>
+                    <Link to={`/deferred/${a.id}`}>
                         {a.docNumber || a.number}
                     </Link>
                   </td>
@@ -258,19 +219,27 @@ export default function AccountantDeferredPage() {
                         </div>
                     )}
                   </td>
-                  <td style={{ textAlign: "center" }}>
-                    {a.snoStatus ? (
-                      <span className="badge" style={{background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem'}}>Да</span>
+                  <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                    {a.status === 'draft' ? (
+                      <span className="badge" style={{background: '#f5f5f5', color: '#595959', padding: '2px 6px', fontSize: '0.75rem'}}>Черновик</span>
+                    ) : a.status === 'canceled' ? (
+                      <span className="badge" style={{background: '#fff1f0', color: '#f5222d', padding: '2px 6px', fontSize: '0.75rem'}}>Аннулирован</span>
                     ) : (
-                      <span className="badge" style={{background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem'}}>Нет</span>
+                      <>
+                        {a.isWarehouse ? (
+                          <span className="badge" style={{background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem'}}>Складская</span>
+                        ) : a.docType === 'ttn' || a.type === 'ttn' ? (
+                          <span className="badge" style={{background: '#e6f7ff', color: '#1890ff', padding: '2px 6px', fontSize: '0.75rem'}}>ТТН</span>
+                        ) : a.docType === 'smr' || a.type === 'smr' ? (
+                          <span className="badge" style={{background: '#fff0f6', color: '#eb2f96', padding: '2px 6px', fontSize: '0.75rem'}}>СМР</span>
+                        ) : (
+                          <span className="badge" style={{background: '#f0f5ff', color: '#2f54eb', padding: '2px 6px', fontSize: '0.75rem'}}>Заявка</span>
+                        )}
+                      </>
                     )}
                   </td>
-                  <td style={{ textAlign: "center" }}>
-                    {a.avrStatus ? (
-                      <span className="badge" style={{background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem'}}>Да</span>
-                    ) : (
-                      <span className="badge" style={{background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem'}}>Нет</span>
-                    )}
+                  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
                   </td>
                   <td style={{ textAlign: "right" }}>
                     <button

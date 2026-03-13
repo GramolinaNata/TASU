@@ -72,7 +72,7 @@ export default function WarehousePage() {
   }, [company]);
 
   const filtered = useMemo(() => {
-    let list = acts.filter(a => a.isWarehouse);
+    let list = acts.filter(a => a.isWarehouse && !a.isDeferredForAccountant);
 
     if (company) {
        list = list.filter(a => a.companyId === company.id);

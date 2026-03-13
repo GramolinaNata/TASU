@@ -32,9 +32,10 @@ export default function ActDetailsPage() {
   const isSMRPath = location.pathname.startsWith('/smr');
   const isTTNPath = location.pathname.startsWith('/requests');
   const isWarehousePath = location.pathname.startsWith('/warehouse');
+  const isDeferredPath = location.pathname.startsWith('/deferred');
   
-  const basePath = isSMRPath ? "/smr" : (isTTNPath ? "/requests" : (isWarehousePath ? "/warehouse" : "/acts"));
-  const crumbLabel = isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : (isWarehousePath ? "Склад" : "Заявки"));
+  const basePath = isDeferredPath ? "/deferred" : isSMRPath ? "/smr" : (isTTNPath ? "/requests" : (isWarehousePath ? "/warehouse" : "/acts"));
+  const crumbLabel = isDeferredPath ? "Отложенные" : isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : (isWarehousePath ? "Склад" : "Заявки"));
   
   const [services, setServices] = useState([]);
   const [total, setTotal] = useState({ price: "" });
@@ -42,6 +43,7 @@ export default function ActDetailsPage() {
   // Состояния для формирования доп. полей ТТН/CMR (Поля 2-18)
   const [showDocForm, setShowDocForm] = useState(null); // 'ttn' | 'smr' | null
   const [showExportMenu, setShowExportMenu] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
   const [docAttrs, setDocAttrs] = useState({
     doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
     vehicle: "",
@@ -106,6 +108,8 @@ export default function ActDetailsPage() {
     });
     await loadAct();
     alert("Документ успешно сформирован!");
+    if (type === 'ttn') nav(`/requests/${id}`);
+    else if (type === 'smr') nav(`/smr/${id}`);
   };
 
   const confirmDocType = async () => {
@@ -120,7 +124,9 @@ export default function ActDetailsPage() {
       await loadAct();
       setShowDocForm(null);
       alert(showDocForm === "ttn" ? "ТТН успешно сформирована!" : "СМР успешно сформирована!");
-      // stay on page to show result
+      if (showDocForm === 'ttn') nav(`/requests/${id}`);
+      else if (showDocForm === 'smr') nav(`/smr/${id}`);
+      setShowDocForm(null);
     } catch (err) {
       alert("Ошибка: " + err.message);
     }
@@ -132,15 +138,26 @@ export default function ActDetailsPage() {
       const updated = await api.requests.update(id, {
         type: 'REQUEST',
         docType: null,
-        docAttrs: {},
         status: "act" // Убеждаемся, что статус остается активным
       });
       await loadAct();
-      setDocAttrs({
-        doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
-        vehicle: "", driver: "", hasTrailer: false, trailerNumber: "", transportType: "auto_console", flightNumber: ""
-      });
       nav("/acts"); // Возвращаем в список заявок
+    }
+  };
+
+  const handleToggleDefer = async () => {
+    if (!id || !act) return;
+    const isNowDeferred = !!act.isDeferredForAccountant;
+    const actionText = isNowDeferred ? "Вернуть документ в общий список?" : "Переместить документ в отложенные?";
+    if (window.confirm(actionText)) {
+      try {
+        const updated = await api.requests.update(id, {
+          isDeferredForAccountant: !isNowDeferred
+        });
+        setAct(updated);
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      }
     }
   };
 
@@ -225,36 +242,46 @@ export default function ActDetailsPage() {
           <button className="btn" onClick={() => nav(basePath)}>← Назад</button>
           
           {(!isAccountant || isAdmin) && (
-            <button 
-              className="btn" 
-              onClick={() => nav(`${basePath}/${act.id}/edit`)} // Edit button
-              disabled={act.status === 'canceled'}
-              style={act.status === 'canceled' ? { opacity: 0.6, cursor: 'not-allowed' } : {}}
-            >
-              Редактировать
-            </button>
-          )}
-
-          {act.status !== 'canceled' ? (
             <>
+              <button 
+                className="btn btn--accent" 
+                onClick={() => nav(`${basePath}/${act.id}/edit`)}
+                disabled={act.status === 'canceled'}
+              >
+                Редактировать
+              </button>
 
-              {(!isAccountant || isAdmin) && act.type !== "ttn" && act.docType !== "ttn" && !act.isWarehouse && (
-                <button className="btn btn--accent" onClick={() => chooseDocType("ttn")}>
+              {act.status !== 'canceled' && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "ttn" && act.docType !== "ttn" && (
+                <button className="btn btn--ghost" onClick={() => chooseDocType("ttn")}>
                   Сформировать ТТН
                 </button>
               )}
-              
-              {(!isAccountant || isAdmin) && act.type !== "smr" && act.docType !== "smr" && !act.isWarehouse && (
-                <button className="btn btn--accent" onClick={() => chooseDocType("smr")}>
+
+              {act.status !== 'canceled' && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "smr" && act.docType !== "smr" && (
+                <button className="btn btn--ghost" onClick={() => chooseDocType("smr")}>
                   Сформировать СМР
                 </button>
               )}
 
-              {(!isAccountant || isAdmin) && act.docType && (
+              {act.status !== 'canceled' && (
+                <button 
+                  className={`btn ${act.isDeferredForAccountant ? 'btn--primary' : 'btn--ghost'}`} 
+                  onClick={handleToggleDefer}
+                >
+                  {act.isDeferredForAccountant ? "Вернуть из отложенных" : "Отложить"}
+                </button>
+              )}
+
+              {act.status !== 'canceled' && act.docType && (
                 <button className="btn btn--danger" onClick={handleCancelFormation}>
                   Отменить формирование
                 </button>
               )}
+            </>
+          )}
+
+          {act.status !== 'canceled' ? (
+            <>
               {!act.isWarehouse && (
                 <div style={{ position: 'relative', display: 'inline-block' }}>
                   <button 
@@ -440,7 +467,7 @@ export default function ActDetailsPage() {
               <div className="v">{act.insured ? "Да" : "Нет"}</div>
               {act.insured && act.cargoValue && (
                 <div className="v" style={{ fontSize: '0.85em', color: 'var(--accent)', fontWeight: 700 }}>
-                  ({act.cargoValue})
+                  (сумма страховки: {act.cargoValue})
                 </div>
               )}
           </div>
@@ -617,16 +644,16 @@ export default function ActDetailsPage() {
        </div>
        )}
 
-      {(act.type === 'ttn' || act.docType === 'ttn' || act.type === 'smr' || act.docType === 'smr') && (
-        <div className="card" style={{ marginTop: 14, border: '1px solid var(--accent)' }}>
-          <div className="card_head" style={{ background: '#f0faff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+      {(act.type === 'ttn' || act.docType === 'ttn' || act.type === 'smr' || act.docType === 'smr' || (act.type === 'REQUEST' && act.docAttrs?.transportType)) && (
+        <div className="card card--transport" style={{ marginTop: 14 }}>
+          <div className="card_head card_head--transport" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="card_title">Транспортная информация ({(act.type || act.docType).toUpperCase()})</div>
           </div>
           <div className="card_body">
             <div className="form_grid">
               <div className="field">
                 <div className="label">Вид перевозки</div>
-                <div className="v" style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                <div className="v v--accent">
                   {act.docAttrs?.transportType === "auto_console" ? "Авто перевозки консол" :
                    act.docAttrs?.transportType === "auto_separate" ? "Авто перевозки отдельно" :
                    act.docAttrs?.transportType === "plane" ? "Самолет" :
@@ -637,21 +664,21 @@ export default function ActDetailsPage() {
               {act.docAttrs?.flightNumber && (
                 <div className="field">
                   <div className="label">{act.docAttrs.transportType === 'plane' ? 'Номер рейса' : 'Поезд / Вагон'}</div>
-                  <div className="v" style={{fontWeight: 700}}>{act.docAttrs.flightNumber}</div>
+                  <div className="v v--bold">{act.docAttrs.flightNumber}</div>
                 </div>
               )}
 
               {act.docAttrs?.vehicle && (
                 <div className="field">
                   <div className="label">Автомобиль</div>
-                  <div className="v" style={{fontWeight: 700}}>{act.docAttrs.vehicle}</div>
+                  <div className="v v--bold">{act.docAttrs.vehicle}</div>
                 </div>
               )}
 
               {act.docAttrs?.hasTrailer && (
                 <div className="field">
                   <div className="label">Прицеп</div>
-                  <div className="v" style={{fontWeight: 700}}>{act.docAttrs.trailerNumber || "Да"}</div>
+                  <div className="v v--bold">{act.docAttrs.trailerNumber || "Да"}</div>
                 </div>
               )}
 
@@ -680,18 +707,18 @@ export default function ActDetailsPage() {
       {/* Груз */}
       <div className="info_card" style={{ marginTop: 14 }}>
         <div className="info_title">Груз</div>
-        <div className="text_block" style={{marginBottom: 10}}>{act.cargoText || "—"}</div>
+        <div className="text_block text_block--mb10">{act.cargoText || "—"}</div>
         
-        <div className="kv" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 15, background: '#f9f9f9', padding: 10, borderRadius: 4 }}>
-          <div>
-            <div className="k">Вид упаковки</div>
-            <div className="v">{act.packaging || "—"}</div>
-          </div>
-          <div>
-            <div className="k">Крепление и штабелирование</div>
-            <div className="v">{act.fastening || "—"}</div>
-          </div>
-        </div>
+         <div className="kv kv--cargo">
+           <div>
+             <div className="k">Вид упаковки</div>
+             <div className="v">{act.packaging || "—"}</div>
+           </div>
+           <div>
+             <div className="k">Крепление и штабелирование</div>
+             <div className="v">{act.fastening || "—"}</div>
+           </div>
+         </div>
         
 
 
@@ -745,9 +772,9 @@ export default function ActDetailsPage() {
         )}
       </div>
 
-      {act.isWarehouse && Array.isArray(act.warehouseServices) && (
+      {Array.isArray(act.warehouseServices) && act.warehouseServices.length > 0 && (
         <div className="info_card" style={{ marginTop: 14 }}>
-          <div className="info_title">Складские услуги</div>
+          <div className="info_title">Услуги</div>
           <div className="table_wrap">
             <table className="table_fixed">
                 <thead>
@@ -755,8 +782,8 @@ export default function ActDetailsPage() {
                         <th style={{ width: 40 }}>№</th>
                         <th style={{ minWidth: 300 }}>Наименование услуги</th>
                         <th style={{ width: 100 }}>Кол-во</th>
-                        <th style={{ width: 120 }}>Цена (тг)</th>
-                        <th style={{ width: 120 }}>Сумма (тг)</th>
+                        <th style={{ width: 120 }}>Цена</th>
+                        <th style={{ width: 120 }}>Сумма</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -770,9 +797,11 @@ export default function ActDetailsPage() {
                         </tr>
                     ))}
                 </tbody>
-                <tfoot>
+                <tfoot style={{ background: '#f9f9f9' }}>
                     <tr style={{ fontWeight: 700 }}>
-                        <td colSpan={4} style={{ textAlign: 'right' }}>Итого:</td>
+                        <td colSpan={2} style={{ textAlign: 'right' }}>Итого:</td>
+                        <td>{act.warehouseServices.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0)}</td>
+                        <td></td>
                         <td style={{ fontWeight: 900 }}>
                           {act.warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
                         </td>

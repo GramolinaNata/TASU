@@ -325,6 +325,11 @@ h1 {
     cursor: pointer;
 }
 
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
 .btn--accent {
     border-color: #e5cf00;
     background: var(--accent);
@@ -929,3 +934,75 @@ textarea.error {
     background: rgba(30, 41, 59, 0.7);
     border-color: rgba(255, 255, 255, 0.1);
 }
+
+/* --- Transport Flow & Dark Mode Utilities --- */
+.card--transport {
+    border: 2px solid var(--accent) !important;
+    background: var(--primary-light) !important;
+}
+
+[data-theme='dark'] .card--transport {
+    background: rgba(253, 225, 7, 0.05) !important;
+    border-color: var(--accent) !important;
+}
+
+.card_head--transport {
+    background: var(--primary-light) !important;
+}
+
+[data-theme='dark'] .card_head--transport {
+    background: rgba(253, 225, 7, 0.1) !important;
+}
+
+.text--highlight {
+    color: var(--info) !important;
+    font-weight: 700;
+}
+
+.v--accent {
+    font-weight: 700;
+    color: var(--accent) !important;
+}
+
+.label_checkbox {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.kv--cargo {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 15px;
+    background: #f9f9f9;
+    padding: 10px;
+    border-radius: 4px;
+}
+
+[data-theme='dark'] .kv--cargo {
+    background: var(--line) !important;
+}
+
+.v--bold {
+    font-weight: 700;
+}
+
+.text_block--mb10 {
+    margin-bottom: 10px;
+}
+
+.card_title--total {
+    font-weight: 900;
+    color: var(--text) !important;
+}
+
+.table_actions_clean {
+    padding: 12px;
+    display: flex;
+    justify-content: flex-end;
+    background: transparent;
+}
+

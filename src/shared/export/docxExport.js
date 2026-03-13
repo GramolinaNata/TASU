@@ -147,6 +147,11 @@ export async function exportToDocx(act, templateOverride = null) {
                      act.docAttrs?.transportType === "auto_separate" ? "Авто перевозки отдельно" :
                      act.docAttrs?.transportType === "plane" ? "Самолет" :
                      act.docAttrs?.transportType === "train" ? "Поезд рейс" : "",
+      is_auto: act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate",
+      is_plane: act.docAttrs?.transportType === "plane",
+      is_train: act.docAttrs?.transportType === "train",
+      has_trailer: !!act.docAttrs?.hasTrailer,
+      trailer_number: act.docAttrs?.trailerNumber || "",
       total_seats: act.totals?.seats || 0,
       total_seats: act.totals?.seats || 0,
       total_weight: act.totals?.weight || 0,

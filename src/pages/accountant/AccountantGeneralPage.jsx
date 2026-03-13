@@ -135,16 +135,7 @@ export default function AccountantGeneralPage() {
     return list;
   }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, snoFilter, avrFilter]);
 
-  const handleDefer = async (id, number) => {
-    if (window.confirm(`Переместить документ №${number} в отложенные?`)) {
-      try {
-        await api.requests.update(id, { isDeferredForAccountant: true });
-        setActs(prev => prev.filter(a => a.id !== id));
-      } catch (err) {
-        alert("Ошибка: " + err.message);
-      }
-    }
-  };
+
 
   return (
     <>
@@ -276,14 +267,6 @@ export default function AccountantGeneralPage() {
                     )}
                   </td>
                   <td style={{ textAlign: "right" }}>
-                    <button
-                      className="btn btn--sm btn--ghost"
-                      type="button"
-                      onClick={() => handleDefer(a.id, a.docNumber || a.number)}
-                      title="Переместить в отложенные"
-                    >
-                      Отложить
-                    </button>
                   </td>
                 </tr>
               ))

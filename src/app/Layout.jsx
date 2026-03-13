@@ -90,6 +90,17 @@ export default function Layout() {
                 <span className="menu_text">Договоры</span>
               </NavLink>
 
+              {(!isAccountant || isAdmin) && (
+                <NavLink
+                  to="/deferred"
+                  className={({ isActive }) => (isActive ? "selected_menu" : "")}
+                  title="Отложенные заявки"
+                >
+                  <span className="menu_icon">⏳</span>
+                  <span className="menu_text">Отложенные</span>
+                </NavLink>
+              )}
+
               {(isAdmin || isAccountant) && (
                 <div className="accountant_section" style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
                   <div className="menu_section_title" style={{ padding: '4px 12px', fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
@@ -102,14 +113,6 @@ export default function Layout() {
                   >
                     <span className="menu_icon">🗂️</span>
                     <span className="menu_text">Все заявки</span>
-                  </NavLink>
-                  <NavLink
-                    to="/accountant/deferred"
-                    className={({ isActive }) => (isActive ? "selected_menu" : "")}
-                    title="Отложенные заявки"
-                  >
-                    <span className="menu_icon">⏳</span>
-                    <span className="menu_text">Отложенные</span>
                   </NavLink>
                 </div>
               )}

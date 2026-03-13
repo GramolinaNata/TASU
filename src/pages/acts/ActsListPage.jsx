@@ -40,7 +40,7 @@ export default function ActsListPage() {
 
     // 1. Фильтр по компании и отсутствие docType, и исключение склада
     if (company) {
-       list = list.filter(a => a.companyId === company.id && (!a.docType || a.type === 'REQUEST') && !a.isWarehouse);
+       list = list.filter(a => a.companyId === company.id && (!a.docType || a.type === 'REQUEST') && !a.isWarehouse && !a.isDeferredForAccountant);
     } else {
        return [];
     }
@@ -206,7 +206,7 @@ export default function ActsListPage() {
               <th>Страна, город (откуда)</th>
               <th>Страна, город (куда)</th>
               <th>Заказчик</th>
-              <th>Груз</th>
+               <th>Вид транспорта</th>
               <th style={{ width: 100 }}>Сумма (тг)</th>
               {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
             </tr>
@@ -240,9 +240,9 @@ export default function ActsListPage() {
                     <div style={{fontWeight: 500}}>{a.customer?.fio || "—"}</div>
                   </td>
                   <td>
-                    <div style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.cargoText}>
-                      {a.cargoText || "—"}
-                    </div>
+                    {a.docAttrs?.transportType === 'auto_console' || a.docAttrs?.transportType === 'auto_separate' ? "Авто" :
+                     a.docAttrs?.transportType === 'plane' ? "Самолет" :
+                     a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
                   </td>
                   <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                     {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}

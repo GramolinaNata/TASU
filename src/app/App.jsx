@@ -26,7 +26,7 @@ import AdminStatsPage from "../pages/admin/AdminStatsPage.jsx";
 import UsersPage from "../pages/admin/UsersPage.jsx";
 
 import AccountantGeneralPage from "../pages/accountant/AccountantGeneralPage.jsx";
-import AccountantDeferredPage from "../pages/accountant/AccountantDeferredPage.jsx";
+import DeferredPage from "../pages/acts/DeferredPage.jsx";
 
 export default function App() {
   useEffect(() => {
@@ -69,7 +69,11 @@ export default function App() {
           
           {/* Accountant and Admin routes */}
           <Route path="/accountant/general" element={<RequireAuth accountantOrAdminOnly><AccountantGeneralPage /></RequireAuth>} />
-          <Route path="/accountant/deferred" element={<RequireAuth accountantOrAdminOnly><AccountantDeferredPage /></RequireAuth>} />
+          
+          {/* Deferred Routes */}
+          <Route path="/deferred" element={<RequireAuth managerOrAdminOnly><DeferredPage /></RequireAuth>} />
+          <Route path="/deferred/:id" element={<RequireAuth managerOrAdminOnly><ActDetailsPage /></RequireAuth>} />
+          <Route path="/deferred/:id/edit" element={<RequireAuth managerOrAdminOnly><ActCreatePage /></RequireAuth>} />
         </Route>
       </Routes>
     </AuthProvider>

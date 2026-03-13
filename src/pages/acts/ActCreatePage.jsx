@@ -161,7 +161,7 @@ export default function ActCreatePage() {
   const [showSendCard, setShowSendCard] = useState(false);
   const [showRecCard, setShowRecCard] = useState(false);
   const [showRouteCard, setShowRouteCard] = useState(false);
-  const [showTransportCard, setShowTransportCard] = useState(false);
+  const [showTransportCard, setShowTransportCard] = useState(true); // Default open
 
   // Сворачиваемые блоки реквизитов (внутри карточек)
   const [showCustReq, setShowCustReq] = useState(false);
@@ -399,7 +399,13 @@ export default function ActCreatePage() {
     <>
       <div className="topbar">
         <div>
-          <div className="crumbs">Заявки / {isEditMode ? "Редактирование" : "Создать заявку"}</div>
+          <div className="crumbs">
+            {location.pathname.startsWith('/deferred') ? 'Отложенные' :
+             location.pathname.startsWith('/smr') ? 'СМР' :
+             location.pathname.startsWith('/requests') ? 'ТТН' :
+             location.pathname.startsWith('/warehouse') ? 'Складские услуги' : 'Заявки'} 
+            {' / '}{isEditMode ? "Редактирование" : "Создать заявку"}
+          </div>
           <h1>{isEditMode ? "Редактирование заявки" : "Создать заявку"}</h1>
         </div>
         <div className="topbar_actions">
@@ -930,14 +936,14 @@ export default function ActCreatePage() {
                            <td colSpan={2} style={{ textAlign: 'right' }}>Итого:</td>
                            <td>{warehouseServices.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0)}</td>
                            <td></td>
-                           <td className="card_title" style={{ fontWeight: 900, color: '#000' }}>
+                           <td className="card_title card_title--total">
                              {warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
                            </td>
                            <td></td>
                        </tr>
                    </tfoot>
                 </table>
-                <div style={{ padding: 12, display: "flex", justifyContent: "flex-end", background: "transparent" }}>
+                 <div className="table_actions_clean">
                   <button className="btn" type="button" onClick={() => setWarehouseServices([...warehouseServices, { id: safeUuid(), name: "", qty: 1, price: 0, total: 0 }])}>
                     + Добавить услугу
                   </button>
@@ -949,17 +955,6 @@ export default function ActCreatePage() {
       </div>
       
       <div className="form_grid" style={{marginTop: 20}}>
-            <div className="field" style={{ gridColumn: 'span 2' }}>
-              <div className="label">Наименование и характер груза</div>
-              <textarea 
-                className="input" 
-                style={{ minHeight: '60px', padding: '8px' }}
-                value={cargoText} 
-                onChange={e => setCargoText(e.target.value)} 
-                placeholder="Напр. Оборудование, 10 паллет"
-              />
-            </div>
-            
             <div className="field" style={{ gridColumn: 'span 2' }}>
               <div className="label">Вид упаковки</div>
               <input value={packaging} onChange={e => setPackaging(e.target.value)} placeholder="Напр. Паллеты, Коробки" />
@@ -973,7 +968,7 @@ export default function ActCreatePage() {
               />
             </div>
 
-             <label style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 700, gridColumn: "span 1" }}>
+             <label style={{ gridColumn: "span 1" }} className="label_checkbox">
               <input
                 type="checkbox"
                 checked={insured}
@@ -994,18 +989,17 @@ export default function ActCreatePage() {
               </div>
             )}
             
-            {(docType === 'ttn' || docType === 'smr' || dbType === 'ttn' || dbType === 'smr') && (
-              <div className="card" style={{ gridColumn: 'span 2', marginTop: 20, border: '2px solid var(--accent)', background: '#f0faff' }}>
-                 <div className="card_head" style={{ background: '#f0faff', cursor: 'pointer' }} onClick={() => setShowTransportCard(!showTransportCard)}>
+            {!isWarehouse && (
+              <div className="card card--transport" style={{ gridColumn: 'span 2', marginTop: 20 }}>
+                 <div className="card_head card_head--transport">
                     <div className="card_title">
-                      {showTransportCard ? "▼" : "▶"} Транспортная информация ({docType.toUpperCase()})
+                      ВИД ТРАНСПОРТА
                     </div>
                  </div>
-                 {showTransportCard && (
                  <div className="card_body">
                     <div className="form_grid">
                         <div className="field" style={{ gridColumn: 'span 2' }}>
-                          <div className="label">Вид перевозки</div>
+                          <div className="label">Вид перевозки <span className="text_danger">*</span></div>
                           <select 
                             value={docAttrs.transportType} 
                             onChange={e => setDocAttrs({...docAttrs, transportType: e.target.value})}
@@ -1016,19 +1010,19 @@ export default function ActCreatePage() {
                             <option value="train">Поезд рейс</option>
                           </select>
                         </div>
-
-                        {docAttrs.transportType.startsWith('auto') && (
+                        
+                        {(docAttrs.transportType === 'auto_console' || docAttrs.transportType === 'auto_separate') && (
                           <>
                             <div className="field">
-                              <div className="label">Автомобиль</div>
-                              <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} />
+                              <div className="label">Автомобиль (Марка, гос. номер)</div>
+                              <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} placeholder="Volvo 016ACT02/ 21WSZ05" />
                             </div>
                             <div className="field">
-                              <div className="label">Водитель</div>
+                              <div className="label">Водитель (Ф.И.О.)</div>
                               <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
                             </div>
                             <div className="field" style={{ gridColumn: 'span 2' }}>
-                              <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, cursor: 'pointer' }}>
+                              <label className="label_checkbox">
                                 <input 
                                   type="checkbox" 
                                   checked={!!docAttrs.hasTrailer} 
@@ -1069,10 +1063,8 @@ export default function ActCreatePage() {
                             </div>
                           </>
                         )}
-
                     </div>
                  </div>
-                 )}
               </div>
             )}
             

@@ -33,6 +33,17 @@ export default function SmrPage() {
   const [allActs, setAllActs] = useState([]);
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [activeDropdown, setActiveDropdown] = useState(null);
+  
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (!e.target.closest('.action-dropdown-container')) {
+        setActiveDropdown(null);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -101,7 +112,7 @@ export default function SmrPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    let list = allActs.filter(a => a.type === "smr" || a.docType === "smr");
+    let list = allActs.filter(a => (a.type === "smr" || a.docType === "smr") && !a.isDeferredForAccountant);
 
     if (company) {
       list = list.filter(a => a.companyId === company.id);
@@ -184,7 +195,7 @@ export default function SmrPage() {
               <th>Страна, город (откуда)</th>
               <th>Страна, город (куда)</th>
               <th>Заказчик</th>
-              <th>Груз</th>
+              <th>Вид транспорта</th>
               <th>Сумма (тг)</th>
               {(!isAccountant || isAdmin) && <th style={{ width: 170, textAlign: "right" }}>Действия</th>}
             </tr>
@@ -216,9 +227,9 @@ export default function SmrPage() {
                   <td>{a.route?.toCity || "—"}</td>
                   <td>{a.customer?.fio || "—"}</td>
                   <td>
-                    <div style={{ maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={a.cargoText}>
-                      {a.cargoText || "—"}
-                    </div>
+                    {a.docAttrs?.transportType === 'auto_console' || a.docAttrs?.transportType === 'auto_separate' ? "Авто" :
+                     a.docAttrs?.transportType === 'plane' ? "Самолет" :
+                     a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
                   </td>
                   <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                     {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
