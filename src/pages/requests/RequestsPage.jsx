@@ -74,7 +74,7 @@ export default function RequestsPage() {
   const handleRestore = async (id, number) => {
     if (window.confirm(`Восстановить ТТН №${number}?`)) {
       try {
-        await api.requests.update(id, { status: "draft" });
+        await api.requests.update(id, { status: "act" });
         loadData();
       } catch (err) {
         alert("Ошибка: " + err.message);
@@ -249,25 +249,25 @@ export default function RequestsPage() {
                           <button 
                             className="btn btn--sm btn--danger" 
                             type="button" 
-                            onClick={() => handleDelete(a.id, a.number)}
+                            onClick={() => handleDelete(a.id, a.docNumber || a.number)}
                             style={{ background: '#ff4d4f', color: '#fff' }}
                           >
                             Удалить
                           </button>
                           {a.status === 'canceled' && (
-                            <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.number)}>
+                            <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.docNumber || a.number)}>
                               Восстановить
                             </button>
                           )}
                           {a.status !== 'canceled' && (
-                            <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.number)}>
+                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
                               Аннулировать
                             </button>
                           )}
                         </>
                       ) : (
                         a.status !== 'canceled' && (
-                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.number)}>
+                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
                             Аннулировать
                           </button>
                         )

@@ -116,7 +116,7 @@ export default function DeferredPage() {
   }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter]);
 
   const handleReturn = async (id, number) => {
-    if (window.confirm(`Вернуть документ №${number} в общий список заявок?`)) {
+    if (window.confirm(`Вернуть документ №${number} из отложенных?`)) {
       try {
         await api.requests.update(id, { isDeferredForAccountant: false });
         setActs(prev => prev.filter(a => a.id !== id));

@@ -336,7 +336,7 @@ export default function ActDetailsPage() {
               style={{ borderColor: "#108ee9", color: "#108ee9" }}
               onClick={async () => {
                 if(window.confirm("Восстановить заявку?")) {
-                  const updated = await api.requests.update(act.id, { status: "draft" });
+                  const updated = await api.requests.update(act.id, { status: "act" });
                   setAct(updated);
                 }
               }}
@@ -684,7 +684,7 @@ export default function ActDetailsPage() {
 
               {act.docAttrs?.driver && (
                 <div className="field">
-                  <div className="label">{act.docAttrs.transportType === 'train' ? 'Ответственный' : 'Водитель'}</div>
+                  <div className="label">{(act.docAttrs.transportType === 'train' || act.docAttrs.transportType === 'plane') ? 'Ответственный' : 'Водитель'}</div>
                   <div className="v">{act.docAttrs.driver}</div>
                 </div>
               )}
@@ -774,7 +774,7 @@ export default function ActDetailsPage() {
 
       {Array.isArray(act.warehouseServices) && act.warehouseServices.length > 0 && (
         <div className="info_card" style={{ marginTop: 14 }}>
-          <div className="info_title">Услуги</div>
+          <div className="info_title">Складские услуги</div>
           <div className="table_wrap">
             <table className="table_fixed">
                 <thead>

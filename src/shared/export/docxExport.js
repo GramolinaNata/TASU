@@ -131,6 +131,11 @@ export async function exportToDocx(act, templateOverride = null) {
       receiver_phone: act.receiver?.phone || "",
       receiver_address: act.receiver?.jurAddress || "",
       receiver_email: act.receiver?.email || "",
+      receiver_bin: act.receiver?.bin || "",
+      receiver_bank: act.receiver?.bank || "",
+      receiver_bik: act.receiver?.bik || "",
+      receiver_account: act.receiver?.account || "",
+      receiver_kbe: act.receiver?.kbe || "",
       fromCity: act.route?.fromCity || "",
       toCity: act.route?.toCity || "",
       fromAddress: act.route?.fromAddress || "",
@@ -150,8 +155,8 @@ export async function exportToDocx(act, templateOverride = null) {
       is_auto: act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate",
       is_plane: act.docAttrs?.transportType === "plane",
       is_train: act.docAttrs?.transportType === "train",
-      has_trailer: !!act.docAttrs?.hasTrailer,
-      trailer_number: act.docAttrs?.trailerNumber || "",
+      has_trailer: (act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate") && !!act.docAttrs?.hasTrailer,
+      trailer_number: (act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate") ? (act.docAttrs?.trailerNumber || "") : "",
       total_seats: act.totals?.seats || 0,
       total_seats: act.totals?.seats || 0,
       total_weight: act.totals?.weight || 0,
@@ -168,9 +173,16 @@ export async function exportToDocx(act, templateOverride = null) {
       doc14: act.docAttrs?.doc14 || "",
       doc15: act.docAttrs?.doc15 || "",
       doc18: act.docAttrs?.doc18 || "",
-      vehicle: act.docAttrs?.vehicle || act.docAttrs?.flightNumber || "",
-      driver: act.driver || act.docAttrs?.driver || "",
-      flightNumber: act.docAttrs?.flightNumber || "",
+      vehicle: (act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate") 
+               ? (act.docAttrs?.vehicle || "") 
+               : (act.docAttrs?.flightNumber || ""),
+      driver: ((act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate") || act.docAttrs?.transportType === "train" || act.docAttrs?.transportType === "plane")
+              ? (act.docAttrs?.driver || "")
+              : "",
+      flightNumber: (act.docAttrs?.transportType === 'plane' || act.docAttrs?.transportType === 'train') ? (act.docAttrs?.flightNumber || "") : "",
+      driver_label: (act.docAttrs?.transportType === 'plane' || act.docAttrs?.transportType === 'train') ? "Ответственный" : "Водитель",
+      vehicle_label: (act.docAttrs?.transportType === 'plane') ? "Номер рейса" : 
+                     (act.docAttrs?.transportType === 'train') ? "Номер поезда" : "Марка, гос. номер",
 
       // --- SMR SPECIFIC BLOCKS ---
       smr_sender: [

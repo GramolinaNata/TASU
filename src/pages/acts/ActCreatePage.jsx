@@ -1002,7 +1002,18 @@ export default function ActCreatePage() {
                           <div className="label">Вид перевозки <span className="text_danger">*</span></div>
                           <select 
                             value={docAttrs.transportType} 
-                            onChange={e => setDocAttrs({...docAttrs, transportType: e.target.value})}
+                            onChange={e => {
+                              const newVal = e.target.value;
+                              setDocAttrs({
+                                ...docAttrs, 
+                                transportType: newVal,
+                                vehicle: "",
+                                driver: "",
+                                hasTrailer: false,
+                                trailerNumber: "",
+                                flightNumber: ""
+                              });
+                            }}
                           >
                             <option value="auto_console">Авто перевозки консол</option>
                             <option value="auto_separate">Авто перевозки отдельно</option>
@@ -1045,10 +1056,16 @@ export default function ActCreatePage() {
                         )}
 
                         {docAttrs.transportType === 'plane' && (
-                          <div className="field" style={{ gridColumn: 'span 2' }}>
-                            <div className="label">Номер рейса</div>
-                            <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
-                          </div>
+                          <>
+                            <div className="field">
+                              <div className="label">Номер рейса</div>
+                              <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
+                            </div>
+                            <div className="field">
+                              <div className="label">Ответственный</div>
+                              <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
+                            </div>
+                          </>
                         )}
 
                         {docAttrs.transportType === 'train' && (

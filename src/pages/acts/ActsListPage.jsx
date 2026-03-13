@@ -129,7 +129,7 @@ export default function ActsListPage() {
   const handleRestore = async (id, number) => {
     if (window.confirm(`Восстановить заявку №${number}?`)) {
       try {
-        await api.requests.update(id, { status: "draft" });
+        await api.requests.update(id, { status: "act" });
         loadActs();
       } catch (err) {
         alert("Ошибка: " + err.message);
@@ -273,7 +273,7 @@ export default function ActsListPage() {
                         <button
                           className="btn btn--sm btn--danger"
                           type="button"
-                          onClick={() => handleDelete(a.id, a.number)}
+                          onClick={() => handleDelete(a.id, a.docNumber || a.number)}
                           style={{ background: '#ff4d4f', color: '#fff' }}
                         >
                           Удалить
@@ -283,7 +283,7 @@ export default function ActsListPage() {
                             className="btn btn--sm btn--primary"
                             style={{ borderColor: "#108ee9", color: "#108ee9", background: "transparent" }}
                             type="button"
-                            onClick={() => handleRestore(a.id, a.number)}
+                            onClick={() => handleRestore(a.id, a.docNumber || a.number)}
                           >
                             Восстановить
                           </button>
@@ -292,7 +292,7 @@ export default function ActsListPage() {
                           <button
                             className="btn btn--sm btn--ghost"
                             type="button"
-                            onClick={() => handleAnnul(a.id, a.number)}
+                            onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
                           >
                             Аннулировать
                           </button>
@@ -303,7 +303,7 @@ export default function ActsListPage() {
                         <button
                           className="btn btn--sm btn--ghost"
                           type="button"
-                          onClick={() => handleAnnul(a.id, a.number)}
+                          onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
                         >
                           Аннулировать
                         </button>
