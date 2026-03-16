@@ -80,6 +80,5 @@ export default function App() {
           <Route path="/deferred/:id/edit" element={<RequireAuth managerOrAdminOnly><ActCreatePage /></RequireAuth>} />
         </Route>
       </Routes>
-    </AuthProvider>
   );
 }
