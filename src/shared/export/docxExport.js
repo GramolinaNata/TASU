@@ -1,6 +1,20 @@
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
+import ImageModule from "docxtemplater-image-module-free";
 import { saveAs } from "file-saver";
+
+// Вспомогательная функция для парсинга Base64
+function base64ToBuffer(base64) {
+    if (!base64) return null;
+    const base64Data = base64.split(",")[1] || base64;
+    const binaryString = window.atob(base64Data);
+    const len = binaryString.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes.buffer;
+}
 
 /**
  * Вспомогательная функция для форматирования даты на русском языке
@@ -75,13 +89,26 @@ export async function exportToDocx(act, templateOverride = null) {
         throw new Error("Файл шаблона поврежден или имеет неверный формат (не ZIP/DOCX)");
     }
 
+    // 1.2. Настройка модуля изображений
+    const imageOptions = {
+      centered: false,
+      getImage: (tagValue) => {
+        return base64ToBuffer(tagValue);
+      },
+      getSize: () => {
+        return [173, 56]; // 4.58 cm x 1.48 cm (при 96 DPI)
+      },
+    };
+
     const doc = new Docxtemplater(zip, {
       paragraphLoop: true,
       linebreaks: true,
+      modules: [new ImageModule(imageOptions)],
     });
 
     // 2. Подготовка данных
     const data = {
+      logo: act.company?.logo || "", // Передаем Base64 строку логотипа
       contractNumber: act.contractNumber || "",
       contractNumberOnly: (act.contractNumber || "").split("-")[0],
       contractDate: act.contractDate ? new Date(act.contractDate).toLocaleDateString("ru-RU") : "",

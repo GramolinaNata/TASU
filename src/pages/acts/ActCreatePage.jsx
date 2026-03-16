@@ -91,6 +91,7 @@ export default function ActCreatePage() {
   const [totalSum, setTotalSum] = useState(""); // Ручная сумма
   const [selectedCompanyId, setSelectedCompanyId] = useState("");
   const [allCompanies, setAllCompanies] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   const [customer, setCustomer] = useState({
     fio: "",
@@ -325,6 +326,8 @@ export default function ActCreatePage() {
   const [attemptedSave, setAttemptedSave] = useState(false);
 
   const onSave = async () => {
+    if (loading) return;
+    setLoading(true);
     setAttemptedSave(true);
     
     // Find selected company object
@@ -392,6 +395,8 @@ export default function ActCreatePage() {
     } catch (err) {
       console.error('Save error:', err);
       alert('Ошибка при сохранении: ' + err.message);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -1091,8 +1096,13 @@ export default function ActCreatePage() {
             </div>
 
           <div className="page_actions" style={{ marginTop: 24, paddingBottom: 40 }}>
-            <button className="btn btn--accent btn--lg" style={{ width: "100%" }} onClick={onSave}>
-              Сохранить заявку
+            <button 
+              className="btn btn--accent btn--lg" 
+              style={{ width: "100%", opacity: loading ? 0.7 : 1 }} 
+              onClick={onSave}
+              disabled={loading}
+            >
+              {loading ? "Сохранение..." : "Сохранить заявку"}
             </button>
           </div>
     </>

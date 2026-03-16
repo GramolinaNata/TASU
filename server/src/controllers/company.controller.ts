@@ -45,7 +45,8 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       account: restData.account || "",
       kbe: restData.kbe || "",
       bankDetails: restData.bankDetails || "",
-      managerDetails: restData.managerDetails || ""
+      managerDetails: restData.managerDetails || "",
+      logo: restData.logo || ""
     };
 
     if (id && typeof id === 'string') {
@@ -67,12 +68,18 @@ export const updateCompany = async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { id: _, ...restData } = req.body;
     
+    if (restData.logo) {
+      console.log(`[DEBUG] Updating company ${id}, logo received, length: ${restData.logo.length}`);
+    } else {
+      console.log(`[DEBUG] Updating company ${id}, NO logo in request`);
+    }
+    
     // Подготовка данных для Prisma
     const dataToUpdate: any = {};
     const fields = [
       'name', 'bin', 'address', 'factAddress', 'phone', 
       'director', 'email', 'bank', 'bik', 'account', 'kbe',
-      'bankDetails', 'managerDetails'
+      'bankDetails', 'managerDetails', 'logo'
     ];
 
     fields.forEach(f => {

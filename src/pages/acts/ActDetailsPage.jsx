@@ -27,6 +27,7 @@ export default function ActDetailsPage() {
   const { isAdmin, isAccountant } = useAuth();
   const [act, setAct] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Определяем контекст (из какого списка пришли)
   const isSMRPath = location.pathname.startsWith('/smr');
@@ -141,6 +142,7 @@ export default function ActDetailsPage() {
         status: "act" // Убеждаемся, что статус остается активным
       });
       await loadAct();
+      setActionLoading(false);
       nav("/acts"); // Возвращаем в список заявок
     }
   };
@@ -150,6 +152,7 @@ export default function ActDetailsPage() {
     const isNowDeferred = !!act.isDeferredForAccountant;
     const actionText = isNowDeferred ? "Вернуть документ в общий список?" : "Переместить документ в отложенные?";
     if (window.confirm(actionText)) {
+      setActionLoading(true);
       try {
         const updated = await api.requests.update(id, {
           isDeferredForAccountant: !isNowDeferred
@@ -167,6 +170,8 @@ export default function ActDetailsPage() {
         }
       } catch (err) {
         alert("Ошибка: " + err.message);
+      } finally {
+        setActionLoading(false);
       }
     }
   };
@@ -175,23 +180,28 @@ export default function ActDetailsPage() {
     if (!id || !act) return;
     const num = act.docNumber || act.number;
     if (window.confirm(`Аннулировать складскую заявку №${num}?`)) {
+      setActionLoading(true);
       try {
         const updated = await api.requests.update(id, { status: "canceled" });
         setAct(updated);
       } catch (err) {
         alert("Ошибка: " + err.message);
+      } finally {
+        setActionLoading(false);
       }
     }
   };
 
   const handleRestore = async () => {
-    if (!id || !act) return;
-    if (window.confirm("Восстановить заявку?")) {
+    if (id && act && window.confirm("Восстановить заявку?")) {
+      setActionLoading(true);
       try {
         const updated = await api.requests.update(id, { status: "act" });
         setAct(updated);
       } catch (err) {
         alert("Ошибка: " + err.message);
+      } finally {
+        setActionLoading(false);
       }
     }
   };
@@ -281,7 +291,7 @@ export default function ActDetailsPage() {
               <button 
                 className="btn btn--accent" 
                 onClick={() => nav(`${basePath}/${act.id}/edit`)}
-                disabled={act.status === 'canceled'}
+                disabled={act.status === 'canceled' || actionLoading}
               >
                 Редактировать
               </button>
@@ -302,14 +312,15 @@ export default function ActDetailsPage() {
                 <button 
                   className={`btn ${act.isDeferredForAccountant ? 'btn--primary' : 'btn--ghost'}`} 
                   onClick={handleToggleDefer}
+                  disabled={actionLoading}
                 >
-                  {act.isDeferredForAccountant ? "Вернуть из отложенных" : "Отложить"}
+                  {actionLoading ? "..." : (act.isDeferredForAccountant ? "Вернуть из отложенных" : "Отложить")}
                 </button>
               )}
 
               {act.status !== 'canceled' && (
-                <button className="btn btn--danger" onClick={handleAnnul}>
-                  Аннулировать
+                <button className="btn btn--danger" onClick={handleAnnul} disabled={actionLoading}>
+                   {actionLoading ? "..." : "Аннулировать"}
                 </button>
               )}
 
@@ -326,8 +337,9 @@ export default function ActDetailsPage() {
               className="btn" 
               style={{ borderColor: "#108ee9", color: "#108ee9" }}
               onClick={handleRestore}
+              disabled={actionLoading}
             >
-              Восстановить
+              {actionLoading ? "..." : "Восстановить"}
             </button>
           )}
 

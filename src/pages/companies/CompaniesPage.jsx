@@ -29,6 +29,7 @@ export default function CompaniesPage() {
     kbe: "",
     bankDetails: "",
     managerDetails: "",
+    logo: "",
   });
 
   const loadCompanies = async () => {
@@ -89,11 +90,46 @@ export default function CompaniesPage() {
       kbe: c.kbe || "",
       bankDetails: c.bankDetails || "",
       managerDetails: c.managerDetails || "",
+      logo: c.logo || "",
     });
     setModalOpen(true);
   };
 
+  const handleLogoChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert("Логотип слишком большой (макс 2MB)");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result;
+        // Если это webp, конвертируем в png для совместимости с любыми версиями Word
+        if (result.startsWith('data:image/webp')) {
+          const img = new Image();
+          img.onload = () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = img.width;
+            canvas.height = img.height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const pngData = canvas.toDataURL('image/png');
+            setForm(prev => ({ ...prev, logo: pngData }));
+          };
+          img.src = result;
+        } else {
+          setForm(prev => ({ ...prev, logo: result }));
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const onSave = async () => {
+    if (form.logo && form.logo.length > 0) {
+      alert("Отправка логотипа, размер: " + Math.round(form.logo.length / 1024) + " KB");
+    }
     try {
       if (editId) {
         await api.companies.update(editId, form);
@@ -144,12 +180,20 @@ export default function CompaniesPage() {
             {list.map((c) => (
               <tr key={c.id} className={c.id === selectedId ? "row_selected" : ""}>
                 <td>
-                  <span style={{ fontWeight: 700 }}>{c.name}</span>
-                  {c.id === selectedId && (
-                    <span className="badge badge--ttn" style={{ marginLeft: 8 }}>
-                      Текущая
-                    </span>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                    {c.logo && (
+                      <img src={c.logo} alt="Logo" style={{ width: 40, height: 40, objectFit: 'contain', background: '#f5f5f5', borderRadius: 4 }} />
+                    )}
+                    <div>
+                      <span style={{ fontWeight: 700 }}>{c.name}</span>
+                      {c.id === selectedId && (
+                        <span className="badge badge--ttn" style={{ marginLeft: 8 }}>
+                          Текущая
+                        </span>
+                      )}
+                      <div className="muted" style={{ fontSize: '0.8rem' }}>{c.email || "—"}</div>
+                    </div>
+                  </div>
                 </td>
                 <td>{c.bin}</td>
                 <td>{c.address}</td>
@@ -184,6 +228,30 @@ export default function CompaniesPage() {
           onClose={() => setModalOpen(false)}
         >
           <div className="form_grid" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="field">
+              <div className="label">Логотип компании</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                {form.logo ? (
+                  <div style={{ position: 'relative' }}>
+                    <img src={form.logo} alt="Preview" style={{ width: 80, height: 80, objectFit: 'contain', border: '1px solid #ddd', borderRadius: 4 }} />
+                    <button 
+                      className="btn btn--sm btn--danger" 
+                      style={{ position: 'absolute', top: -8, right: -8, borderRadius: '50%', width: 24, height: 24, padding: 0 }}
+                      onClick={() => setForm({...form, logo: ""})}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ width: 80, height: 80, border: '1px dashed #ccc', borderRadius: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#999', fontSize: '0.7rem', textAlign: 'center' }}>
+                    Нет логотипа
+                  </div>
+                )}
+                <input type="file" accept="image/*" onChange={handleLogoChange} style={{ fontSize: '0.8rem' }} />
+              </div>
+              <div className="muted" style={{ fontSize: '0.75rem', marginTop: 4 }}>Рекомендуемый формат: PNG/JPG/WebP до 2MB. Появится во всех документах.</div>
+            </div>
+
             <div className="field">
               <div className="label">Название</div>
               <input
