@@ -17,7 +17,7 @@ import { loadCompanies } from "../shared/storage/companyStorage.js";
 import { loadActs } from "../shared/storage/actsStorage.js";
 import { loadContracts } from "../shared/storage/contractsStorage.js";
 
-import { AuthProvider } from "../shared/auth/AuthContext";
+import { useAuth } from "../shared/auth/AuthContext";
 import LoginPage from "../pages/auth/LoginPage.jsx";
 
 import { RequireAuth } from "../shared/auth/RequireAuth.jsx";
@@ -29,18 +29,22 @@ import AccountantGeneralPage from "../pages/accountant/AccountantGeneralPage.jsx
 import DeferredPage from "../pages/acts/DeferredPage.jsx";
 
 export default function App() {
+  const { user } = useAuth();
+
   useEffect(() => {
+    if (!user) return; // Не грузим данные, если нет юзера
+    
     const initData = async () => {
+      console.log("[App] User authorized, reloading global data...");
       await loadCompanies();
       await loadActs();
       await loadContracts();
     };
     initData();
-  }, []);
+  }, [user]);
 
   return (
-    <AuthProvider>
-      <Routes>
+    <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireAuth><Layout /></RequireAuth>}>
           <Route path="/" element={<Navigate to="/acts" replace />} />
