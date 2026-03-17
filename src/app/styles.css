@@ -121,6 +121,43 @@
 [data-theme='dark'] .bar_track { background: #334155; }
 [data-theme='dark'] .manager_badge { background: #334155; color: #94a3b8; }
 
+/* Loader */
+.loader_container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    width: 100%;
+    min-height: 200px;
+}
+
+.loader_spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--line);
+    border-top: 3px solid var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin-bottom: 12px;
+}
+
+.loader_text {
+    color: var(--muted);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+[data-theme='dark'] .loader_spinner {
+    border-color: #334155;
+    border-top-color: var(--accent);
+}
+
 /* Activity feed */
 [data-theme='dark'] .activity_item { border-color: #334155;  background: #1e293b; }
 [data-theme='dark'] .activity_item:hover { background: #293548; }

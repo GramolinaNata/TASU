@@ -3,6 +3,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
+import Loader from "../../shared/components/Loader";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -40,7 +41,7 @@ export default function ActsListPage() {
 
     // 1. Фильтр по компании и отсутствие docType, и исключение склада
     if (company) {
-       list = list.filter(a => a.companyId === company.id && (!a.docType || a.type === 'REQUEST') && !a.isWarehouse && !a.isDeferredForAccountant);
+       list = list.filter(a => a.companyId === company.id && (!a.docType || a.type === 'REQUEST') && !a.isWarehouse && !a.isDeferredForAccountant && !a.readyForAccountant);
     } else {
        return [];
     }
@@ -95,23 +96,19 @@ export default function ActsListPage() {
   };
 
   useEffect(() => {
-    // 1. Загрузка заявок
-    loadActs(); // async call inside effect
-  }, []);
-
-  useEffect(() => {
-    // 2. Подписка на изменение компании
+    // 1. Подписка на изменение компании
     const unsubscribe = subscribeSelectedCompany(setCompany);
     setCompany(getSelectedCompany());
     return unsubscribe;
   }, []);
 
   useEffect(() => {
-    // 3. Перезагрузка заявок при смене компании
+    // 2. Загрузка заявок только при наличии компании
     if (company) {
       loadActs();
     } else {
       setActs([]);
+      setLoading(false);
     }
   }, [company]);
 
@@ -195,131 +192,132 @@ export default function ActsListPage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        {loading && <div className="muted" style={{padding: 20}}>Загрузка...</div>}
-        {!loading && (
-        <table className="table_fixed">
-          <thead>
-            <tr>
-              <th style={{width: 100}}>Номер</th>
-              <th style={{width: 100}}>Дата</th>
-              <th style={{width: 100}}>Статус</th>
-              <th>Страна, город (откуда)</th>
-              <th>Страна, город (куда)</th>
-              <th>Заказчик</th>
-               <th>Вид транспорта</th>
-              <th style={{ width: 100 }}>Сумма (тг)</th>
-              {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+        {loading ? (
+          <Loader />
+        ) : (
+          <table className="table_fixed">
+            <thead>
               <tr>
-                <td colSpan={7} className="muted" style={{ padding: 16 }}>
-                  {company ? "В этой компании нет заявок." : "Выберите компанию."}
-                </td>
+                <th style={{ width: 100 }}>Номер</th>
+                <th style={{ width: 100 }}>Дата</th>
+                <th style={{ width: 100 }}>Статус</th>
+                <th>Страна, город (откуда)</th>
+                <th>Страна, город (куда)</th>
+                <th>Заказчик</th>
+                <th>Вид транспорта</th>
+                <th style={{ width: 100 }}>Сумма (тг)</th>
+                {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
               </tr>
-            ) : (
-              filtered.map((a) => (
-                <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
-                  <td className="num">
-                    <Link to={`/acts/${a.id}`}>{a.docNumber || a.number}</Link>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
+                    {company ? "В этой компании нет заявок." : "Выберите компанию."}
                   </td>
-                  <td>{formatDisplayDate(a.createdAt || a.date)}</td>
-                  <td>
-                    {a.status === 'canceled' ? (
-                       <span className="badge badge--danger">Аннулирована</span>
-                    ) : a.status === 'act' ? (
-                       a.isWarehouse ? (
-                         <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
-                       ) : (
-                         <span className="badge badge--ttn">Заявка</span>
-                       )
-                    ) : (
-                       <span className="badge badge--draft">Черновик</span>
-                    )}
-                  </td>
-                  <td>{a.route?.fromCity || "—"}</td>
-                  <td>{a.route?.toCity || "—"}</td>
-                  <td>
-                    <div style={{fontWeight: 500}}>{a.customer?.fio || "—"}</div>
-                  </td>
-                  <td>
-                    {a.docAttrs?.transportType === 'auto_console' || a.docAttrs?.transportType === 'auto_separate' ? "Авто" :
-                     a.docAttrs?.transportType === 'plane' ? "Самолет" :
-                     a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
-                  </td>
-                  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                  </td>
-                  {(!isAccountant || isAdmin) && (
-                  <td
-                    style={{
-                      textAlign: "right",
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: 8,
-                    }}
-                  >
-                    {(!isAccountant || isAdmin) && (
-                      a.status === 'canceled' ? (
-                        <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
-                          Редактировать
-                        </button>
-                      ) : (
-                        <Link className="btn btn--sm" to={`/acts/${a.id}/edit`}>
-                          Редактировать
-                        </Link>
-                      )
-                    )}
-                    
-                    {isAdmin ? (
-                      <>
-                        <button
-                          className="btn btn--sm btn--danger"
-                          type="button"
-                          onClick={() => handleDelete(a.id, a.docNumber || a.number)}
-                          style={{ background: '#ff4d4f', color: '#fff' }}
-                        >
-                          Удалить
-                        </button>
-                        {a.status === 'canceled' && (
-                          <button
-                            className="btn btn--sm btn--primary"
-                            style={{ borderColor: "#108ee9", color: "#108ee9", background: "transparent" }}
-                            type="button"
-                            onClick={() => handleRestore(a.id, a.docNumber || a.number)}
-                          >
-                            Восстановить
-                          </button>
-                        )}
-                        {a.status !== 'canceled' && (
-                          <button
-                            className="btn btn--sm btn--ghost"
-                            type="button"
-                            onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
-                          >
-                            Аннулировать
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      a.status !== 'canceled' && (
-                        <button
-                          className="btn btn--sm btn--ghost"
-                          type="button"
-                          onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
-                        >
-                          Аннулировать
-                        </button>
-                      )
-                    )}
-                  </td>
-                  )}
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filtered.map((a) => (
+                  <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
+                    <td className="num">
+                      <Link to={`/acts/${a.id}`}>{a.docNumber || a.number}</Link>
+                    </td>
+                    <td>{formatDisplayDate(a.createdAt || a.date)}</td>
+                    <td>
+                      {a.status === 'canceled' ? (
+                        <span className="badge badge--danger">Аннулирована</span>
+                      ) : a.status === 'act' ? (
+                        a.isWarehouse ? (
+                          <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
+                        ) : (
+                          <span className="badge badge--ttn">Заявка</span>
+                        )
+                      ) : (
+                        <span className="badge badge--draft">Черновик</span>
+                      )}
+                    </td>
+                    <td>{a.route?.fromCity || "—"}</td>
+                    <td>{a.route?.toCity || "—"}</td>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div>
+                    </td>
+                    <td>
+                      {a.docAttrs?.transportType === 'auto_console' || a.docAttrs?.transportType === 'auto_separate' ? "Авто" :
+                        a.docAttrs?.transportType === 'plane' ? "Самолет" :
+                          a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
+                    </td>
+                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                    </td>
+                    {(!isAccountant || isAdmin) && (
+                      <td
+                        style={{
+                          textAlign: "right",
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: 8,
+                        }}
+                      >
+                        {(!isAccountant || isAdmin) && (
+                          a.status === 'canceled' ? (
+                            <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+                              Редактировать
+                            </button>
+                          ) : (
+                            <Link className="btn btn--sm" to={`/acts/${a.id}/edit`}>
+                              Редактировать
+                            </Link>
+                          )
+                        )}
+
+                        {isAdmin ? (
+                          <>
+                            <button
+                              className="btn btn--sm btn--danger"
+                              type="button"
+                              onClick={() => handleDelete(a.id, a.docNumber || a.number)}
+                              style={{ background: '#ff4d4f', color: '#fff' }}
+                            >
+                              Удалить
+                            </button>
+                            {a.status === 'canceled' && (
+                              <button
+                                className="btn btn--sm btn--primary"
+                                style={{ borderColor: "#108ee9", color: "#108ee9", background: "transparent" }}
+                                type="button"
+                                onClick={() => handleRestore(a.id, a.docNumber || a.number)}
+                              >
+                                Восстановить
+                              </button>
+                            )}
+                            {a.status !== 'canceled' && (
+                              <button
+                                className="btn btn--sm btn--ghost"
+                                type="button"
+                                onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
+                              >
+                                Аннулировать
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          a.status !== 'canceled' && (
+                            <button
+                              className="btn btn--sm btn--ghost"
+                              type="button"
+                              onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
+                            >
+                              Аннулировать
+                            </button>
+                          )
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         )}
       </div>
     </>

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Modal from "./Modal.jsx";
+import Loader from "../components/Loader";
 import {
   getCompanies,
   getSelectedCompanyId,
@@ -9,10 +10,19 @@ import {
 
 export default function CompanySelector({ open, onClose }) {
   const [companies, setCompanies] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setCompanies(getCompanies());
-    return subscribeCompanies((list) => setCompanies(list));
+    const current = getCompanies();
+    setCompanies(current);
+    if (current.length > 0) {
+      setLoading(false);
+    }
+    
+    return subscribeCompanies((list) => {
+      setCompanies(list);
+      setLoading(false);
+    });
   }, []);
 
   const select = (id) => {
@@ -28,15 +38,23 @@ export default function CompanySelector({ open, onClose }) {
   return (
     <Modal title="Выберите компанию" onClose={onClose} closable={!!getSelectedCompanyId()}>
       <div className="company_list">
-        {companies.map((c) => (
-          <div key={c.id} className="company_item" onClick={() => select(c.id)}>
-            <div className="company_name">{c.name}</div>
-            <div className="company_meta">БИН: {c.bin || "—"}</div>
-            <div className="company_meta">{c.address || "—"}</div>
+        {loading ? (
+          <div style={{ padding: "40px 0" }}>
+            <Loader text="Загрузка списка компаний..." />
           </div>
-        ))}
+        ) : (
+          <>
+            {companies.map((c) => (
+              <div key={c.id} className="company_item" onClick={() => select(c.id)}>
+                <div className="company_name">{c.name}</div>
+                <div className="company_meta">БИН: {c.bin || "—"}</div>
+                <div className="company_meta">{c.address || "—"}</div>
+              </div>
+            ))}
 
-        {companies.length === 0 && <div className="muted">Нет доступных компаний</div>}
+            {companies.length === 0 && <div className="muted">Нет доступных компаний</div>}
+          </>
+        )}
       </div>
     </Modal>
   );

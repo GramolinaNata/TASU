@@ -1102,7 +1102,7 @@ export default function ActCreatePage() {
               onClick={onSave}
               disabled={loading}
             >
-              {loading ? "Сохранение..." : "Сохранить заявку"}
+              {loading ? "Сохранение данных..." : (isEditMode ? "Сохранить изменения" : "Создать заявку")}
             </button>
           </div>
     </>

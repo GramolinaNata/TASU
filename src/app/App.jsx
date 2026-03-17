@@ -27,6 +27,7 @@ import UsersPage from "../pages/admin/UsersPage.jsx";
 
 import AccountantGeneralPage from "../pages/accountant/AccountantGeneralPage.jsx";
 import DeferredPage from "../pages/acts/DeferredPage.jsx";
+import SentToAccountantPage from "../pages/acts/SentToAccountantPage.jsx";
 
 export default function App() {
   const { user } = useAuth();
@@ -65,6 +66,8 @@ export default function App() {
           <Route path="/contracts" element={<ContractsPage />} />
           <Route path="/contracts/new" element={<ContractCreatePage />} />
           <Route path="/contracts/:id" element={<ContractDetailsPage />} />
+          <Route path="/sent" element={<RequireAuth managerOrAdminOnly><SentToAccountantPage /></RequireAuth>} />
+          <Route path="/sent/:id" element={<RequireAuth managerOrAdminOnly><ActDetailsPage /></RequireAuth>} />
           
           {/* Admin only routes */}
           <Route path="/companies" element={<RequireAuth adminOnly><CompaniesPage /></RequireAuth>} />

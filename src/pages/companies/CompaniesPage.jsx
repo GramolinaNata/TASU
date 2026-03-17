@@ -7,6 +7,7 @@ import {
 } from "../../shared/storage/companyStorage.js";
 import { api } from "../../shared/api/api.js";
 import Modal from "../../shared/ui/Modal.jsx";
+import Loader from "../../shared/components/Loader";
 
 export default function CompaniesPage() {
   const [list, setList] = useState([]);
@@ -165,61 +166,72 @@ export default function CompaniesPage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        {loading && <div className="muted" style={{ padding: 12 }}>Загрузка компаний...</div>}
-        <table>
-          <thead>
-            <tr>
-              <th>Название</th>
-              <th>БИН</th>
-              <th>Адрес</th>
-              <th>Email</th>
-              <th style={{ width: 140, textAlign: "right" }}>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {list.map((c) => (
-              <tr key={c.id} className={c.id === selectedId ? "row_selected" : ""}>
-                <td>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    {c.logo && (
-                      <img src={c.logo} alt="Logo" style={{ width: 40, height: 40, objectFit: 'contain', background: '#f5f5f5', borderRadius: 4 }} />
-                    )}
-                    <div>
-                      <span style={{ fontWeight: 700 }}>{c.name}</span>
-                      {c.id === selectedId && (
-                        <span className="badge badge--ttn" style={{ marginLeft: 8 }}>
-                          Текущая
-                        </span>
-                      )}
-                      <div className="muted" style={{ fontSize: '0.8rem' }}>{c.email || "—"}</div>
-                    </div>
-                  </div>
-                </td>
-                <td>{c.bin}</td>
-                <td>{c.address}</td>
-                <td>{c.email || "—"}</td>
-                <td
-                  style={{
-                    textAlign: "right",
-                    display: "flex",
-                    justifyContent: "flex-end",
-                    gap: 8,
-                  }}
-                >
-                  <button className="btn btn--sm" onClick={() => openEdit(c)}>
-                    Изм.
-                  </button>
-                  <button
-                    className="btn btn--sm btn--danger"
-                    onClick={() => onDelete(c.id, c.name)}
-                  >
-                    Удалить
-                  </button>
-                </td>
+        {loading ? (
+          <Loader />
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Название</th>
+                <th>БИН</th>
+                <th>Адрес</th>
+                <th>Email</th>
+                <th style={{ width: 140, textAlign: "right" }}>Действия</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {list.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="muted" style={{ padding: 16 }}>
+                    Компаний не найдено.
+                  </td>
+                </tr>
+              ) : (
+                list.map((c) => (
+                  <tr key={c.id} className={c.id === selectedId ? "row_selected" : ""}>
+                    <td>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                        {c.logo && (
+                          <img src={c.logo} alt="Logo" style={{ width: 40, height: 40, objectFit: 'contain', background: '#f5f5f5', borderRadius: 4 }} />
+                        )}
+                        <div>
+                          <span style={{ fontWeight: 700 }}>{c.name}</span>
+                          {c.id === selectedId && (
+                            <span className="badge badge--ttn" style={{ marginLeft: 8 }}>
+                              Текущая
+                            </span>
+                          )}
+                          <div className="muted" style={{ fontSize: '0.8rem' }}>{c.email || "—"}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>{c.bin}</td>
+                    <td>{c.address}</td>
+                    <td>{c.email || "—"}</td>
+                    <td
+                      style={{
+                        textAlign: "right",
+                        display: "flex",
+                        justifyContent: "flex-end",
+                        gap: 8,
+                      }}
+                    >
+                      <button className="btn btn--sm" onClick={() => openEdit(c)}>
+                        Изм.
+                      </button>
+                      <button
+                        className="btn btn--sm btn--danger"
+                        onClick={() => onDelete(c.id, c.name)}
+                      >
+                        Удалить
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
 
       {modalOpen && (

@@ -53,56 +53,71 @@ export default function Layout() {
             </div>
 
             <nav className="sidebar_menu" aria-label="Меню" style={{ flex: 1 }}>
-              <NavLink to="/acts" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Заявки">
-                <span className="menu_icon">📄</span>
-                <span className="menu_text">Заявки</span>
-              </NavLink>
-
-              <NavLink to="/smr" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="СМР">
-                <span className="menu_icon">🚛</span>
-                <span className="menu_text">СМР</span>
-              </NavLink>
-
-              <NavLink
-                to="/requests"
-                className={({ isActive }) => (isActive ? "selected_menu" : "")}
-                title="ТТН"
-              >
-                <span className="menu_icon">📝</span>
-                <span className="menu_text">ТТН</span>
-              </NavLink>
-
-              <NavLink
-                to="/warehouse"
-                className={({ isActive }) => (isActive ? "selected_menu" : "")}
-                title="Склад"
-              >
-                <span className="menu_icon">🏭</span>
-                <span className="menu_text">Склад</span>
-              </NavLink>
-
-              <NavLink
-                to="/contracts"
-                className={({ isActive }) => (isActive ? "selected_menu" : "")}
-                title="Договоры"
-              >
-                <span className="menu_icon">🤝</span>
-                <span className="menu_text">Договоры</span>
-              </NavLink>
-
               {(!isAccountant || isAdmin) && (
-                <NavLink
-                  to="/deferred"
-                  className={({ isActive }) => (isActive ? "selected_menu" : "")}
-                  title="Отложенные заявки"
-                >
-                  <span className="menu_icon">⏳</span>
-                  <span className="menu_text">Отложенные</span>
-                </NavLink>
+                <>
+                  <NavLink to="/acts" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Заявки">
+                    <span className="menu_icon">📄</span>
+                    <span className="menu_text">Заявки</span>
+                  </NavLink>
+
+                  <NavLink to="/smr" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="СМР">
+                    <span className="menu_icon">🚛</span>
+                    <span className="menu_text">СМР</span>
+                  </NavLink>
+
+                  <NavLink
+                    to="/requests"
+                    className={({ isActive }) => (isActive ? "selected_menu" : "")}
+                    title="ТТН"
+                  >
+                    <span className="menu_icon">📝</span>
+                    <span className="menu_text">ТТН</span>
+                  </NavLink>
+
+                  <NavLink
+                    to="/warehouse"
+                    className={({ isActive }) => (isActive ? "selected_menu" : "")}
+                    title="Склад"
+                  >
+                    <span className="menu_icon">🏭</span>
+                    <span className="menu_text">Склад</span>
+                  </NavLink>
+
+                  <NavLink
+                    to="/contracts"
+                    className={({ isActive }) => (isActive ? "selected_menu" : "")}
+                    title="Договоры"
+                  >
+                    <span className="menu_icon">🤝</span>
+                    <span className="menu_text">Договоры</span>
+                  </NavLink>
+
+                  {!isAccountant || isAdmin ? (
+                    <NavLink
+                      to="/deferred"
+                      className={({ isActive }) => (isActive ? "selected_menu" : "")}
+                      title="Отложенные заявки"
+                    >
+                      <span className="menu_icon">⏳</span>
+                      <span className="menu_text">Отложенные</span>
+                    </NavLink>
+                  ) : null}
+
+                  {!isAccountant || isAdmin ? (
+                    <NavLink
+                      to="/sent"
+                      className={({ isActive }) => (isActive ? "selected_menu" : "")}
+                      title="Отработанные заявки"
+                    >
+                      <span className="menu_icon">✅</span>
+                      <span className="menu_text">Отработанные</span>
+                    </NavLink>
+                  ) : null}
+                </>
               )}
 
               {(isAdmin || isAccountant) && (
-                <div className="accountant_section" style={{ marginTop: '20px', borderTop: '1px solid var(--border-color)', paddingTop: '10px' }}>
+                <div className="accountant_section" style={{  paddingBottom: '10px' }}>
                   <div className="menu_section_title" style={{ padding: '4px 12px', fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                     {isSidebarOpen ? 'Бухгалтерия' : '...'}
                   </div>

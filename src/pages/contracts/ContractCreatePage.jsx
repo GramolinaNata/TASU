@@ -187,7 +187,7 @@ export default function ContractCreatePage() {
           </div>
           <div className="table_actions">
             <button className="btn btn--accent" type="submit" disabled={loading}>
-              {loading ? "Сохранение..." : "Создать договор"}
+              {loading ? "Формирование договора..." : "Создать договор"}
             </button>
           </div>
         </div>

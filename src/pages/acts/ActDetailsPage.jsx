@@ -34,9 +34,10 @@ export default function ActDetailsPage() {
   const isTTNPath = location.pathname.startsWith('/requests');
   const isWarehousePath = location.pathname.startsWith('/warehouse');
   const isDeferredPath = location.pathname.startsWith('/deferred');
+  const isSentPath = location.pathname.startsWith('/sent');
   
-  const basePath = isDeferredPath ? "/deferred" : isSMRPath ? "/smr" : (isTTNPath ? "/requests" : (isWarehousePath ? "/warehouse" : "/acts"));
-  const crumbLabel = isDeferredPath ? "Отложенные" : isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : (isWarehousePath ? "Склад" : "Заявки"));
+  const basePath = isSentPath ? "/sent" : (isAccountant && !isAdmin ? "/accountant/general" : (isDeferredPath ? "/deferred" : isSMRPath ? "/smr" : (isTTNPath ? "/requests" : (isWarehousePath ? "/warehouse" : "/acts"))));
+  const crumbLabel = isSentPath ? "Отработанные" : (isAccountant && !isAdmin ? "Бухгалтерия" : (isDeferredPath ? "Отложенные" : isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : (isWarehousePath ? "Склад" : "Заявки"))));
   
   const [services, setServices] = useState([]);
   const [total, setTotal] = useState({ price: "" });
@@ -102,19 +103,27 @@ export default function ActDetailsPage() {
        return;
     }
 
-    const updated = await api.requests.update(id, { 
-      type: type,
-      docType: type,
-      status: "act" 
-    });
-    await loadAct();
-    alert("Документ успешно сформирован!");
-    if (type === 'ttn') nav(`/requests/${id}`);
-    else if (type === 'smr') nav(`/smr/${id}`);
+    setActionLoading(true);
+    try {
+      await api.requests.update(id, { 
+        type: type,
+        docType: type,
+        status: "act" 
+      });
+      await loadAct();
+      alert("Документ успешно сформирован!");
+      if (type === 'ttn') nav(`/requests/${id}`);
+      else if (type === 'smr') nav(`/smr/${id}`);
+    } catch (err) {
+      alert("Ошибка: " + err.message);
+    } finally {
+      setActionLoading(false);
+    }
   };
 
   const confirmDocType = async () => {
     if (!id || !showDocForm) return;
+    setActionLoading(true);
     try {
       await api.requests.update(id, { 
         type: showDocForm,
@@ -130,6 +139,8 @@ export default function ActDetailsPage() {
       setShowDocForm(null);
     } catch (err) {
       alert("Ошибка: " + err.message);
+    } finally {
+      setActionLoading(false);
     }
   };
   
@@ -144,6 +155,24 @@ export default function ActDetailsPage() {
       await loadAct();
       setActionLoading(false);
       nav("/acts"); // Возвращаем в список заявок
+    }
+  };
+
+  const handleSendToAccountant = async () => {
+    if (!id || !act) return;
+    if (window.confirm("Отправить документ бухгалтеру? После этого он появится в списке бухгалтерии.")) {
+      setActionLoading(true);
+      try {
+        const updated = await api.requests.update(id, {
+          readyForAccountant: true
+        });
+        setAct(prev => ({ ...prev, ...updated, readyForAccountant: true }));
+        alert("Документ отправлен бухгалтеру!");
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      } finally {
+        setActionLoading(false);
+      }
     }
   };
 
@@ -286,29 +315,30 @@ export default function ActDetailsPage() {
         <div className="topbar_actions">
           <button className="btn" onClick={() => nav(basePath)}>← Назад</button>
           
-          {(!isAccountant || isAdmin) && (
+          {(!isAccountant || isAdmin) && !isSentPath && (
             <>
               <button 
                 className="btn btn--accent" 
                 onClick={() => nav(`${basePath}/${act.id}/edit`)}
-                disabled={act.status === 'canceled' || actionLoading}
+                disabled={act.status === 'canceled' || act.readyForAccountant || actionLoading}
               >
                 Редактировать
               </button>
 
-              {act.status !== 'canceled' && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "ttn" && act.docType !== "ttn" && (
-                <button className="btn btn--ghost" onClick={() => chooseDocType("ttn")}>
-                  Сформировать ТТН
+              {act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "ttn" && act.docType !== "ttn" && (
+                <button className="btn btn--ghost" onClick={() => chooseDocType("ttn")} disabled={actionLoading}>
+                  {actionLoading ? "Формирование..." : "Сформировать ТТН"}
                 </button>
               )}
 
-              {act.status !== 'canceled' && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "smr" && act.docType !== "smr" && (
-                <button className="btn btn--ghost" onClick={() => chooseDocType("smr")}>
-                  Сформировать СМР
+              {act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "smr" && act.docType !== "smr" && (
+                <button className="btn btn--ghost" onClick={() => chooseDocType("smr")} disabled={actionLoading}>
+                  {actionLoading ? "Формирование..." : "Сформировать СМР"}
                 </button>
               )}
 
-              {act.status !== 'canceled' && (
+
+              {act.status !== 'canceled' && !act.readyForAccountant && (
                 <button 
                   className={`btn ${act.isDeferredForAccountant ? 'btn--primary' : 'btn--ghost'}`} 
                   onClick={handleToggleDefer}
@@ -342,8 +372,8 @@ export default function ActDetailsPage() {
               {actionLoading ? "..." : "Восстановить"}
             </button>
           )}
-
-          {act.status !== 'canceled' && !act.isWarehouse ? (
+          
+          {act.status !== 'canceled' && !act.isWarehouse && !isSentPath ? (
             <>
               <div style={{ position: 'relative', display: 'inline-block' }}>
                   <button 
@@ -474,10 +504,52 @@ export default function ActDetailsPage() {
               {/* Расчет для авиа-отправки удален по просьбе пользователя */}
             </div>
             <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
-              <button className="btn btn--accent" onClick={confirmDocType}>Подтвердить и Сформировать</button>
-              <button className="btn" onClick={() => setShowDocForm(null)}>Отмена</button>
+              <button className="btn btn--accent" onClick={confirmDocType} disabled={actionLoading}>
+                {actionLoading ? "Создание..." : "Подтвердить и Сформировать"}
+              </button>
+              <button className="btn" onClick={() => setShowDocForm(null)} disabled={actionLoading}>Отмена</button>
             </div>
           </div>
+        </div>
+      )}
+      {(!isAccountant || isAdmin) && act.status !== 'canceled' && (
+        <div className="action_banner" style={{
+           marginTop: 16, 
+           background: act.readyForAccountant ? 'rgba(82, 196, 26, 0.05)' : 'var(--card)', 
+           borderLeft: `4px solid ${act.readyForAccountant ? '#52c41a' : '#faad14'}`,
+           padding: '20px',
+           borderRadius: 8,
+           display: 'flex',
+           flexWrap: 'wrap',
+           alignItems: 'center',
+           gap: 16,
+           justifyContent: 'space-between',
+           boxShadow: '0 2px 8px rgba(0,0,0,0.05)'
+        }}>
+           <div>
+              <div style={{fontWeight: 700, fontSize: '1.1rem', marginBottom: 4}}>
+                {act.readyForAccountant ? "✅ Документ отправлен бухгалтеру" : "Документ готов к передаче?"}
+              </div>
+              <div className="muted" style={{fontSize: '0.9rem'}}>
+                {act.readyForAccountant 
+                  ? "" 
+                  : "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СНО/АВР"}
+              </div>
+           </div>
+           {!act.readyForAccountant ? (
+             <button 
+                className="btn btn--primary" 
+                onClick={handleSendToAccountant}
+                disabled={actionLoading}
+                style={{ background: '#52c41a', borderColor: '#52c41a', color: '#fff', padding: '10px 24px', fontWeight: 700 }}
+              >
+                {actionLoading ? "Отправка..." : "▶ Отправить бухгалтеру"}
+              </button>
+           ) : (
+             <div style={{ color: '#52c41a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span>✓ Отправлено</span>
+             </div>
+           )}
         </div>
       )}
 
@@ -539,71 +611,93 @@ export default function ActDetailsPage() {
 
       <div className="split_2" style={{ marginTop: 14 }}>
         {/* SECTION: Бухгалтерия */}
-        {isAccountant && (
+        {(isAccountant || isAdmin || act.readyForAccountant) && (
           <div className="info_card" style={{ gridColumn: 'span 2', borderRadius: 8, padding: 20 }}>
             <div className="info_title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 16 }}>
               <span style={{ fontSize: '1.2rem', color: 'var(--info)' }}>Отметка Бухгалтерии</span>
             </div>
             <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
               
-              {/* СНО Toggle */}
+              {/* СНО Toggle / Status */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
                     Счет на оплату (СНО) выставлен
                  </div>
-                 <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                    <input 
-                      type="checkbox" 
-                      style={{ display: 'none' }}
-                      checked={!!act.snoIssued} 
-                      onChange={async (e) => {
-                        const val = e.target.checked;
-                        setAct(prev => ({ ...prev, snoIssued: val }));
-                        try { await api.requests.update(act.id, { snoIssued: val }); }
-                        catch (err) { alert(err.message); setAct(prev => ({ ...prev, snoIssued: !val })); }
-                      }}
-                    />
-                    <div className="toggle_slider" style={{
-                      width: 44, height: 24, background: act.snoIssued ? 'var(--success)' : 'var(--muted)', 
-                      borderRadius: 24, position: 'relative', transition: 'background 0.3s'
-                    }}>
-                      <div className="toggle_knob" style={{
-                        width: 20, height: 20, background: '#fff', borderRadius: '50%',
-                        position: 'absolute', top: 2, left: act.snoIssued ? 22 : 2,
-                        transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                      }} />
-                    </div>
-                 </label>
+                 {isAccountant ? (
+                   <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        style={{ display: 'none' }}
+                        checked={!!act.snoIssued} 
+                        onChange={async (e) => {
+                          const val = e.target.checked;
+                          setAct(prev => ({ ...prev, snoIssued: val }));
+                          try { await api.requests.update(act.id, { snoIssued: val }); }
+                          catch (err) { alert(err.message); setAct(prev => ({ ...prev, snoIssued: !val })); }
+                        }}
+                      />
+                      <div className="toggle_slider" style={{
+                        width: 44, height: 24, background: act.snoIssued ? 'var(--success)' : 'var(--muted)', 
+                        borderRadius: 24, position: 'relative', transition: 'background 0.3s'
+                      }}>
+                        <div className="toggle_knob" style={{
+                          width: 20, height: 20, background: '#fff', borderRadius: '50%',
+                          position: 'absolute', top: 2, left: act.snoIssued ? 22 : 2,
+                          transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }} />
+                      </div>
+                   </label>
+                 ) : (
+                   <span className="badge" style={{ 
+                     background: act.snoIssued ? '#f6ffed' : '#fffbe6', 
+                     color: act.snoIssued ? '#52c41a' : '#faad14',
+                     padding: '4px 12px',
+                     borderColor: act.snoIssued ? '#b7eb8f' : '#ffe58f'
+                   }}>
+                     {act.snoIssued ? "Да" : "Нет"}
+                   </span>
+                 )}
               </div>
 
-              {/* АВР Toggle */}
+              {/* АВР Toggle / Status */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
                     Акт выполненных работ (АВР) отправлен
                  </div>
-                 <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                    <input 
-                      type="checkbox" 
-                      style={{ display: 'none' }}
-                      checked={!!act.avrSent} 
-                      onChange={async (e) => {
-                        const val = e.target.checked;
-                        setAct(prev => ({ ...prev, avrSent: val }));
-                        try { await api.requests.update(act.id, { avrSent: val }); }
-                        catch (err) { alert(err.message); setAct(prev => ({ ...prev, avrSent: !val })); }
-                      }}
-                    />
-                    <div className="toggle_slider" style={{
-                      width: 44, height: 24, background: act.avrSent ? 'var(--info)' : 'var(--muted)', 
-                      borderRadius: 24, position: 'relative', transition: 'background 0.3s'
-                    }}>
-                      <div className="toggle_knob" style={{
-                        width: 20, height: 20, background: '#fff', borderRadius: '50%',
-                        position: 'absolute', top: 2, left: act.avrSent ? 22 : 2,
-                        transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                      }} />
-                    </div>
-                 </label>
+                 {isAccountant ? (
+                   <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        style={{ display: 'none' }}
+                        checked={!!act.avrSent} 
+                        onChange={async (e) => {
+                          const val = e.target.checked;
+                          setAct(prev => ({ ...prev, avrSent: val }));
+                          try { await api.requests.update(act.id, { avrSent: val }); }
+                          catch (err) { alert(err.message); setAct(prev => ({ ...prev, avrSent: !val })); }
+                        }}
+                      />
+                      <div className="toggle_slider" style={{
+                        width: 44, height: 24, background: act.avrSent ? 'var(--info)' : 'var(--muted)', 
+                        borderRadius: 24, position: 'relative', transition: 'background 0.3s'
+                      }}>
+                        <div className="toggle_knob" style={{
+                          width: 20, height: 20, background: '#fff', borderRadius: '50%',
+                          position: 'absolute', top: 2, left: act.avrSent ? 22 : 2,
+                          transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }} />
+                      </div>
+                   </label>
+                 ) : (
+                   <span className="badge" style={{ 
+                     background: act.avrSent ? '#e6f7ff' : '#fffbe6', 
+                     color: act.avrSent ? '#1890ff' : '#faad14',
+                     padding: '4px 12px',
+                     borderColor: act.avrSent ? '#91caff' : '#ffe58f'
+                   }}>
+                     {act.avrSent ? "Да" : "Нет"}
+                   </span>
+                 )}
               </div>
 
             </div>

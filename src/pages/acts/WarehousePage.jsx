@@ -3,6 +3,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
+import Loader from "../../shared/components/Loader";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -61,21 +62,25 @@ export default function WarehousePage() {
   };
 
   useEffect(() => {
-    loadActs();
     const unsubscribe = subscribeSelectedCompany(setCompany);
     setCompany(getSelectedCompany());
     return unsubscribe;
   }, []);
 
   useEffect(() => {
-    if (company) loadActs();
+    if (company) {
+      loadActs();
+    } else {
+      setActs([]);
+      setLoading(false);
+    }
   }, [company]);
 
   const filtered = useMemo(() => {
     let list = acts.filter(a => a.isWarehouse && !a.isDeferredForAccountant);
 
     if (company) {
-       list = list.filter(a => a.companyId === company.id);
+       list = list.filter(a => a.companyId === company.id && !!a.isWarehouse && !a.isDeferredForAccountant && !a.readyForAccountant);
     } else {
        return [];
     }
@@ -170,108 +175,109 @@ export default function WarehousePage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        {loading && <div className="muted" style={{padding: 20}}>Загрузка...</div>}
-        {!loading && (
-        <table className="table_fixed">
-          <thead>
-            <tr>
-              <th style={{width: 100}}>Номер</th>
-              <th style={{width: 100}}>Дата</th>
-              <th style={{width: 120}}>Статус</th>
-              <th>Заказчик</th>
-              <th style={{ width: 150 }}>Сумма услуг</th>
-              {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+        {loading ? (
+          <Loader />
+        ) : (
+          <table className="table_fixed">
+            <thead>
               <tr>
-                <td colSpan={6} className="muted" style={{ padding: 16 }}>
-                  {company ? "Складских заявок не найдено." : "Выберите компанию."}
-                </td>
+                <th style={{ width: 100 }}>Номер</th>
+                <th style={{ width: 100 }}>Дата</th>
+                <th style={{ width: 120 }}>Статус</th>
+                <th>Заказчик</th>
+                <th style={{ width: 150 }}>Сумма услуг</th>
+                {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
               </tr>
-            ) : (
-              filtered.map((a) => (
-                <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
-                  <td className="num">
-                    <Link to={`/warehouse/${a.id}`}>{a.docNumber || a.number}</Link>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
+                    {company ? "Складских заявок не найдено." : "Выберите компанию."}
                   </td>
-                  <td>{formatDisplayDate(a.createdAt || a.date)}</td>
-                  <td>
-                    {a.status === 'canceled' ? (
-                       <span className="badge badge--danger">Аннулирована</span>
-                    ) : a.status === 'draft' ? (
-                       <span className="badge badge--draft">Черновик</span>
-                    ) : (
-                       <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
-                    )}
-                  </td>
-                  <td>
-                    <div style={{fontWeight: 500}}>{a.customer?.fio || "—"}</div>
-                  </td>
-                  <td style={{ fontWeight: 700 }}>
-                    {getServicesTotal(a.warehouseServices).toLocaleString()} тг
-                  </td>
-                  {(!isAccountant || isAdmin) && (
-                  <td
-                    style={{
-                      textAlign: "right",
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: 8,
-                    }}
-                  >
-                    {(!isAccountant || isAdmin) && (
-                      a.status === 'canceled' ? (
-                        <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
-                          Редактировать
-                        </button>
-                      ) : (
-                        <Link className="btn btn--sm" to={`/warehouse/${a.id}/edit`}>
-                          Редактировать
-                        </Link>
-                      )
-                    )}
-                    
-                    {isAdmin ? (
-                      <>
-                        <button 
-                          className="btn btn--sm btn--danger" 
-                          type="button" 
-                          onClick={() => handleDelete(a.id, a.docNumber || a.number)}
-                          style={{ background: '#ff4d4f', color: '#fff' }}
-                        >
-                          Удалить
-                        </button>
-                        {a.status === 'canceled' && (
-                          <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.number)}>
-                            Восстановить
-                          </button>
-                        )}
-                        {a.status !== 'canceled' && (
-                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
-                            Аннулировать
-                          </button>
-                        )}
-                      </>
-                    ) : (
-                      a.status !== 'canceled' && (
-                          <button
-                            className="btn btn--sm btn--danger"
-                            type="button"
-                            onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
-                          >
-                          Аннулировать
-                        </button>
-                      )
-                    )}
-                  </td>
-                  )}
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filtered.map((a) => (
+                  <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
+                    <td className="num">
+                      <Link to={`/warehouse/${a.id}`}>{a.docNumber || a.number}</Link>
+                    </td>
+                    <td>{formatDisplayDate(a.createdAt || a.date)}</td>
+                    <td>
+                      {a.status === 'canceled' ? (
+                        <span className="badge badge--danger">Аннулирована</span>
+                      ) : a.status === 'draft' ? (
+                        <span className="badge badge--draft">Черновик</span>
+                      ) : (
+                        <span className="badge" style={{ background: '#52c41a', color: '#fff' }}>Склад</span>
+                      )}
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div>
+                    </td>
+                    <td style={{ fontWeight: 700 }}>
+                      {getServicesTotal(a.warehouseServices).toLocaleString()} тг
+                    </td>
+                    {(!isAccountant || isAdmin) && (
+                      <td
+                        style={{
+                          textAlign: "right",
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: 8,
+                        }}
+                      >
+                        {(!isAccountant || isAdmin) && (
+                          a.status === 'canceled' ? (
+                            <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+                              Редактировать
+                            </button>
+                          ) : (
+                            <Link className="btn btn--sm" to={`/warehouse/${a.id}/edit`}>
+                              Редактировать
+                            </Link>
+                          )
+                        )}
+
+                        {isAdmin ? (
+                          <>
+                            <button
+                              className="btn btn--sm btn--danger"
+                              type="button"
+                              onClick={() => handleDelete(a.id, a.docNumber || a.number)}
+                              style={{ background: '#ff4d4f', color: '#fff' }}
+                            >
+                              Удалить
+                            </button>
+                            {a.status === 'canceled' && (
+                              <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.number)}>
+                                Восстановить
+                              </button>
+                            )}
+                            {a.status !== 'canceled' && (
+                              <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
+                                Аннулировать
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          a.status !== 'canceled' && (
+                            <button
+                              className="btn btn--sm btn--danger"
+                              type="button"
+                              onClick={() => handleAnnul(a.id, a.docNumber || a.number)}
+                            >
+                              Аннулировать
+                            </button>
+                          )
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         )}
       </div>
     </>

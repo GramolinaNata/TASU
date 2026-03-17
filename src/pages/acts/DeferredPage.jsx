@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
+import Loader from "../../shared/components/Loader";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -177,86 +178,87 @@ export default function DeferredPage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        {loading && <div className="muted" style={{padding: 20}}>Загрузка...</div>}
-        {!loading && (
-        <table className="table_fixed">
-          <thead>
-            <tr>
-              <th style={{width: 100}}>Номер</th>
-              <th style={{width: 100}}>Дата</th>
-              <th>Компания</th>
-              <th>Заказчик</th>
-              <th>Маршрут</th>
-              <th>Статус</th>
-              <th style={{ width: 100 }}>Сумма (тг)</th>
-              <th style={{ width: 120, textAlign: "right" }}>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+        {loading ? (
+          <Loader />
+        ) : (
+          <table className="table_fixed">
+            <thead>
               <tr>
-                <td colSpan={8} className="muted" style={{ padding: 16 }}>
-                  Нет отложенных заявок.
-                </td>
+                <th style={{ width: 100 }}>Номер</th>
+                <th style={{ width: 100 }}>Дата</th>
+                <th>Компания</th>
+                <th>Заказчик</th>
+                <th>Маршрут</th>
+                <th>Статус</th>
+                <th style={{ width: 100 }}>Сумма (тг)</th>
+                <th style={{ width: 120, textAlign: "right" }}>Действия</th>
               </tr>
-            ) : (
-              filtered.map((a) => (
-                <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
-                  <td className="num">
-                    <Link to={`/deferred/${a.id}`}>
-                        {a.docNumber || a.number}
-                    </Link>
-                  </td>
-                  <td>{formatDisplayDate(a.createdAt || a.date)}</td>
-                  <td><div style={{fontWeight: 500, fontSize: '0.85rem'}}>{a.company?.name || "—"}</div></td>
-                  <td><div style={{fontWeight: 500}}>{a.customer?.fio || "—"}</div></td>
-                  <td>
-                    {a.isWarehouse ? (
-                        <span className="badge" style={{background: '#e6f7ff', color: '#1890ff'}}>Склад</span>
-                    ) : (
-                        <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>
-                            {a.route?.fromCity || "—"} → {a.route?.toCity || "—"}
-                        </div>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                    {a.status === 'draft' ? (
-                      <span className="badge" style={{background: '#f5f5f5', color: '#595959', padding: '2px 6px', fontSize: '0.75rem'}}>Черновик</span>
-                    ) : a.status === 'canceled' ? (
-                      <span className="badge" style={{background: '#fff1f0', color: '#f5222d', padding: '2px 6px', fontSize: '0.75rem'}}>Аннулирован</span>
-                    ) : (
-                      <>
-                        {a.isWarehouse ? (
-                          <span className="badge" style={{background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem'}}>Складская</span>
-                        ) : a.docType === 'ttn' || a.type === 'ttn' ? (
-                          <span className="badge" style={{background: '#e6f7ff', color: '#1890ff', padding: '2px 6px', fontSize: '0.75rem'}}>ТТН</span>
-                        ) : a.docType === 'smr' || a.type === 'smr' ? (
-                          <span className="badge" style={{background: '#fff0f6', color: '#eb2f96', padding: '2px 6px', fontSize: '0.75rem'}}>СМР</span>
-                        ) : (
-                          <span className="badge" style={{background: '#f0f5ff', color: '#2f54eb', padding: '2px 6px', fontSize: '0.75rem'}}>Заявка</span>
-                        )}
-                      </>
-                    )}
-                  </td>
-                  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
-                    <button
-                      className="btn btn--sm btn--primary"
-                      style={{ borderColor: "#108ee9", color: "#108ee9", background: "transparent" }}
-                      type="button"
-                      onClick={() => handleReturn(a.id, a.docNumber || a.number)}
-                      title="Вернуть"
-                    >
-                      Вернуть
-                    </button>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
+                    Нет отложенных заявок.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filtered.map((a) => (
+                  <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
+                    <td className="num">
+                      <Link to={`/deferred/${a.id}`}>
+                        {a.docNumber || a.number}
+                      </Link>
+                    </td>
+                    <td>{formatDisplayDate(a.createdAt || a.date)}</td>
+                    <td><div style={{ fontWeight: 500, fontSize: '0.85rem' }}>{a.company?.name || "—"}</div></td>
+                    <td><div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div></td>
+                    <td>
+                      {a.isWarehouse ? (
+                        <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Склад</span>
+                      ) : (
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          {a.route?.fromCity || "—"} → {a.route?.toCity || "—"}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                      {a.status === 'draft' ? (
+                        <span className="badge" style={{ background: '#f5f5f5', color: '#595959', padding: '2px 6px', fontSize: '0.75rem' }}>Черновик</span>
+                      ) : a.status === 'canceled' ? (
+                        <span className="badge" style={{ background: '#fff1f0', color: '#f5222d', padding: '2px 6px', fontSize: '0.75rem' }}>Аннулирован</span>
+                      ) : (
+                        <>
+                          {a.isWarehouse ? (
+                            <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Складская</span>
+                          ) : a.docType === 'ttn' || a.type === 'ttn' ? (
+                            <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff', padding: '2px 6px', fontSize: '0.75rem' }}>ТТН</span>
+                          ) : a.docType === 'smr' || a.type === 'smr' ? (
+                            <span className="badge" style={{ background: '#fff0f6', color: '#eb2f96', padding: '2px 6px', fontSize: '0.75rem' }}>СМР</span>
+                          ) : (
+                            <span className="badge" style={{ background: '#f0f5ff', color: '#2f54eb', padding: '2px 6px', fontSize: '0.75rem' }}>Заявка</span>
+                          )}
+                        </>
+                      )}
+                    </td>
+                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <button
+                        className="btn btn--sm btn--primary"
+                        style={{ borderColor: "#108ee9", color: "#108ee9", background: "transparent" }}
+                        type="button"
+                        onClick={() => handleReturn(a.id, a.docNumber || a.number)}
+                        title="Вернуть"
+                      >
+                        Вернуть
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         )}
       </div>
     </>

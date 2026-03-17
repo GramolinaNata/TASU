@@ -3,6 +3,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
+import Loader from "../../shared/components/Loader";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -94,17 +95,25 @@ export default function RequestsPage() {
   };
 
   useEffect(() => {
-    loadData();
     const unsubscribe = subscribeSelectedCompany(setCompany);
     setCompany(getSelectedCompany());
     return unsubscribe;
   }, []);
 
+  useEffect(() => {
+    if (company) {
+      loadData();
+    } else {
+      setAllActs([]);
+      setLoading(false);
+    }
+  }, [company]);
+
   const filtered = useMemo(() => {
     let list = allActs.filter(a => (a.type === "ttn" || a.docType === "ttn") && !a.isDeferredForAccountant);
 
     if (company) {
-      list = list.filter(a => a.companyId === company.id);
+       list = list.filter(a => a.companyId === company.id && (a.docType === 'ttn' || a.type === 'ttn') && !a.isDeferredForAccountant && !a.readyForAccountant);
     } else {
       return [];
     }
@@ -174,111 +183,114 @@ export default function RequestsPage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        {loading && <div className="muted" style={{ padding: 12 }}>Загрузка...</div>}
-        <table>
-          <thead>
-            <tr>
-              <th>Номер</th>
-              <th>Дата</th>
-              <th>Статус</th>
-              <th>Страна, город (откуда)</th>
-              <th>Страна, город (куда)</th>
-              <th>Заказчик</th>
-              <th>Вид транспорта</th>
-              <th>Сумма (тг)</th>
-              {(!isAccountant || isAdmin) && <th style={{ width: 170, textAlign: "right" }}>Действия</th>}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+        {loading ? (
+          <Loader />
+        ) : (
+          <table>
+            <thead>
               <tr>
-                <td colSpan={7} className="muted" style={{ padding: 16 }}>
-                  {company ? "ТТН не найдены." : "Выберите компанию."}
-                </td>
+                <th>Номер</th>
+                <th>Дата</th>
+                <th>Статус</th>
+                <th>Страна, город (откуда)</th>
+                <th>Страна, город (куда)</th>
+                <th>Заказчик</th>
+                <th>Вид транспорта</th>
+                <th>Сумма (тг)</th>
+                {(!isAccountant || isAdmin) && <th style={{ width: 170, textAlign: "right" }}>Действия</th>}
               </tr>
-            ) : (
-               filtered.map((a) => (
-                <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
-                  <td className="num">
-                    <Link to={`/requests/${a.id}`}>{a.docNumber || a.number}</Link>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
+                    {company ? "ТТН не найдены." : "Выберите компанию."}
                   </td>
-                  <td>{formatDisplayDate(a.createdAt || a.date)}</td>
-                  <td>
-                    {a.status === 'canceled' ? (
-                       <span className="badge badge--danger">Аннулирована</span>
-                    ) : a.status === 'draft' ? (
-                       <span className="badge badge--draft">Черновик</span>
-                    ) : (
-                       <span className="badge badge--ttn" style={{ background: '#52c41a' }}>ТТН</span>
-                    )}
-                  </td>
-                  <td>{a.route?.fromCity || "—"}</td>
-                  <td>{a.route?.toCity || "—"}</td>
-                  <td>{a.customer?.fio || "—"}</td>
-                  <td>
-                    {a.docAttrs?.transportType === 'auto_console' || a.docAttrs?.transportType === 'auto_separate' ? "Авто" :
-                     a.docAttrs?.transportType === 'plane' ? "Самолет" :
-                     a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
-                  </td>
-                  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                    {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                  </td>
-                  {(!isAccountant || isAdmin) && (
-                  <td
-                    style={{
-                      textAlign: "right",
-                      display: "flex",
-                      justifyContent: "flex-end",
-                      gap: 8,
-                    }}
-                  >
-                      {(!isAccountant || isAdmin) && (
-                        a.status === 'canceled' ? (
-                          <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
-                            Редактировать
-                          </button>
-                        ) : (
-                          <Link className="btn btn--sm" to={`/requests/${a.id}/edit`}>
-                            Редактировать
-                          </Link>
-                        )
+                </tr>
+              ) : (
+                filtered.map((a) => (
+                  <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
+                    <td className="num">
+                      <Link to={`/requests/${a.id}`}>{a.docNumber || a.number}</Link>
+                    </td>
+                    <td>{formatDisplayDate(a.createdAt || a.date)}</td>
+                    <td>
+                      {a.status === 'canceled' ? (
+                        <span className="badge badge--danger">Аннулирована</span>
+                      ) : a.status === 'draft' ? (
+                        <span className="badge badge--draft">Черновик</span>
+                      ) : (
+                        <span className="badge badge--ttn" >ТТН</span>
                       )}
-                      
-                      {isAdmin ? (
-                        <>
-                          <button 
-                            className="btn btn--sm btn--danger" 
-                            type="button" 
-                            onClick={() => handleDelete(a.id, a.docNumber || a.number)}
-                            style={{ background: '#ff4d4f', color: '#fff' }}
-                          >
-                            Удалить
-                          </button>
-                          {a.status === 'canceled' && (
-                            <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.docNumber || a.number)}>
-                              Восстановить
+                    </td>
+                    <td>{a.route?.fromCity || "—"}</td>
+                    <td>{a.route?.toCity || "—"}</td>
+                    <td>{a.customer?.fio || "—"}</td>
+                    <td>
+                      {a.docAttrs?.transportType === 'auto_console' || a.docAttrs?.transportType === 'auto_separate' ? "Авто" :
+                        a.docAttrs?.transportType === 'plane' ? "Самолет" :
+                          a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
+                    </td>
+                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                    </td>
+                    {(!isAccountant || isAdmin) && (
+                      <td
+                        style={{
+                          textAlign: "right",
+                          display: "flex",
+                          justifyContent: "flex-end",
+                          gap: 8,
+                        }}
+                      >
+                        {(!isAccountant || isAdmin) && (
+                          a.status === 'canceled' ? (
+                            <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
+                              Редактировать
                             </button>
-                          )}
-                          {a.status !== 'canceled' && (
-                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
+                          ) : (
+                            <Link className="btn btn--sm" to={`/requests/${a.id}/edit`}>
+                              Редактировать
+                            </Link>
+                          )
+                        )}
+
+                        {isAdmin ? (
+                          <>
+                            <button
+                              className="btn btn--sm btn--danger"
+                              type="button"
+                              onClick={() => handleDelete(a.id, a.docNumber || a.number)}
+                              style={{ background: '#ff4d4f', color: '#fff' }}
+                            >
+                              Удалить
+                            </button>
+                            {a.status === 'canceled' && (
+                              <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.docNumber || a.number)}>
+                                Восстановить
+                              </button>
+                            )}
+                            {a.status !== 'canceled' && (
+                              <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
+                                Аннулировать
+                              </button>
+                            )}
+                          </>
+                        ) : (
+                          a.status !== 'canceled' && (
+                            <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
                               Аннулировать
                             </button>
-                          )}
-                        </>
-                      ) : (
-                        a.status !== 'canceled' && (
-                          <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
-                            Аннулировать
-                          </button>
-                        )
-                      )}
-                  </td>
-                  )}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                          )
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        )}
       </div>
     </>
   );

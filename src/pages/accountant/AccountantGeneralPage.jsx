@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
+import Loader from "../../shared/components/Loader";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -67,8 +68,8 @@ export default function AccountantGeneralPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    // 1. Убираем отложенные (и опционально черновики, но мы фильтруем дальше)
-    let list = acts.filter(a => !a.isDeferredForAccountant);
+    // 1. Обязательное условие: только отработанные (отправленные бухгалтеру) и не отложенные
+    let list = acts.filter(a => !!a.readyForAccountant && !a.isDeferredForAccountant);
 
     // Фильтр по типу документа
     if (docTypeFilter !== "all") {
@@ -97,18 +98,18 @@ export default function AccountantGeneralPage() {
     // Фильтр по СНО
     if (snoFilter !== "all") {
         if (snoFilter === "done") {
-             list = list.filter(a => a.snoStatus === true);
+             list = list.filter(a => !!a.snoIssued);
         } else if (snoFilter === "pending") {
-             list = list.filter(a => !a.snoStatus);
+             list = list.filter(a => !a.snoIssued);
         }
     }
 
     // Фильтр по АВР
     if (avrFilter !== "all") {
         if (avrFilter === "done") {
-             list = list.filter(a => a.avrStatus === true);
+             list = list.filter(a => !!a.avrSent);
         } else if (avrFilter === "pending") {
-             list = list.filter(a => !a.avrStatus);
+             list = list.filter(a => !a.avrSent);
         }
     }
 
@@ -203,76 +204,72 @@ export default function AccountantGeneralPage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        {loading && <div className="muted" style={{padding: 20}}>Загрузка...</div>}
-        {!loading && (
-        <table className="table_fixed">
-          <thead>
-            <tr>
-              <th style={{width: 100}}>Номер</th>
-              <th style={{width: 100}}>Дата</th>
-              <th>Компания</th>
-              <th>Заказчик</th>
-              <th>Маршрут</th>
-              <th style={{width: 80, textAlign: 'center'}}>СНО</th>
-              <th style={{width: 80, textAlign: 'center'}}>АВР</th>
-              <th style={{ width: 120, textAlign: "right" }}>Действия</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
+        {loading ? (
+          <Loader />
+        ) : (
+          <table className="table_fixed">
+            <thead>
               <tr>
-                <td colSpan={8} className="muted" style={{ padding: 16 }}>
-                  В общем котле нет документов.
-                </td>
+                <th style={{ width: 100 }}>Номер</th>
+                <th style={{ width: 100 }}>Дата</th>
+                <th>Компания</th>
+                <th>Заказчик</th>
+                <th>Маршрут</th>
+                <th style={{ width: 80, textAlign: 'center' }}>СНО</th>
+                <th style={{ width: 80, textAlign: 'center' }}>АВР</th>
               </tr>
-            ) : (
-              filtered.map((a) => (
-                <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
-                  <td className="num">
-                    {/* Если не хотим давать им проваливаться внутрь документов, можно оставить текст. Если хотим - ссылку.
-                        Предположим, им разрешен просмотр. Роут будет зависеть от типа или вести в /acts/:id */}
-                    <Link to={
-                        a.isWarehouse ? `/warehouse/${a.id}` :
-                        a.docType === 'ttn' ? `/requests/${a.id}` :
-                        a.docType === 'smr' ? `/smr/${a.id}` :
-                        `/acts/${a.id}`
-                    }>
-                        {a.docNumber || a.number}
-                    </Link>
-                  </td>
-                  <td>{formatDisplayDate(a.createdAt || a.date)}</td>
-                  <td><div style={{fontWeight: 500, fontSize: '0.85rem'}}>{a.company?.name || "—"}</div></td>
-                  <td><div style={{fontWeight: 500}}>{a.customer?.fio || "—"}</div></td>
-                  <td>
-                    {a.isWarehouse ? (
-                        <span className="badge" style={{background: '#e6f7ff', color: '#1890ff'}}>Склад</span>
-                    ) : (
-                        <div style={{fontSize: '0.85rem', color: 'var(--text-muted)'}}>
-                            {a.route?.fromCity || "—"} → {a.route?.toCity || "—"}
-                        </div>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    {a.snoStatus ? (
-                      <span className="badge" style={{background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem'}}>Да</span>
-                    ) : (
-                      <span className="badge" style={{background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem'}}>Нет</span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "center" }}>
-                    {a.avrStatus ? (
-                      <span className="badge" style={{background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem'}}>Да</span>
-                    ) : (
-                      <span className="badge" style={{background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem'}}>Нет</span>
-                    )}
-                  </td>
-                  <td style={{ textAlign: "right" }}>
+            </thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="muted" style={{ padding: 16 }}>
+                    В общем котле нет документов.
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                filtered.map((a) => (
+                  <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
+                    <td className="num">
+                      <Link to={
+                        a.isWarehouse ? `/warehouse/${a.id}` :
+                          a.docType === 'ttn' ? `/requests/${a.id}` :
+                            a.docType === 'smr' ? `/smr/${a.id}` :
+                              `/acts/${a.id}`
+                      }>
+                        {a.docNumber || a.number}
+                      </Link>
+                    </td>
+                    <td>{formatDisplayDate(a.createdAt || a.date)}</td>
+                    <td><div style={{ fontWeight: 500, fontSize: '0.85rem' }}>{a.company?.name || "—"}</div></td>
+                    <td><div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div></td>
+                    <td>
+                      {a.isWarehouse ? (
+                        <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Склад</span>
+                      ) : (
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                          {a.route?.fromCity || "—"} → {a.route?.toCity || "—"}
+                        </div>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {a.snoIssued ? (
+                        <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Да</span>
+                      ) : (
+                        <span className="badge" style={{ background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem' }}>Нет</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {a.avrSent ? (
+                        <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Да</span>
+                      ) : (
+                        <span className="badge" style={{ background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem' }}>Нет</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         )}
       </div>
     </>

@@ -4,6 +4,7 @@ import { useAuth } from "../../shared/auth/AuthContext.jsx";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { exportToDocx } from "../../shared/export/docxExport.js";
+import Loader from "../../shared/components/Loader";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -38,14 +39,18 @@ export default function ContractsPage() {
   };
 
   useEffect(() => {
-    loadContracts();
     const unsubscribe = subscribeSelectedCompany(setCompany);
     setCompany(getSelectedCompany());
     return unsubscribe;
   }, []);
 
   useEffect(() => {
-    if (company) loadContracts();
+    if (company) {
+      loadContracts();
+    } else {
+      setContracts([]);
+      setLoading(false);
+    }
   }, [company]);
 
   const filtered = useMemo(() => {
@@ -164,8 +169,9 @@ export default function ContractsPage() {
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        {loading && <div className="muted" style={{ padding: 20 }}>Загрузка...</div>}
-        {!loading && (
+        {loading ? (
+          <Loader />
+        ) : (
           <table className="table_fixed">
             <thead>
               <tr>
@@ -180,7 +186,7 @@ export default function ContractsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
                     {company ? "Договоров не найдено." : "Выберите компанию."}
                   </td>
                 </tr>
@@ -188,49 +194,49 @@ export default function ContractsPage() {
                 filtered.map((c) => (
                   <tr key={c.id} style={{ opacity: c.status === 'canceled' ? 0.5 : 1 }}>
                     <td className="num">
-                        <Link to={`/contracts/${c.id}`}>{c.number}</Link>
+                      <Link to={`/contracts/${c.id}`}>{c.number}</Link>
                     </td>
                     <td>{formatDisplayDate(c.date || c.createdAt)}</td>
                     <td>
-                        {c.status === 'canceled' ? (
-                            <span className="badge badge--danger">Аннулирован</span>
-                        ) : (
-                            <span className="badge badge--ttn">Действует</span>
-                        )}
+                      {c.status === 'canceled' ? (
+                        <span className="badge badge--danger">Аннулирован</span>
+                      ) : (
+                        <span className="badge badge--ttn">Действует</span>
+                      )}
                     </td>
                     <td>
-                        {c.type === 'warehouse' ? (
-                            <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Складской</span>
-                        ) : (
-                            <span className="badge" style={{ background: '#f6ffed', color: '#52c41a' }}>Экспедиция</span>
-                        )}
+                      {c.type === 'warehouse' ? (
+                        <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Складской</span>
+                      ) : (
+                        <span className="badge" style={{ background: '#f6ffed', color: '#52c41a' }}>Экспедиция</span>
+                      )}
                     </td>
                     <td>{c.customerName || "—"}</td>
                     {(!isAccountant || isAdmin) && (
-                    <td style={{ textAlign: "right", display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
+                      <td style={{ textAlign: "right", display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                         {!isAdmin && c.status === 'canceled' && (
-                            <Link className="btn btn--sm btn--ghost" to={`/contracts/${c.id}`}>Посмотреть</Link>
+                          <Link className="btn btn--sm btn--ghost" to={`/contracts/${c.id}`}>Посмотреть</Link>
                         )}
                         {c.status !== 'canceled' && (
-                            <button className="btn btn--sm btn--accent" onClick={() => handleExport(c)}>Экспорт</button>
+                          <button className="btn btn--sm btn--accent" onClick={() => handleExport(c)}>Экспорт</button>
                         )}
-                        
+
                         {isAdmin ? (
-                            <>
-                                {c.status === 'canceled' && (
-                                    <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} onClick={() => handleRestore(c.id, c.number)}>Восстановить</button>
-                                )}
-                                {c.status !== 'canceled' && (
-                                    <button className="btn btn--sm btn--danger" onClick={() => handleAnnul(c.id, c.number)}>Аннулировать</button>
-                                )}
-                                <button className="btn btn--sm btn--danger" style={{ background: '#ff4d4f', color: '#fff' }} onClick={() => handleDelete(c.id, c.number)}>Удалить</button>
-                            </>
+                          <>
+                            {c.status === 'canceled' && (
+                              <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} onClick={() => handleRestore(c.id, c.number)}>Восстановить</button>
+                            )}
+                            {c.status !== 'canceled' && (
+                              <button className="btn btn--sm btn--danger" onClick={() => handleAnnul(c.id, c.number)}>Аннулировать</button>
+                            )}
+                            <button className="btn btn--sm btn--danger" style={{ background: '#ff4d4f', color: '#fff' }} onClick={() => handleDelete(c.id, c.number)}>Удалить</button>
+                          </>
                         ) : (
-                            c.status !== 'canceled' && (
-                                <button className="btn btn--sm btn--danger" onClick={() => handleAnnul(c.id, c.number)}>Аннулировать</button>
-                            )
+                          c.status !== 'canceled' && (
+                            <button className="btn btn--sm btn--danger" onClick={() => handleAnnul(c.id, c.number)}>Аннулировать</button>
+                          )
                         )}
-                    </td>
+                      </td>
                     )}
                   </tr>
                 ))
