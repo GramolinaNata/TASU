@@ -529,7 +529,7 @@ export default function ActCreatePage() {
                      <input value={customer.bik} onChange={e => setCustomer({...customer, bik: e.target.value})} />
                    </div>
                    <div className="field">
-                     <div className="label">Счет</div>
+                     <div className="label">IBAN</div>
                      <input value={customer.account} onChange={e => setCustomer({...customer, account: e.target.value})} />
                    </div>
                    <div className="field">
@@ -627,7 +627,7 @@ export default function ActCreatePage() {
                       <input value={sender.bik} onChange={e => setSender({...sender, bik: e.target.value})} />
                     </div>
                     <div className="field">
-                      <div className="label">Счет</div>
+                      <div className="label">IBAN</div>
                       <input value={sender.account} onChange={e => setSender({...sender, account: e.target.value})} />
                     </div>
                     <div className="field">

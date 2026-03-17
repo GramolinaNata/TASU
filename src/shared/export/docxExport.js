@@ -267,6 +267,28 @@ export async function exportToDocx(act, templateOverride = null) {
       warehouse_total: (act.warehouseServices || []).reduce((acc, s) => acc + (s.total || 0), 0),
     };
 
+    // --- ДОБАВЛЯЕМ СПЕЦИФИЧЕСКИЕ ТЕГИ ДЛЯ СКЛАДСКОГО АКТА ---
+    const findSrv = (keyword) => {
+        const srv = (act.warehouseServices || []).find(s => 
+            s.name.toLowerCase().includes(keyword.toLowerCase())
+        );
+        return srv ? (srv.total ? srv.total.toLocaleString() : srv.price.toLocaleString()) : "";
+    };
+
+    data.srv_storage = findSrv("хранение");
+    data.srv_sorting = findSrv("сортировка");
+    data.srv_packing = findSrv("упаковка");
+    data.srv_marking = findSrv("маркировка");
+    data.srv_moving = findSrv("перемещение");
+    data.srv_photo = findSrv("фото");
+    data.srv_video = findSrv("видео");
+    data.srv_pass = findSrv("пропуск");
+    data.srv_rp = findSrv("р/п") || findSrv("погруз") || findSrv("разгруз");
+    
+    data.date_out = act.date ? formatRussianDate(act.date) : "";
+    data.receiver_name = act.receiver?.companyName || act.receiver?.fio || "";
+    data.remark = act.route?.comment || "";
+
     // 3. Рендеринг
     try {
         doc.render(data);

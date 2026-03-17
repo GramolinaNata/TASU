@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { exportToDocx } from "../../shared/export/docxExport.js";
 import { getCompanies } from "../../shared/storage/companyStorage.js";
@@ -25,10 +25,31 @@ export default function ContractDetailsPage() {
     setLoading(true);
     try {
       const found = await api.contracts.get(id);
-      if (found && found.details) {
-        try {
-          found.actData = typeof found.details === 'string' ? JSON.parse(found.details) : found.details;
-        } catch (e) { console.error("Parse details error", e); }
+      if (found) {
+        // Проверяем и details, и actData
+        const sourceData = found.details || found.actData;
+        if (sourceData) {
+          try {
+            found.actData = typeof sourceData === 'string' ? JSON.parse(sourceData) : sourceData;
+          } catch (e) {
+            console.error("Parse details error", e);
+          }
+        }
+
+        // КРИТИЧЕСКИЙ ФИКС: Если данных заявки нет в самом контракте, но есть ID — тянем ее отдельно
+        if (!found.actData && found.actId) {
+          try {
+            const extraAct = await api.requests.get(found.actId);
+            if (extraAct) {
+               // Парсим детальки из API заявки
+               let details = {};
+               if (extraAct.details) {
+                  details = typeof extraAct.details === 'string' ? JSON.parse(extraAct.details) : extraAct.details;
+               }
+               found.actData = { ...extraAct, ...details };
+            }
+          } catch (e) { console.error("Fetch extra act error", e); }
+        }
       }
       setContract(found);
     } catch (e) {
@@ -125,13 +146,20 @@ export default function ContractDetailsPage() {
         <div className="info_title">Информация о заказчике</div>
         <div className="kv">
           <div className="k">Заказчик</div>
-          <div className="v">{contract.customerName || "—"}</div>
-          {contract.actData?.customer && (
+          <div className="v">
+            {contract.customerName || 
+             contract.actData?.customer?.companyName || 
+             contract.actData?.customer?.fio || 
+             contract.actData?.customerName || 
+             contract.actData?.customerFio || 
+             "—"}
+          </div>
+          {(contract.actData?.customer || contract.actData) && (
               <>
                 <div className="k">БИН/ИИН</div>
-                <div className="v">{contract.actData.customer.bin || "—"}</div>
+                <div className="v">{contract.actData?.customer?.bin || contract.actData?.bin || "—"}</div>
                 <div className="k">Адрес</div>
-                <div className="v">{contract.actData.customer.jurAddress || "—"}</div>
+                <div className="v">{contract.actData?.customer?.jurAddress || contract.actData?.jurAddress || "—"}</div>
               </>
           )}
         </div>
@@ -142,11 +170,30 @@ export default function ContractDetailsPage() {
             <div className="info_title">Связанная заявка</div>
             <div className="kv">
               <div className="k">Номер заявки</div>
-              <div className="v">№{contract.actData.number}</div>
+              <div className="v">
+                <Link to={
+                  contract.actData.readyForAccountant ? `/sent/${contract.actId}` : (
+                    contract.actData.isWarehouse ? `/warehouse/${contract.actId}` :
+                    (contract.actData.docType === 'ttn' || contract.actData.type === 'ttn') ? `/requests/${contract.actId}` :
+                    (contract.actData.docType === 'smr' || contract.actData.type === 'smr') ? `/smr/${contract.actId}` :
+                    `/acts/${contract.actId}`
+                  )
+                } style={{ fontWeight: 'bold', color: 'var(--accent)' }}>
+                  №{contract.actData.docNumber || contract.actData.number}
+                </Link>
+              </div>
               <div className="k">Дата заявки</div>
               <div className="v">{formatDisplayDate(contract.actData.date)}</div>
               <div className="k">Сумма услуг</div>
-              <div className="v">{contract.actData.totalSum} тг</div>
+              <div className="v">
+                {(() => {
+                  const s = parseFloat(contract.actData.totalSum) || 
+                            (Array.isArray(contract.actData.warehouseServices) 
+                              ? contract.actData.warehouseServices.reduce((acc, x) => acc + (parseFloat(x.total) || 0), 0) 
+                              : 0);
+                  return s ? s.toLocaleString() : "0";
+                })()} тг
+              </div>
             </div>
           </div>
       )}

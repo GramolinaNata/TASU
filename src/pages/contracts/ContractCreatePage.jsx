@@ -26,8 +26,15 @@ export default function ContractCreatePage() {
           api.contracts.list()
         ]);
 
+        // 0. Составляем список ID заявок, для которых уже есть договоры
+        const usedActIds = new Set(contractsList.map(c => c.actId).filter(Boolean));
+
         // 1. Фильтруем заявки для этой компании согласно типу договора
-        const filtered = actsList.filter(a => {
+        const filtered = actsList
+          .filter(a => {
+            // Исключаем, если договор уже есть
+            if (usedActIds.has(a.id)) return false;
+
             let details = {};
             if (a.details) {
               try {
@@ -35,14 +42,30 @@ export default function ContractCreatePage() {
               } catch (e) { console.error("Parse details error", e); }
             }
 
+            // Исключаем те, что уже ушли бухгалтеру или отложены
+            if (a.readyForAccountant || details.readyForAccountant || a.isDeferredForAccountant || details.isDeferredForAccountant) {
+              return false;
+            }
+
             if (formData.type === 'warehouse') {
-              return details.isWarehouse && a.companyId === company?.id;
+              return (details.isWarehouse || a.isWarehouse) && a.companyId === company?.id;
             }
             
             // Для транспорта показываем только те, по которым сформированы документы (ТТН или СМР)
             const docType = a.docType || details.docType;
             return (docType === 'ttn' || docType === 'smr') && a.companyId === company?.id;
-        });
+          })
+          .map(a => {
+            // Важно: мержим детали, чтобы поля customer, warehouseServices и т.д. были на верхнем уровне
+            let details = {};
+            if (a.details) {
+              try {
+                details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
+              } catch (e) { }
+            }
+            return { ...a, ...details };
+          });
+
         setAvailableActs(filtered);
 
         // 2. Генерируем следующий номер договора
@@ -53,8 +76,9 @@ export default function ContractCreatePage() {
           
           let maxNum = 0;
           companyContracts.forEach(c => {
-            // Извлекаем число из начала строки (напр. "1-С" -> 1)
-            const match = String(c.number).match(/^(\d+)/);
+            // Извлекаем число. Ищем первую последовательность цифр в строке (напр. "№ 001/26-С" -> 1)
+            const cleaned = String(c.number).replace(/№\s*/, "");
+            const match = cleaned.match(/^(\d+)/);
             if (match) {
               const n = parseInt(match[1], 10);
               if (n > maxNum) maxNum = n;
@@ -62,7 +86,7 @@ export default function ContractCreatePage() {
           });
 
           const nextNum = maxNum + 1;
-          const yearSuffix = new Date().getFullYear().toString().slice(-2);
+          const yearSuffix = new Date().getFullYear().toString();
           const typeSuffix = formData.type === 'warehouse' ? 'С' : 'Т';
           const formattedNum = `№ ${String(nextNum).padStart(3, '0')}/${yearSuffix}-${typeSuffix}`;
           setFormData(prev => ({ ...prev, number: formattedNum }));
@@ -175,9 +199,10 @@ export default function ContractCreatePage() {
                     {availableActs.map(a => {
                         const details = typeof a.details === 'string' ? JSON.parse(a.details) : (a.details || {});
                         const actualDocType = a.docType || details.docType;
+                        const customerInfo = a.customer?.companyName || a.customer?.fio || "";
                         return (
                           <option key={a.id} value={a.id}>
-                              №{a.docNumber || a.number} {actualDocType ? `(${actualDocType.toUpperCase()})` : ""} от {formatDisplayDate(a.date)} — {a.customer?.companyName || a.customer?.fio}
+                              №{a.docNumber || a.number} от {formatDisplayDate(a.date)} {actualDocType ? `(${actualDocType.toUpperCase()})` : ""} {customerInfo ? `— ${customerInfo}` : ""}
                           </option>
                         );
                     })}

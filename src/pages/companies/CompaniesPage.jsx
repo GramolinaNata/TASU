@@ -289,7 +289,7 @@ export default function CompaniesPage() {
               />
             </div>
             <div className="field">
-              <div className="label">Реквизиты (Банк, Счет, БИК и т.д.)</div>
+              <div className="label">Реквизиты (Банк, IBAN, БИК и т.д.)</div>
               <textarea
                 className="input"
                 style={{ minHeight: '80px', padding: '8px' }}
