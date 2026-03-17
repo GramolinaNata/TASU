@@ -230,12 +230,7 @@ export default function AccountantGeneralPage() {
                 filtered.map((a) => (
                   <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
                     <td className="num">
-                      <Link to={
-                        a.isWarehouse ? `/warehouse/${a.id}` :
-                          a.docType === 'ttn' ? `/requests/${a.id}` :
-                            a.docType === 'smr' ? `/smr/${a.id}` :
-                              `/acts/${a.id}`
-                      }>
+                      <Link to={`/accountant/acts/${a.id}`}>
                         {a.docNumber || a.number}
                       </Link>
                     </td>

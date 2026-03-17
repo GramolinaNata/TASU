@@ -175,8 +175,8 @@ export async function exportToDocx(act, templateOverride = null) {
       deliveryTerm: act.deliveryTerm || "",
       fastening: act.fastening || "",
       stackable: act.stackable || act.fastening || "",
-      transportType: act.docAttrs?.transportType === "auto_console" ? "Авто перевозки консол" :
-                     act.docAttrs?.transportType === "auto_separate" ? "Авто перевозки отдельно" :
+      transportType: act.docAttrs?.transportType === "auto_console" ? "Авто консолидация" :
+                     act.docAttrs?.transportType === "auto_separate" ? "Отдельное авто" :
                      act.docAttrs?.transportType === "plane" ? "Самолет" :
                      act.docAttrs?.transportType === "train" ? "Поезд рейс" : "",
       is_auto: act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate",

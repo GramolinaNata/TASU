@@ -131,7 +131,6 @@ export default function ActCreatePage() {
 
   const [cargoText, setCargoText] = useState("");
   const [packaging, setPackaging] = useState("");
-  const [fastening, setFastening] = useState(""); // Combined field: Крепление / Штабелирование
   const [deliveryTerm, setDeliveryTerm] = useState("");
   const [insured, setInsured] = useState(false);
   const [cargoValue, setCargoValue] = useState(""); // Стоимость груза по инвойсу
@@ -357,7 +356,6 @@ export default function ActCreatePage() {
       route,
       cargoText,
       packaging,
-      fastening,
       cargoRows,
       totals,
       deliveryTerm,
@@ -948,17 +946,9 @@ export default function ActCreatePage() {
             </div>
 
             <div className="form_grid" style={{marginTop: 20}}>
-              <div className="field" style={{ gridColumn: 'span 2' }}>
+              <div className="field" style={{ gridColumn: 'span 4' }}>
                 <div className="label">Вид упаковки</div>
                 <input value={packaging} onChange={e => setPackaging(e.target.value)} placeholder="Напр. Паллеты, Коробки" />
-              </div>
-              <div className="field" style={{ gridColumn: 'span 2' }}>
-                <div className="label">Крепление и штабелирование</div>
-                <input 
-                  value={fastening} 
-                  onChange={e => setFastening(e.target.value)} 
-                  placeholder="Напр. Ремни, в 2 яруса" 
-                />
               </div>
                <label style={{ gridColumn: "span 1" }} className="label_checkbox">
                 <input
@@ -1009,8 +999,8 @@ export default function ActCreatePage() {
                               });
                             }}
                           >
-                            <option value="auto_console">Авто перевозки консол</option>
-                            <option value="auto_separate">Авто перевозки отдельно</option>
+                            <option value="auto_console">Авто консолидация</option>
+                            <option value="auto_separate">Отдельное авто</option>
                             <option value="plane">Самолет</option>
                             <option value="train">Поезд рейс</option>
                           </select>

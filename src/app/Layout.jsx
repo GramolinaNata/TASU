@@ -116,7 +116,7 @@ export default function Layout() {
                 </>
               )}
 
-              {(isAdmin || isAccountant) && (
+              {(isAccountant && !isAdmin) && (
                 <div className="accountant_section" style={{  paddingBottom: '10px' }}>
                   <div className="menu_section_title" style={{ padding: '4px 12px', fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                     {isSidebarOpen ? 'Бухгалтерия' : '...'}

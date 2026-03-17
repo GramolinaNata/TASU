@@ -1,7 +1,7 @@
 import { useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
-export function RequireAuth({ children, adminOnly = false, accountantOrAdminOnly = false, managerOrAdminOnly = false }) {
+export function RequireAuth({ children, adminOnly = false, accountantOnly = false, accountantOrAdminOnly = false, managerOrAdminOnly = false }) {
   const { user, loading, isAdmin, isAccountant } = useAuth();
   const location = useLocation();
 
@@ -18,6 +18,10 @@ export function RequireAuth({ children, adminOnly = false, accountantOrAdminOnly
   }
 
   if (adminOnly && !isAdmin) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (accountantOnly && !isAccountant) {
     return <Navigate to="/" replace />;
   }
 

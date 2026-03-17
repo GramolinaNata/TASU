@@ -35,9 +35,10 @@ export default function ActDetailsPage() {
   const isWarehousePath = location.pathname.startsWith('/warehouse');
   const isDeferredPath = location.pathname.startsWith('/deferred');
   const isSentPath = location.pathname.startsWith('/sent');
+  const isAccountantPath = location.pathname.startsWith('/accountant/acts');
   
-  const basePath = isSentPath ? "/sent" : (isAccountant && !isAdmin ? "/accountant/general" : (isDeferredPath ? "/deferred" : isSMRPath ? "/smr" : (isTTNPath ? "/requests" : (isWarehousePath ? "/warehouse" : "/acts"))));
-  const crumbLabel = isSentPath ? "Отработанные" : (isAccountant && !isAdmin ? "Бухгалтерия" : (isDeferredPath ? "Отложенные" : isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : (isWarehousePath ? "Склад" : "Заявки"))));
+  const basePath = isAccountantPath ? "/accountant/general" : (isSentPath ? "/sent" : (isAccountant && !isAdmin ? "/accountant/general" : (isDeferredPath ? "/deferred" : isSMRPath ? "/smr" : (isTTNPath ? "/requests" : (isWarehousePath ? "/warehouse" : "/acts")))));
+  const crumbLabel = isAccountantPath ? "Бухгалтерия" : (isSentPath ? "Отработанные" : (isAccountant && !isAdmin ? "Бухгалтерия" : (isDeferredPath ? "Отложенные" : isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : (isWarehousePath ? "Склад" : "Заявки")))));
   
   const [services, setServices] = useState([]);
   const [total, setTotal] = useState({ price: "" });
@@ -439,8 +440,8 @@ export default function ActDetailsPage() {
                   onChange={e => setDocAttrs({...docAttrs, transportType: e.target.value})}
                   style={{ fontWeight: 'bold', padding: '8px' }}
                 >
-                  <option value="auto_console">Авто перевозки консол</option>
-                  <option value="auto_separate">Авто перевозки отдельно</option>
+                  <option value="auto_console">Авто консолидация</option>
+                  <option value="auto_separate">Отдельное авто</option>
                   <option value="plane">Самолет</option>
                   <option value="train">Поезд рейс</option>
                 </select>
@@ -611,7 +612,7 @@ export default function ActDetailsPage() {
 
       <div className="split_2" style={{ marginTop: 14 }}>
         {/* SECTION: Бухгалтерия */}
-        {(isAccountant || isAdmin || act.readyForAccountant) && (
+        {(isAccountant || isSentPath) && (
           <div className="info_card" style={{ gridColumn: 'span 2', borderRadius: 8, padding: 20 }}>
             <div className="info_title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 16 }}>
               <span style={{ fontSize: '1.2rem', color: 'var(--info)' }}>Отметка Бухгалтерии</span>
@@ -799,8 +800,8 @@ export default function ActDetailsPage() {
               <div className="field">
                 <div className="label">Вид перевозки</div>
                 <div className="v v--accent">
-                  {act.docAttrs?.transportType === "auto_console" ? "Авто перевозки консол" :
-                   act.docAttrs?.transportType === "auto_separate" ? "Авто перевозки отдельно" :
+                  {act.docAttrs?.transportType === "auto_console" ? "Авто консолидация" :
+                   act.docAttrs?.transportType === "auto_separate" ? "Отдельное авто" :
                    act.docAttrs?.transportType === "plane" ? "Самолет" :
                    act.docAttrs?.transportType === "train" ? "Поезд рейс" : "—"}
                 </div>
@@ -854,10 +855,6 @@ export default function ActDetailsPage() {
            <div>
              <div className="k">Вид упаковки</div>
              <div className="v">{act.packaging || "—"}</div>
-           </div>
-           <div>
-             <div className="k">Крепление и штабелирование</div>
-             <div className="v">{act.fastening || "—"}</div>
            </div>
          </div>
         

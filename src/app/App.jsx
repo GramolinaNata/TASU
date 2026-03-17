@@ -74,8 +74,9 @@ export default function App() {
           <Route path="/admin" element={<RequireAuth adminOnly><AdminStatsPage /></RequireAuth>} />
           <Route path="/admin/users" element={<RequireAuth adminOnly><UsersPage /></RequireAuth>} />
           
-          {/* Accountant and Admin routes */}
-          <Route path="/accountant/general" element={<RequireAuth accountantOrAdminOnly><AccountantGeneralPage /></RequireAuth>} />
+          {/* Accountant only routes */}
+          <Route path="/accountant/general" element={<RequireAuth accountantOnly><AccountantGeneralPage /></RequireAuth>} />
+          <Route path="/accountant/acts/:id" element={<RequireAuth accountantOnly><ActDetailsPage /></RequireAuth>} />
           
           {/* Deferred Routes */}
           <Route path="/deferred" element={<RequireAuth managerOrAdminOnly><DeferredPage /></RequireAuth>} />
