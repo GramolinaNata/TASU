@@ -21,8 +21,20 @@ export default function LoginPage() {
     setError('');
     
     try {
-      await login(email, password);
-      navigate(from, { replace: true });
+      const userData = await login(email, password);
+      
+      // Если пришли с корня или со списка актов (который по умолчанию), 
+      // перенаправляем бухгалтера в его раздел
+      const defaultPaths = ["/", "/acts"];
+      if (defaultPaths.includes(from)) {
+        if (userData.role === 'ACCOUNTANT') {
+          navigate("/accountant/general", { replace: true });
+        } else {
+          navigate("/acts", { replace: true });
+        }
+      } else {
+        navigate(from, { replace: true });
+      }
     } catch (err) {
       setError(err.message || 'Неверный email или пароль');
     } finally {

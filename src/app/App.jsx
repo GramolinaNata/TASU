@@ -48,7 +48,11 @@ export default function App() {
     <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireAuth><Layout /></RequireAuth>}>
-          <Route path="/" element={<Navigate to="/acts" replace />} />
+          <Route path="/" element={
+            user?.role === 'ACCOUNTANT' 
+              ? <Navigate to="/accountant/general" replace /> 
+              : <Navigate to="/acts" replace />
+          } />
           <Route path="/acts" element={<ActsListPage />} />
           <Route path="/acts/new" element={<ActCreatePage />} />
           <Route path="/acts/:id/edit" element={<ActCreatePage />} />
