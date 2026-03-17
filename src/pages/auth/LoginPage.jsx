@@ -23,18 +23,16 @@ export default function LoginPage() {
     try {
       const userData = await login(email, password);
       
-      // Если пришли с корня или со списка актов (который по умолчанию), 
-      // перенаправляем бухгалтера в его раздел
-      const defaultPaths = ["/", "/acts"];
-      if (defaultPaths.includes(from)) {
+      // Бухгалтера всегда в его раздел, если он зашел на общие страницы
+      const defaultPaths = ["/", "/acts", "/acts/"];
+      if (defaultPaths.includes(from) || from.startsWith("/acts?")) {
         if (userData.role === 'ACCOUNTANT') {
           navigate("/accountant/general", { replace: true });
-        } else {
-          navigate("/acts", { replace: true });
+          return;
         }
-      } else {
-        navigate(from, { replace: true });
       }
+      
+      navigate(from, { replace: true });
     } catch (err) {
       setError(err.message || 'Неверный email или пароль');
     } finally {

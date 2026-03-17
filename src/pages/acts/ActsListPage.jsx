@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { Link, useOutletContext, Navigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import './ActsListPage.css';
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -26,7 +27,12 @@ function normalizeIsoDate(val) {
 }
 
 export default function ActsListPage() {
-  const { isAdmin, isAccountant } = useAuth();
+  const { user, isAccountant, isAdmin } = useAuth();
+  
+  if (isAccountant && !isAdmin) {
+    return <Navigate to="/accountant/general" replace />;
+  }
+
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
