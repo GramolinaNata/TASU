@@ -4,7 +4,6 @@ import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
-import './ActsListPage.css';
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -28,11 +27,6 @@ function normalizeIsoDate(val) {
 
 export default function ActsListPage() {
   const { user, isAccountant, isAdmin } = useAuth();
-  
-  if (isAccountant && !isAdmin) {
-    return <Navigate to="/accountant/general" replace />;
-  }
-
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -40,6 +34,10 @@ export default function ActsListPage() {
   const [acts, setActs] = useState([]);
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  if (isAccountant && !isAdmin) {
+    return <Navigate to="/accountant/general" replace />;
+  }
 // ...
   // Фильтрация
   const filtered = useMemo(() => {
