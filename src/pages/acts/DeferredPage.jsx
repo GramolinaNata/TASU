@@ -64,8 +64,8 @@ export default function DeferredPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    // 1. Оставляем ТОЛЬКО отложенные
-    let list = acts.filter(a => !!a.isDeferredForAccountant);
+    // 1. Оставляем ТОЛЬКО отложенные и не отправленные повторно
+    let list = acts.filter(a => !!a.isDeferredForAccountant && !a.readyForAccountant);
 
     // Фильтр по типу документа
     if (docTypeFilter !== "all") {

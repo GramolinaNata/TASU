@@ -165,9 +165,15 @@ export default function ActDetailsPage() {
       setActionLoading(true);
       try {
         const updated = await api.requests.update(id, {
-          readyForAccountant: true
+          readyForAccountant: true,
+          isDeferredForAccountant: false
         });
-        setAct(prev => ({ ...prev, ...updated, readyForAccountant: true }));
+        setAct(prev => ({ 
+          ...prev, 
+          ...updated, 
+          readyForAccountant: true,
+          isDeferredForAccountant: false
+        }));
         alert("Документ отправлен бухгалтеру!");
       } catch (err) {
         alert("Ошибка: " + err.message);
