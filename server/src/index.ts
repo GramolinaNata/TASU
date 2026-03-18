@@ -6,6 +6,7 @@ import companyRoutes from './routes/company.route';
 import requestRoutes from './routes/request.route';
 import userRoutes from './routes/user.route';
 import contractRoutes from './routes/contract.route';
+import publicRoutes from './routes/public.route';
 
 dotenv.config();
 
@@ -28,6 +29,7 @@ app.use('/api/companies', companyRoutes);
 app.use('/api/requests', requestRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/contracts', contractRoutes);
+app.use('/api/public', publicRoutes);
 
 // Basic test route
 app.get('/api/health', (req, res) => {

@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
+import { QRCodeCanvas } from "qrcode.react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
@@ -28,6 +29,18 @@ export default function ActDetailsPage() {
   const [act, setAct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const qrRef = useRef(null);
+
+  const downloadQRCode = () => {
+    const canvas = qrRef.current?.querySelector("canvas");
+    if (canvas) {
+      const url = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.download = `QR_Act_${act?.docNumber || id}.png`;
+      link.href = url;
+      link.click();
+    }
+  };
 
   // Определяем контекст (из какого списка пришли)
   const isSMRPath = location.pathname.startsWith('/smr');
@@ -383,50 +396,50 @@ export default function ActDetailsPage() {
           {act.status !== 'canceled' && !act.isWarehouse && !isSentPath ? (
             <>
               <div style={{ position: 'relative', display: 'inline-block' }}>
-                  <button 
-                    className="btn" 
-                    style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
-                    onClick={() => {
-                      if (act.docType) {
-                        setShowExportMenu(!showExportMenu);
-                      } else {
-                        handleExport();
-                      }
-                    }}
-                  >
-                    Экспорт в Word {act.docType ? "▼" : ""}
-                  </button>
+                <button 
+                  className="btn" 
+                  style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
+                  onClick={() => {
+                    if (act.docType) {
+                      setShowExportMenu(!showExportMenu);
+                    } else {
+                      handleExport();
+                    }
+                  }}
+                >
+                  Экспорт в Word {act.docType ? "▼" : ""}
+                </button>
 
-                  {showExportMenu && act.docType && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '100%',
-                      right: 0,
-                      background: '#fff',
-                      border: '1px solid #ddd',
-                      borderRadius: 4,
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                      zIndex: 1000,
-                      minWidth: 200,
-                      marginTop: 5
-                    }}>
-                      <div 
-                        className="menu_item" 
-                        style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }}
-                        onClick={() => handleExport("Заявка")}
-                      >
-                        📄 Экспорт как Заявка
-                      </div>
-                      <div 
-                        className="menu_item" 
-                        style={{ padding: '10px 15px', cursor: 'pointer' }}
-                        onClick={() => handleExport(act.docType)}
-                      >
-                        🚛 Экспорт как {act.docType.toUpperCase()}
-                      </div>
+                {showExportMenu && act.docType && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    right: 0,
+                    background: '#fff',
+                    border: '1px solid #ddd',
+                    borderRadius: 4,
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    zIndex: 1000,
+                    minWidth: 200,
+                    marginTop: 5
+                  }}>
+                    <div 
+                      className="menu_item" 
+                      style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }}
+                      onClick={() => handleExport("Заявка")}
+                    >
+                      📄 Экспорт как Заявка
                     </div>
-                  )}
-                </div>
+                    <div 
+                      className="menu_item" 
+                      style={{ padding: '10px 15px', cursor: 'pointer' }}
+                      onClick={() => handleExport(act.docType)}
+                    >
+                      🚛 Экспорт как {act.docType.toUpperCase()}
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
           ) : null}
         </div>
@@ -540,7 +553,7 @@ export default function ActDetailsPage() {
               <div className="muted" style={{fontSize: '0.9rem'}}>
                 {act.readyForAccountant 
                   ? "" 
-                  : "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СНО/АВР"}
+                  : "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СФ/АВР"}
               </div>
            </div>
            {!act.readyForAccountant ? (
@@ -557,6 +570,25 @@ export default function ActDetailsPage() {
                 <span>✓ Отправлено</span>
              </div>
            )}
+        </div>
+      )}
+
+      {act.status !== 'canceled' && !act.isWarehouse && !isSentPath && (
+        <div style={{ marginTop: '10px', textAlign: 'right' }}>
+           <button 
+              className="btn" 
+              style={{ background: '#00a854', color: '#fff', borderColor: '#00a854' }}
+              onClick={downloadQRCode}
+            >
+              📱 Создать QR для курьера
+            </button>
+
+            <div ref={qrRef} style={{ display: 'none' }}>
+              <QRCodeCanvas 
+                value={`${window.location.origin}/courier/acts/${id}`} 
+                size={256}
+              />
+            </div>
         </div>
       )}
 

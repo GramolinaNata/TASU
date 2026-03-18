@@ -12,7 +12,7 @@ model User {
   email     String   @unique
   password  String
   name      String
-  role      String   @default("MANAGER")
+  role      String   @default("MANAGER") // ADMIN, MANAGER, ACCOUNTANT, COURIER
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

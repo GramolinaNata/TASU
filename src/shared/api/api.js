@@ -96,5 +96,8 @@ export const api = {
     delete: (id) => request(`/contracts/${id}`, {
       method: 'DELETE',
     }),
+  },
+  public: {
+    getAct: (id) => request(`/public/acts/${id}`, { headers: {} }),
   }
 };

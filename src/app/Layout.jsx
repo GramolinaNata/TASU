@@ -7,15 +7,15 @@ import { useAuth } from "../shared/auth/AuthContext";
 export default function Layout() {
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('tasu_theme') || 'light');
-  const { user, logout, isAdmin, isAccountant } = useAuth();
+  const { user, logout, isAdmin, isAccountant, isCourier } = useAuth();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   useEffect(() => {
-    if (!getSelectedCompanyId()) {
+    if (!getSelectedCompanyId() && !isCourier) {
       setSelectorOpen(true);
     }
-  }, []);
+  }, [isCourier]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -32,11 +32,12 @@ export default function Layout() {
 
   return (
     <main className="main">
-      <CompanySelector open={selectorOpen} onClose={() => setSelectorOpen(false)} />
+      {!isCourier && <CompanySelector open={selectorOpen} onClose={() => setSelectorOpen(false)} />}
 
       <div className="container">
         <div className="main_wrapper">
-          <aside className={`sidebar ${!isSidebarOpen ? 'sidebar--collapsed' : ''}`} style={{ display: 'flex', flexDirection: 'column' }}>
+          {!isCourier && (
+            <aside className={`sidebar ${!isSidebarOpen ? 'sidebar--collapsed' : ''}`} style={{ display: 'flex', flexDirection: 'column' }}>
             <div className="sidebar_logo" onClick={() => setSelectorOpen(true)} style={{ cursor: "pointer", display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               {!isSidebarOpen ? (
                  <div style={{fontWeight: 900, fontSize: 18, color: 'var(--accent)', marginLeft: 4}}>T</div>
@@ -180,7 +181,7 @@ export default function Layout() {
                   <>
                     <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{user.name}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                      {user.role === 'ADMIN' ? 'Админ' : user.role === 'ACCOUNTANT' ? 'Бухгалтер' : 'Менеджер'}
+                      {user.role === 'ADMIN' ? 'Админ' : user.role === 'ACCOUNTANT' ? 'Бухгалтер' : user.role === 'COURIER' ? 'Курьер' : 'Менеджер'}
                     </div>
                   </>
                 ) : (
@@ -205,8 +206,22 @@ export default function Layout() {
               </div>
             )}
           </aside>
+          )}
 
-          <section className="content" style={{ maxWidth: isSidebarOpen ? 'calc(100% - 280px)' : 'calc(100% - 80px)' }}>
+          <section className="content" style={{ maxWidth: isCourier ? '100%' : (isSidebarOpen ? 'calc(100% - 280px)' : 'calc(100% - 80px)'), padding: isCourier ? 0 : 'inherit' }}>
+            {isCourier && (
+              <div className="content_header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 20px', background: 'var(--card)', borderBottom: '1px solid var(--border-color)', marginBottom: 20 }}>
+                   <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
+                      <div style={{ textAlign: 'right' }}>
+                         <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{user?.name}</div>
+                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            Курьер
+                         </div>
+                      </div>
+                      <button onClick={logout} className="btn btn--ghost" style={{ fontSize: '0.8rem', padding: '4px 8px' }}>Выйти</button>
+                   </div>
+              </div>
+            )}
             <div className="content_wrapper">
               <Outlet context={{ openCompanySelector: () => setSelectorOpen(true) }} />
             </div>

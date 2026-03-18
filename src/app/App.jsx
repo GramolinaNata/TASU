@@ -28,6 +28,7 @@ import UsersPage from "../pages/admin/UsersPage.jsx";
 import AccountantGeneralPage from "../pages/accountant/AccountantGeneralPage.jsx";
 import DeferredPage from "../pages/acts/DeferredPage.jsx";
 import SentToAccountantPage from "../pages/acts/SentToAccountantPage.jsx";
+import CourierActViewPage from "../pages/courier/CourierActViewPage.jsx";
 
 export default function App() {
   const { user } = useAuth();
@@ -51,7 +52,9 @@ export default function App() {
           <Route path="/" element={
             user?.role === 'ACCOUNTANT' 
               ? <Navigate to="/accountant/general" replace /> 
-              : <Navigate to="/acts" replace />
+              : user?.role === 'COURIER'
+                ? <div style={{padding: '2rem'}}>Добро пожаловать, Курьер! Отсканируйте QR-код для просмотра заявки.</div>
+                : <Navigate to="/acts" replace />
           } />
           <Route path="/acts" element={<ActsListPage />} />
           <Route path="/acts/new" element={<ActCreatePage />} />
@@ -86,6 +89,9 @@ export default function App() {
           <Route path="/deferred" element={<RequireAuth managerOrAdminOnly><DeferredPage /></RequireAuth>} />
           <Route path="/deferred/:id" element={<RequireAuth managerOrAdminOnly><ActDetailsPage /></RequireAuth>} />
           <Route path="/deferred/:id/edit" element={<RequireAuth managerOrAdminOnly><ActCreatePage /></RequireAuth>} />
+          
+          {/* Courier Routes */}
+          <Route path="/courier/acts/:id" element={<RequireAuth><CourierActViewPage /></RequireAuth>} />
         </Route>
       </Routes>
   );
