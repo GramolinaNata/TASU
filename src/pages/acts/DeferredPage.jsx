@@ -132,9 +132,6 @@ export default function DeferredPage() {
       <div className="navbar">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <h1>Отложенные заявки</h1>
-          <div className="chip" style={{ background: "#fffbe6", borderColor: "#ffe58f", color: "#faad14" }}>
-            Требуют уточнения
-          </div>
         </div>
       </div>
 

@@ -393,7 +393,7 @@ export default function ActDetailsPage() {
             </button>
           )}
           
-          {act.status !== 'canceled' && !act.isWarehouse && !isSentPath ? (
+          {act.status !== 'canceled' ? (
             <>
               <div style={{ position: 'relative', display: 'inline-block' }}>
                 <button 
@@ -532,7 +532,7 @@ export default function ActDetailsPage() {
           </div>
         </div>
       )}
-      {(!isAccountant || isAdmin) && act.status !== 'canceled' && (
+      {(!isAccountant || isAdmin) && act.status !== 'canceled' && !isDeferredPath && (
         <div className="action_banner" style={{
            marginTop: 16, 
            background: act.readyForAccountant ? 'rgba(82, 196, 26, 0.05)' : 'var(--card)', 
@@ -573,7 +573,7 @@ export default function ActDetailsPage() {
         </div>
       )}
 
-      {act.status !== 'canceled' && !act.isWarehouse && !isSentPath && (
+      {act.status !== 'canceled' && !act.isWarehouse && !isSentPath && !isDeferredPath && (
         <div style={{ marginTop: '10px', textAlign: 'right' }}>
            <button 
               className="btn" 

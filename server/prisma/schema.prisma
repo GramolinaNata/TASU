@@ -8,54 +8,52 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
+  id        Int       @id @default(autoincrement())
+  email     String    @unique
   password  String
   name      String
-  role      String   @default("MANAGER") // ADMIN, MANAGER, ACCOUNTANT, COURIER
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  role      String    @default("MANAGER")
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   requests  Request[]
 }
 
 model Company {
-  id              String   @id @default(uuid())
-  name            String
-  bin             String   @unique
-  address         String
-  factAddress     String   @default("")
-  phone           String   @default("")
-  director        String   @default("")
-  email           String   @default("")
-  bank            String   @default("")
-  bik             String   @default("")
-  account         String   @default("")
-  kbe             String   @default("")
-  bankDetails     String   @default("")
-  managerDetails  String   @default("")
-  logo            String?  // Base64 logo
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  requests        Request[]
+  id             String    @id @default(uuid())
+  name           String
+  bin            String    @unique
+  address        String
+  factAddress    String    @default("")
+  phone          String    @default("")
+  director       String    @default("")
+  email          String    @default("")
+  bank           String    @default("")
+  bik            String    @default("")
+  account        String    @default("")
+  kbe            String    @default("")
+  bankDetails    String    @default("")
+  managerDetails String    @default("")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  logo           String?
+  requests       Request[]
 }
 
 model Request {
-  id          String   @id @default(uuid())
-  status      String   @default("Заявка")
-  date        String
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  managerId   Int
-  manager     User     @relation(fields: [managerId], references: [id])
-  type        String   @default("REQUEST")
-  route       String?
-  cargo       String?
-  docNumber   String?  @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  details     String?
+  id        String   @id @default(uuid())
+  status    String   @default("Заявка")
+  date      String
+  companyId String
+  managerId Int
+  type      String   @default("REQUEST")
+  route     String?
+  cargo     String?
+  docNumber String?  @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  details   String?
+  company   Company  @relation(fields: [companyId], references: [id])
+  manager   User     @relation(fields: [managerId], references: [id])
 }
 
 model Contract {
@@ -71,4 +69,21 @@ model Contract {
   details      String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+model Counterparty {
+  id          String   @id @default(uuid())
+  name        String
+  phone       String   @default("")
+  email       String   @default("")
+  companyName String   @default("")
+  bin         String   @default("")
+  address     String   @default("")
+  bank        String   @default("")
+  bik         String   @default("")
+  account     String   @default("")
+  kbe         String   @default("")
+  companyId   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

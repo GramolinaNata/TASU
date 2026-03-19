@@ -135,6 +135,7 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       date, 
       type, 
       docNumber, 
+      companyId,
       ...bodyFields 
     } = req.body;
 
@@ -163,6 +164,7 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       data: {
         status: status !== undefined ? status : existing.status,
         date: date !== undefined ? date : existing.date,
+        companyId: companyId !== undefined ? companyId : existing.companyId,
         type: type !== undefined ? type : existing.type,
         route: routeStr,
         cargo: cargoStr,

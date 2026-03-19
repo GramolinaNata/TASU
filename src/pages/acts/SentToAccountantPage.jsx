@@ -4,6 +4,7 @@ import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import { exportToDocx } from "../../shared/export/docxExport.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -77,7 +78,7 @@ export default function SentToAccountantPage() {
     }
     
     return list;
-  }, [acts, q, company, dateFrom, dateTo]);
+  }, [acts, q, company, dateFrom, dateTo, docTypeFilter]);
 
   const loadActs = async () => {
     setLoading(true);

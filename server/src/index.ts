@@ -7,6 +7,7 @@ import requestRoutes from './routes/request.route';
 import userRoutes from './routes/user.route';
 import contractRoutes from './routes/contract.route';
 import publicRoutes from './routes/public.route';
+import counterpartyRoutes from './routes/counterparty.routes';
 
 dotenv.config();
 
@@ -30,6 +31,7 @@ app.use('/api/requests', requestRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/contracts', contractRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/counterparties', counterpartyRoutes);
 
 // Basic test route
 app.get('/api/health', (req, res) => {
@@ -45,7 +47,7 @@ app.use((req, res) => {
   console.log(`!!! 404 NOT FOUND !!! - ${req.method} ${req.url}`);
   res.status(404).json({ 
     message: `Маршрут ${req.method} ${req.url} не найден на этом сервере.`,
-    availableRoutes: ['/api/auth', '/api/users', '/api/companies', '/api/requests', '/api/contracts', '/api/health']
+    availableRoutes: ['/api/auth', '/api/users', '/api/companies', '/api/requests', '/api/contracts', '/api/counterparties', '/api/health']
   });
 });
 

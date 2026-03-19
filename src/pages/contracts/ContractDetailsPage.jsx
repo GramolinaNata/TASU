@@ -178,7 +178,7 @@ export default function ContractDetailsPage() {
                     (contract.actData.docType === 'smr' || contract.actData.type === 'smr') ? `/smr/${contract.actId}` :
                     `/acts/${contract.actId}`
                   )
-                } style={{ fontWeight: 'bold', color: 'var(--accent)' }}>
+                } style={{ fontWeight: 'bold', color: '#1890ff' }}>
                   №{contract.actData.docNumber || contract.actData.number}
                 </Link>
               </div>

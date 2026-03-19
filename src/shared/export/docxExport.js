@@ -56,12 +56,14 @@ function formatContractDate(isoString) {
 export async function exportToDocx(act, templateOverride = null) {
   try {
     // 1. Определяем файл шаблона
-    let typeToUse = templateOverride || act.docType || "Заявка";
+    let rawType = templateOverride || act.docType || act.type || "Заявка";
+    let typeToUse = rawType.toLowerCase();
     
     let templateFile = "/templates/template.docx"; // По умолчанию - Заявка
     
     if (typeToUse === "ttn") templateFile = "/templates/template_ttn.docx";
-    if (typeToUse === "smr") templateFile = "/templates/template_smr.docx";
+    if (typeToUse === "smr" || typeToUse === "cmr") templateFile = "/templates/template_smr.docx";
+    if (act.isWarehouse || typeToUse === "warehouse") templateFile = "/templates/template_warehouse.docx";
     
     if (act.isContract && !templateOverride) {
         templateFile = act.type === 'warehouse' ? "/templates/warehouse_contract.docx" : "/templates/transport_contract.docx";
@@ -114,7 +116,7 @@ export async function exportToDocx(act, templateOverride = null) {
       contractDate: act.contractDate ? new Date(act.contractDate).toLocaleDateString("ru-RU") : "",
       contractDateLong: act.contractDate ? formatRussianDate(act.contractDate) : "",
       contractDateQuotes: act.contractDate ? formatContractDate(act.contractDate) : "",
-      document_label: typeToUse === "Заявка" ? "ЗАЯВКА" : typeToUse.toUpperCase(),
+      document_label: act.isWarehouse ? "СКЛАДСКАЯ ЗАЯВКА" : (typeToUse === "заявка" || typeToUse === "request" ? "ЗАЯВКА" : typeToUse.toUpperCase()),
       number: act.docNumber || act.number || "",
       date: act.date || "",
       dateLong: formatRussianDate(act.date),
@@ -309,8 +311,9 @@ export async function exportToDocx(act, templateOverride = null) {
       mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
 
-    let outType = templateOverride || act.docType || "Заявка";
-    if (outType === "REQUEST") outType = "Заявка";
+    let outType = templateOverride || act.docType || act.type || "Заявка";
+    if (act.isWarehouse) outType = "Складская заявка";
+    else if (outType.toUpperCase() === "REQUEST") outType = "Заявка";
     let fileName = `${outType.toUpperCase()}_${act.docNumber || act.number}.docx`;
     
     if (act.isContract && !templateOverride) {

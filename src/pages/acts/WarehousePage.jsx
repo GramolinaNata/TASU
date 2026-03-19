@@ -147,12 +147,6 @@ export default function WarehousePage() {
             Сменить
           </button>
         </div>
-
-        {(!isAccountant || isAdmin) && (
-          <Link className="btn btn--accent" to="/warehouse/new?type=warehouse">
-            + Новая складская заявка
-          </Link>
-        )}
       </div>
 
       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>

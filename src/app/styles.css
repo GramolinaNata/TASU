@@ -102,6 +102,7 @@
 [data-theme='dark'] .badge--ttn { background: #052e16 !important; border-color: #166534 !important; color: #86efac !important; }
 [data-theme='dark'] .badge--smr { background: #1e1b4b !important; border-color: #3730a3 !important; color: #a5b4fc !important; }
 [data-theme='dark'] .badge--danger { background: #450a0a !important; color: #fca5a5 !important; border-color: #7f1d1d !important; }
+[data-theme='dark'] .chip { background: #1a2540 !important; border-color: #334155 !important; color: var(--accent) !important; }
 
 /* Modern Modal inputs */
 [data-theme='dark'] .input_clean {
@@ -974,6 +975,7 @@ textarea.error {
 
 /* --- Transport Flow & Dark Mode Utilities --- */
 .card--transport {
+    margin-bottom: 20px;
     border: 2px solid var(--accent) !important;
     background: var(--primary-light) !important;
 }

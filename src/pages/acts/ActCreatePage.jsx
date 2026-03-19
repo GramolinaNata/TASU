@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
-import { getSelectedCompanyId, getSelectedCompany, getCompanies } from "../../shared/storage/companyStorage.js";
+import { getSelectedCompanyId, getSelectedCompany, getCompanies, setSelectedCompanyId as setGlobalSelectedCompanyId } from "../../shared/storage/companyStorage.js";
+import Modal from "../../shared/ui/Modal.jsx";
 
 function todayIso() {
   const d = new Date();
@@ -149,6 +150,15 @@ export default function ActCreatePage() {
     },
   ]);
 
+  // Контрагенты
+  const [allCounterparties, setAllCounterparties] = useState([]);
+  const [cpSearchModal, setCpSearchModal] = useState(null); // 'customer' | 'receiver' | 'sender'
+  const [saveAsCpCustomer, setSaveAsCpCustomer] = useState(false);
+  const [saveAsCpReceiver, setSaveAsCpReceiver] = useState(false);
+  const [cpSearchQuery, setCpSearchQuery] = useState("");
+  const [selectedCpObjCustomer, setSelectedCpObjCustomer] = useState(null);
+  const [selectedCpObjReceiver, setSelectedCpObjReceiver] = useState(null);
+
   // 4. Склад
   const [isWarehouse, setIsWarehouse] = useState(false);
   const [warehouseServices, setWarehouseServices] = useState([
@@ -161,7 +171,7 @@ export default function ActCreatePage() {
   const [showSendCard, setShowSendCard] = useState(false);
   const [showRecCard, setShowRecCard] = useState(false);
   const [showRouteCard, setShowRouteCard] = useState(false);
-  const [showTransportCard, setShowTransportCard] = useState(true); // Default open
+  const [showTransportCard, setShowTransportCard] = useState(false); // Default hidden
 
   // Сворачиваемые блоки реквизитов (внутри карточек)
   const [showCustReq, setShowCustReq] = useState(false);
@@ -262,6 +272,59 @@ export default function ActCreatePage() {
     loadData();
   }, [id, isEditMode, location.search]);
 
+  const loadCounterparties = async () => {
+    try {
+      const data = await api.counterparties.list();
+      setAllCounterparties(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Failed to load counterparties", e);
+    }
+  };
+
+  useEffect(() => {
+    loadCounterparties();
+  }, []);
+
+  const filteredCPs = useMemo(() => {
+    const s = cpSearchQuery.toLowerCase().trim();
+    if (!s) return allCounterparties;
+    return allCounterparties.filter(c => 
+      c.name.toLowerCase().includes(s) || 
+      (c.companyName && c.companyName.toLowerCase().includes(s)) ||
+      (c.bin && c.bin.includes(s))
+    );
+  }, [allCounterparties, cpSearchQuery]);
+
+  const selectCP = (cp) => {
+    const data = {
+      fio: cp.name || "",
+      phone: cp.phone || "",
+      companyName: cp.companyName || "",
+      email: cp.email || "",
+      bin: cp.bin || "",
+      jurAddress: cp.address || "",
+      factAddress: cp.address || "",
+      account: cp.account || "",
+      bank: cp.bank || "",
+      bik: cp.bik || "",
+      kbe: cp.kbe || "",
+    };
+
+    if (cpSearchModal === 'customer') {
+      setCustomer(prev => ({ ...prev, ...data }));
+      setSelectedCpObjCustomer(cp);
+      setSaveAsCpCustomer(false);
+    } else if (cpSearchModal === 'receiver') {
+      setReceiver(prev => ({ ...prev, ...data }));
+      setSelectedCpObjReceiver(cp);
+      setSaveAsCpReceiver(false);
+    } else if (cpSearchModal === 'sender') {
+      setSender(prev => ({ ...prev, ...data }));
+    }
+    setCpSearchModal(null);
+    setCpSearchQuery("");
+  };
+
   // Хелперы для изменения строк
   const updateRow = (id, field, val) => {
     setCargoRows((prev) =>
@@ -323,6 +386,25 @@ export default function ActCreatePage() {
   }, [cargoRows]);
 
   const [attemptedSave, setAttemptedSave] = useState(false);
+
+
+  const isCustomerModified = useMemo(() => {
+    if (!selectedCpObjCustomer) return true;
+    return customer.fio !== selectedCpObjCustomer.name || 
+           customer.phone !== (selectedCpObjCustomer.phone || "") ||
+           customer.companyName !== (selectedCpObjCustomer.companyName || "") ||
+           customer.email !== (selectedCpObjCustomer.email || "") ||
+           customer.bin !== (selectedCpObjCustomer.bin || "");
+  }, [customer, selectedCpObjCustomer]);
+
+  const isReceiverModified = useMemo(() => {
+    if (!selectedCpObjReceiver) return true;
+    return receiver.fio !== selectedCpObjReceiver.name || 
+           receiver.phone !== (selectedCpObjReceiver.phone || "") ||
+           receiver.companyName !== (selectedCpObjReceiver.companyName || "") ||
+           receiver.email !== (selectedCpObjReceiver.email || "") ||
+           receiver.bin !== (selectedCpObjReceiver.bin || "");
+  }, [receiver, selectedCpObjReceiver]);
 
   const onSave = async () => {
     if (loading) return;
@@ -386,6 +468,22 @@ export default function ActCreatePage() {
           ...actData
         });
       }
+
+      // Сохранение новых контрагентов
+      if (!isEditMode) {
+        if (saveAsCpCustomer && customer.fio) {
+          await api.counterparties.create({ ...customer, companyId: selectedCompanyId, name: customer.fio });
+        }
+        if (saveAsCpReceiver && receiver.fio) {
+          await api.counterparties.create({ ...receiver, companyId: selectedCompanyId, name: receiver.fio });
+        }
+      }
+
+      // Синхронизируем глобально выбранную компанию, чтобы заявка не "пропадала" из списка
+      if (selectedCompanyId) {
+          setGlobalSelectedCompanyId(selectedCompanyId);
+      }
+
       if (isWarehouse) {
         alert("Складская заявка успешно создана!");
       }
@@ -464,6 +562,15 @@ export default function ActCreatePage() {
         </div>
         {showCustCard && (
           <div className="card_body">
+            <div style={{ marginBottom: 16, display: 'flex', gap: 10 }}>
+               <button className="btn btn--sm" type="button" onClick={() => setCpSearchModal('customer')}>🔍 Найти в базе</button>
+               {isCustomerModified && (
+                 <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={saveAsCpCustomer} onChange={e => setSaveAsCpCustomer(e.target.checked)} />
+                    Сохранить как контрагента
+                 </label>
+               )}
+            </div>
             <div className="form_grid">
               <div className="field">
                 <div className="label">ФИО / Название</div>
@@ -564,7 +671,10 @@ export default function ActCreatePage() {
           </div>
           {showSendCard && (
             <div className="card_body">
-              <div className="form_grid">
+               <div style={{ marginBottom: 16, display: 'flex', gap: 10 }}>
+                 <button className="btn btn--sm" type="button" onClick={() => setCpSearchModal('sender')}>🔍 Найти в базе</button>
+               </div>
+               <div className="form_grid">
                 <div className="field">
                   <div className="label">ФИО / Название</div>
                   <input 
@@ -651,6 +761,15 @@ export default function ActCreatePage() {
         </div>
         {showRecCard && (
         <div className="card_body">
+           <div style={{ marginBottom: 16, display: 'flex', gap: 10 }}>
+             <button className="btn btn--sm" type="button" onClick={() => setCpSearchModal('receiver')}>🔍 Найти в базе</button>
+             {isReceiverModified && (
+               <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={saveAsCpReceiver} onChange={e => setSaveAsCpReceiver(e.target.checked)} />
+                  Сохранить как контрагента
+               </label>
+             )}
+           </div>
           <div className="form_grid">
             <div className="field">
               <div className="label">ФИО / Название</div>
@@ -975,13 +1094,20 @@ export default function ActCreatePage() {
       </div>
             
             <div className="card card--transport" style={{ gridColumn: 'span 2', marginTop: 20 }}>
-                 <div className="card_head card_head--transport">
-                    <div className="card_title">
-                      ВИД ТРАНСПОРТА
+                 <div className="card_head card_head--transport" onClick={() => setShowTransportCard(!showTransportCard)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div className="card_title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                       <span style={{ 
+                         transform: showTransportCard ? 'rotate(90deg)' : 'rotate(0deg)', 
+                         transition: 'transform 0.2s',
+                         display: 'inline-block',
+                         fontSize: '0.9rem'
+                       }}>▶</span>
+                       ВИД ТРАНСПОРТА
                     </div>
                  </div>
-                 <div className="card_body">
-                    <div className="form_grid">
+                 {showTransportCard && (
+                    <div className="card_body">
+                      <div className="form_grid">
                         <div className="field" style={{ gridColumn: 'span 2' }}>
                           <div className="label">Вид перевозки <span className="text_danger">*</span></div>
                           <select 
@@ -1063,8 +1189,9 @@ export default function ActCreatePage() {
                               <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
                             </div>
                           </>)}
+                      </div>
                     </div>
-                 </div>
+                 )}
               </div>
 
             <div className="field">
@@ -1084,6 +1211,39 @@ export default function ActCreatePage() {
                  onChange={e => setDate(e.target.value)} 
                />
             </div>
+
+      {cpSearchModal && (
+        <Modal title="Поиск контрагента" onClose={() => setCpSearchModal(null)}>
+           <div className="field">
+              <div className="label">Поиск (Имя, БИН, Компания)</div>
+              <input 
+                autoFocus
+                value={cpSearchQuery} 
+                onChange={e => setCpSearchQuery(e.target.value)} 
+                placeholder="Начните вводить..."
+                className="input"
+                style={{ width: '100%', padding: '10px' }}
+              />
+           </div>
+           <div className="cp_list" style={{ marginTop: 16, maxHeight: 400, overflowY: 'auto', border: '1px solid var(--line)', borderRadius: 8 }}>
+              {filteredCPs.length === 0 ? (
+                <div style={{ padding: 20, textAlign: 'center', opacity: 0.5 }}>Ничего не найдено</div>
+              ) : (
+                filteredCPs.map(cp => (
+                  <div key={cp.id} className="cp_item" onClick={() => selectCP(cp)} style={{ 
+                    padding: '12px', borderBottom: '1px solid var(--line)', cursor: 'pointer',
+                    transition: 'background 0.2s'
+                  }}>
+                    <div style={{ fontWeight: 700 }}>{cp.name}</div>
+                    <div style={{ fontSize: '0.85rem', opacity: 0.8 }}>
+                      {cp.companyName} {cp.bin && `(БИН: ${cp.bin})`}
+                    </div>
+                  </div>
+                ))
+              )}
+           </div>
+        </Modal>
+      )}
 
           <div className="page_actions" style={{ marginTop: 24, paddingBottom: 40 }}>
             <button 

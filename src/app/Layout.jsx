@@ -93,6 +93,15 @@ export default function Layout() {
                     <span className="menu_text">Договоры</span>
                   </NavLink>
 
+                  <NavLink
+                    to="/counterparties"
+                    className={({ isActive }) => (isActive ? "selected_menu" : "")}
+                    title="Контрагенты"
+                  >
+                    <span className="menu_icon">👥</span>
+                    <span className="menu_text">Контрагенты</span>
+                  </NavLink>
+
                   {!isAccountant || isAdmin ? (
                     <NavLink
                       to="/deferred"

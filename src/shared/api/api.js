@@ -97,6 +97,21 @@ export const api = {
       method: 'DELETE',
     }),
   },
+  counterparties: {
+    list: (companyId) => request(`/counterparties${companyId ? `?companyId=${companyId}` : ''}`),
+    get: (id) => request(`/counterparties/${id}`),
+    create: (data) => request('/counterparties', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+    update: (id, data) => request(`/counterparties/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+    delete: (id) => request(`/counterparties/${id}`, {
+      method: 'DELETE',
+    }),
+  },
   public: {
     getAct: (id) => request(`/public/acts/${id}`, { headers: {} }),
   }

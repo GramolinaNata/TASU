@@ -11,6 +11,7 @@ import WarehousePage from "../pages/acts/WarehousePage.jsx";
 import ContractsPage from "../pages/contracts/ContractsPage.jsx";
 import ContractCreatePage from "../pages/contracts/ContractCreatePage.jsx";
 import ContractDetailsPage from "../pages/contracts/ContractDetailsPage.jsx";
+import CounterpartiesPage from "../pages/companies/CounterpartiesPage.jsx";
 
 import { useEffect } from "react";
 import { loadCompanies } from "../shared/storage/companyStorage.js";
@@ -80,6 +81,8 @@ export default function App() {
           <Route path="/companies" element={<RequireAuth adminOnly><CompaniesPage /></RequireAuth>} />
           <Route path="/admin" element={<RequireAuth adminOnly><AdminStatsPage /></RequireAuth>} />
           <Route path="/admin/users" element={<RequireAuth adminOnly><UsersPage /></RequireAuth>} />
+          
+          <Route path="/counterparties" element={<CounterpartiesPage />} />
           
           {/* Accountant only routes */}
           <Route path="/accountant/general" element={<RequireAuth accountantOnly><AccountantGeneralPage /></RequireAuth>} />
