@@ -172,6 +172,34 @@ export default function ActDetailsPage() {
     }
   };
 
+  const handleReturnToRequests = async () => {
+    if (!id || !act) return;
+    if (window.confirm("Вернуть документ из отработанных в список заявок?")) {
+      setActionLoading(true);
+      try {
+        const updated = await api.requests.update(id, {
+          readyForAccountant: false,
+          isDeferredForAccountant: false
+        });
+        setAct(prev => ({ 
+          ...prev, 
+          ...updated, 
+          readyForAccountant: false,
+          isDeferredForAccountant: false
+        }));
+        alert("Документ возвращен в работу!");
+        // Редирект в соответствующий список
+        if (act.isWarehouse) nav('/warehouse');
+        else if (act.type === 'smr' || act.docType === 'smr') nav('/smr');
+        else nav('/requests');
+      } catch (err) {
+        alert("Ошибка: " + err.message);
+      } finally {
+        setActionLoading(false);
+      }
+    }
+  };
+
   const handleSendToAccountant = async () => {
     if (!id || !act) return;
     if (window.confirm("Отправить документ бухгалтеру? После этого он появится в списке бухгалтерии.")) {
@@ -566,8 +594,20 @@ export default function ActDetailsPage() {
                 {actionLoading ? "Отправка..." : "▶ Отправить бухгалтеру"}
               </button>
            ) : (
-             <div style={{ color: '#52c41a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span>✓ Отправлено</span>
+             <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <div style={{ color: '#52c41a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                   <span>✓ Отправлено</span>
+                </div>
+                {(!isAccountant || isAdmin) && (
+                  <button 
+                    className="btn btn--sm" 
+                    onClick={handleReturnToRequests}
+                    disabled={actionLoading}
+                    style={{ fontSize: '0.8rem', padding: '4px 12px' }}
+                  >
+                    ↩ Вернуть в работу
+                  </button>
+                )}
              </div>
            )}
         </div>
@@ -828,7 +868,7 @@ export default function ActDetailsPage() {
             </div>
        </div>
 
-      {(act.type === 'ttn' || act.docType === 'ttn' || act.type === 'smr' || act.docType === 'smr' || (act.type === 'REQUEST' && act.docAttrs?.transportType)) && (
+      {!act.isWarehouse && (act.type === 'ttn' || act.docType === 'ttn' || act.type === 'smr' || act.docType === 'smr' || (act.type === 'REQUEST' && act.docAttrs?.transportType)) && (
         <div className="card card--transport" style={{ marginTop: 14 }}>
           <div className="card_head card_head--transport" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div className="card_title">Транспортная информация ({(act.type || act.docType).toUpperCase()})</div>

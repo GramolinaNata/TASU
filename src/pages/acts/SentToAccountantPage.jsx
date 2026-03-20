@@ -28,6 +28,7 @@ function normalizeIsoDate(val) {
 
 export default function SentToAccountantPage() {
   const { openCompanySelector } = useOutletContext();
+  const { isAdmin, isAccountant } = useAuth();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -103,6 +104,17 @@ export default function SentToAccountantPage() {
       setActs([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleReturn = async (id) => {
+    if (!window.confirm("Вернуть заявку в работу? Она пропадет из этого списка и появится в Заявках.")) return;
+    try {
+      await api.requests.update(id, { readyForAccountant: false });
+      loadActs();
+    } catch (e) {
+       console.error(e);
+       alert("Ошибка при возврате");
     }
   };
 
@@ -187,6 +199,8 @@ export default function SentToAccountantPage() {
                 <th>Откуда</th>
                 <th>Куда</th>
                 <th>Заказчик</th>
+                <th style={{ width: 60, textAlign: 'center' }}>Мест</th>
+                <th style={{ width: 70, textAlign: 'center' }}>Вес (кг)</th>
                 <th style={{ width: 80, textAlign: 'center' }}>СНО</th>
                 <th style={{ width: 80, textAlign: 'center' }}>АВР</th>
                 <th style={{ width: 100, textAlign: "right" }}>Действие</th>
@@ -218,6 +232,8 @@ export default function SentToAccountantPage() {
                     <td>{a.route?.fromCity || "—"}</td>
                     <td>{a.route?.toCity || "—"}</td>
                     <td><div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div></td>
+                    <td style={{ textAlign: "center", fontSize: '0.9rem' }}>{a.totals?.seats || "—"}</td>
+                    <td style={{ textAlign: "center", fontSize: '0.9rem' }}>{a.totals?.weight || "—"}</td>
                     <td style={{ textAlign: "center" }}>
                       {a.snoIssued ? (
                         <span className="badge" style={{ background: '#f6ffed', color: '#52c41a' }}>Да</span>
@@ -233,9 +249,21 @@ export default function SentToAccountantPage() {
                       )}
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      <Link className="btn btn--sm btn--ghost" to={`/sent/${a.id}`}>
-                        Просмотр
-                      </Link>
+                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
+                        <Link className="btn btn--sm btn--ghost" to={`/sent/${a.id}`}>
+                          Просмотр
+                        </Link>
+                        {(!isAccountant || isAdmin) && (
+                          <button 
+                             className="btn btn--sm btn--ghost" 
+                             onClick={() => handleReturn(a.id)}
+                             style={{ color: '#f5222d' }}
+                             title="Вернуть в работу"
+                          >
+                             ↩
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))

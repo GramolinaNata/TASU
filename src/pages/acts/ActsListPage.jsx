@@ -209,6 +209,8 @@ export default function ActsListPage() {
                 <th>Страна, город (куда)</th>
                 <th>Заказчик</th>
                 <th>Вид транспорта</th>
+                <th style={{ width: 80 }}>Мест</th>
+                <th style={{ width: 80 }}>Вес (кг)</th>
                 <th style={{ width: 100 }}>Сумма (тг)</th>
                 {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
               </tr>
@@ -250,6 +252,8 @@ export default function ActsListPage() {
                         a.docAttrs?.transportType === 'plane' ? "Самолет" :
                           a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
                     </td>
+                    <td style={{ textAlign: 'center' }}>{a.totals?.seats || "—"}</td>
+                    <td style={{ textAlign: 'center' }}>{a.totals?.weight || "—"}</td>
                     <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                       {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
                     </td>

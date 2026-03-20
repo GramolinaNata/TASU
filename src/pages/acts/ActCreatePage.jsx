@@ -562,7 +562,7 @@ export default function ActCreatePage() {
         </div>
         {showCustCard && (
           <div className="card_body">
-            <div style={{ marginBottom: 16, display: 'flex', gap: 10 }}>
+            <div style={{ marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
                <button className="btn btn--sm" type="button" onClick={() => setCpSearchModal('customer')}>🔍 Найти в базе</button>
                {isCustomerModified && (
                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
@@ -671,7 +671,7 @@ export default function ActCreatePage() {
           </div>
           {showSendCard && (
             <div className="card_body">
-               <div style={{ marginBottom: 16, display: 'flex', gap: 10 }}>
+               <div style={{ marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
                  <button className="btn btn--sm" type="button" onClick={() => setCpSearchModal('sender')}>🔍 Найти в базе</button>
                </div>
                <div className="form_grid">
@@ -761,7 +761,7 @@ export default function ActCreatePage() {
         </div>
         {showRecCard && (
         <div className="card_body">
-           <div style={{ marginBottom: 16, display: 'flex', gap: 10 }}>
+           <div style={{ marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
              <button className="btn btn--sm" type="button" onClick={() => setCpSearchModal('receiver')}>🔍 Найти в базе</button>
              {isReceiverModified && (
                <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem', cursor: 'pointer' }}>
@@ -1093,108 +1093,110 @@ export default function ActCreatePage() {
         )}
       </div>
             
-            <div className="card card--transport" style={{ gridColumn: 'span 2', marginTop: 20 }}>
-                 <div className="card_head card_head--transport" onClick={() => setShowTransportCard(!showTransportCard)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div className="card_title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                       <span style={{ 
-                         transform: showTransportCard ? 'rotate(90deg)' : 'rotate(0deg)', 
-                         transition: 'transform 0.2s',
-                         display: 'inline-block',
-                         fontSize: '0.9rem'
-                       }}>▶</span>
-                       ВИД ТРАНСПОРТА
-                    </div>
-                 </div>
-                 {showTransportCard && (
-                    <div className="card_body">
-                      <div className="form_grid">
-                        <div className="field" style={{ gridColumn: 'span 2' }}>
-                          <div className="label">Вид перевозки <span className="text_danger">*</span></div>
-                          <select 
-                            value={docAttrs.transportType} 
-                            onChange={e => {
-                              const newVal = e.target.value;
-                              setDocAttrs({
-                                ...docAttrs, 
-                                transportType: newVal,
-                                vehicle: "",
-                                driver: "",
-                                hasTrailer: false,
-                                trailerNumber: "",
-                                flightNumber: ""
-                              });
-                            }}
-                          >
-                            <option value="auto_console">Авто консолидация</option>
-                            <option value="auto_separate">Отдельное авто</option>
-                            <option value="plane">Самолет</option>
-                            <option value="train">Поезд рейс</option>
-                          </select>
-                        </div>
-                        
-                        {(docAttrs.transportType === 'auto_console' || docAttrs.transportType === 'auto_separate') && (
-                          <>
-                            <div className="field">
-                              <div className="label">Автомобиль (Марка, гос. номер)</div>
-                              <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} placeholder="Volvo 016ACT02/ 21WSZ05" />
-                            </div>
-                            <div className="field">
-                              <div className="label">Водитель (Ф.И.О.)</div>
-                              <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
-                            </div>
-                            <div className="field" style={{ gridColumn: 'span 2' }}>
-                              <label className="label_checkbox">
-                                <input 
-                                  type="checkbox" 
-                                  checked={!!docAttrs.hasTrailer} 
-                                  onChange={e => setDocAttrs({...docAttrs, hasTrailer: e.target.checked})} 
-                                />
-                                Имеется прицеп
-                              </label>
-                            </div>
-                            {docAttrs.hasTrailer && (
-                              <div className="field" style={{ gridColumn: 'span 2' }}>
-                                <div className="label">Номер (описание) прицепа</div>
-                                <input 
-                                  value={docAttrs.trailerNumber || ""} 
-                                  onChange={e => setDocAttrs({...docAttrs, trailerNumber: e.target.value})} 
-                                  placeholder="Напр. KZ 123 ABC 02"
-                                />
-                              </div>
-                            )}
-                          </>
-                        )}
-
-                        {docAttrs.transportType === 'plane' && (
-                          <>
-                            <div className="field">
-                              <div className="label">Номер рейса</div>
-                              <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
-                            </div>
-                            <div className="field">
-                              <div className="label">Ответственный</div>
-                              <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
-                            </div>
-                          </>
-                        )}
-
-                        {docAttrs.transportType === 'train' && (
-                          <>
-                            <div className="field">
-                              <div className="label">Поезд / Вагон</div>
-                              <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
-                            </div>
-                            <div className="field">
-                              <div className="label">Ответственный</div>
-                              <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
-                            </div>
-                          </>)}
+            {!isWarehouse && (
+              <div className="card card--transport" style={{ gridColumn: 'span 2', marginTop: 20 }}>
+                   <div className="card_head card_head--transport" onClick={() => setShowTransportCard(!showTransportCard)} style={{ cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div className="card_title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                         <span style={{ 
+                           transform: showTransportCard ? 'rotate(90deg)' : 'rotate(0deg)', 
+                           transition: 'transform 0.2s',
+                           display: 'inline-block',
+                           fontSize: '0.9rem'
+                         }}>▶</span>
+                         ВИД ТРАНСПОРТА
                       </div>
-                    </div>
-                 )}
-              </div>
+                   </div>
+                   {showTransportCard && (
+                      <div className="card_body">
+                        <div className="form_grid">
+                          <div className="field" style={{ gridColumn: 'span 2' }}>
+                            <div className="label">Вид перевозки <span className="text_danger">*</span></div>
+                            <select 
+                              value={docAttrs.transportType} 
+                              onChange={e => {
+                                const newVal = e.target.value;
+                                setDocAttrs({
+                                  ...docAttrs, 
+                                  transportType: newVal,
+                                  vehicle: "",
+                                  driver: "",
+                                  hasTrailer: false,
+                                  trailerNumber: "",
+                                  flightNumber: ""
+                                });
+                              }}
+                            >
+                              <option value="auto_console">Авто консолидация</option>
+                              <option value="auto_separate">Отдельное авто</option>
+                              <option value="plane">Самолет</option>
+                              <option value="train">Поезд рейс</option>
+                            </select>
+                          </div>
+                          
+                          {(docAttrs.transportType === 'auto_console' || docAttrs.transportType === 'auto_separate') && (
+                            <>
+                              <div className="field">
+                                <div className="label">Автомобиль (Марка, гос. номер)</div>
+                                <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} placeholder="Volvo 016ACT02/ 21WSZ05" />
+                              </div>
+                              <div className="field">
+                                <div className="label">Водитель (Ф.И.О.)</div>
+                                <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
+                              </div>
+                              <div className="field" style={{ gridColumn: 'span 2' }}>
+                                <label className="label_checkbox">
+                                  <input 
+                                    type="checkbox" 
+                                    checked={!!docAttrs.hasTrailer} 
+                                    onChange={e => setDocAttrs({...docAttrs, hasTrailer: e.target.checked})} 
+                                  />
+                                  Имеется прицеп
+                                </label>
+                              </div>
+                              {docAttrs.hasTrailer && (
+                                <div className="field" style={{ gridColumn: 'span 2' }}>
+                                  <div className="label">Номер (описание) прицепа</div>
+                                  <input 
+                                    value={docAttrs.trailerNumber || ""} 
+                                    onChange={e => setDocAttrs({...docAttrs, trailerNumber: e.target.value})} 
+                                    placeholder="Напр. KZ 123 ABC 02"
+                                  />
+                                </div>
+                              )}
+                            </>
+                          )}
+  
+                          {docAttrs.transportType === 'plane' && (
+                            <>
+                              <div className="field">
+                                <div className="label">Номер рейса</div>
+                                <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
+                              </div>
+                              <div className="field">
+                                <div className="label">Ответственный</div>
+                                <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
+                              </div>
+                            </>
+                          )}
+  
+                          {docAttrs.transportType === 'train' && (
+                            <>
+                              <div className="field">
+                                <div className="label">Поезд / Вагон</div>
+                                <input value={docAttrs.flightNumber} onChange={e => setDocAttrs({...docAttrs, flightNumber: e.target.value})} />
+                              </div>
+                              <div className="field">
+                                <div className="label">Ответственный</div>
+                                <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
+                              </div>
+                            </>)}
+                        </div>
+                      </div>
+                   )}
+                </div>
+            )}
 
-            <div className="field">
+            <div className="field" style={{marginTop: 10}}>
                <div className="label">Сумма (тг)</div>
                <input 
                  value={totalSum}
@@ -1203,7 +1205,7 @@ export default function ActCreatePage() {
                />
             </div>
             
-            <div className="field">
+            <div className="field" style={{marginTop: 10}}>
                <div className="label">Дата</div>
                <input 
                  type="date" 

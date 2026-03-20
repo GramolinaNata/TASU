@@ -179,6 +179,8 @@ export default function WarehousePage() {
                 <th style={{ width: 100 }}>Дата</th>
                 <th style={{ width: 120 }}>Статус</th>
                 <th>Заказчик</th>
+                <th style={{ width: 80 }}>Мест</th>
+                <th style={{ width: 80 }}>Вес (кг)</th>
                 <th style={{ width: 150 }}>Сумма услуг</th>
                 {(!isAccountant || isAdmin) && <th style={{ width: 180, textAlign: "right" }}>Действия</th>}
               </tr>
@@ -209,6 +211,8 @@ export default function WarehousePage() {
                     <td>
                       <div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div>
                     </td>
+                    <td style={{ textAlign: 'center' }}>{a.totals?.seats || "—"}</td>
+                    <td style={{ textAlign: 'center' }}>{a.totals?.weight || "—"}</td>
                     <td style={{ fontWeight: 700 }}>
                       {getServicesTotal(a.warehouseServices).toLocaleString()} тг
                     </td>

@@ -186,6 +186,8 @@ export default function DeferredPage() {
                 <th>Компания</th>
                 <th>Заказчик</th>
                 <th>Маршрут</th>
+                <th style={{ width: 60, textAlign: 'center' }}>Мест</th>
+                <th style={{ width: 70, textAlign: 'center' }}>Вес (кг)</th>
                 <th>Статус</th>
                 <th style={{ width: 100 }}>Сумма (тг)</th>
                 <th style={{ width: 120, textAlign: "right" }}>Действия</th>
@@ -218,6 +220,8 @@ export default function DeferredPage() {
                         </div>
                       )}
                     </td>
+                    <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.seats || "—"}</td>
+                    <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.weight || "—"}</td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       {a.status === 'draft' ? (
                         <span className="badge" style={{ background: '#f5f5f5', color: '#595959', padding: '2px 6px', fontSize: '0.75rem' }}>Черновик</span>
