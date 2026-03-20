@@ -183,13 +183,13 @@ export default function DeferredPage() {
               <tr>
                 <th style={{ width: 100 }}>Номер</th>
                 <th style={{ width: 100 }}>Дата</th>
-                <th>Компания</th>
+                
                 <th>Заказчик</th>
                 <th>Маршрут</th>
                 <th style={{ width: 60, textAlign: 'center' }}>Мест</th>
                 <th style={{ width: 70, textAlign: 'center' }}>Вес (кг)</th>
-                <th>Статус</th>
                 <th style={{ width: 100 }}>Сумма (тг)</th>
+                <th>Статус</th>
                 <th style={{ width: 120, textAlign: "right" }}>Действия</th>
               </tr>
             </thead>
@@ -209,7 +209,6 @@ export default function DeferredPage() {
                       </Link>
                     </td>
                     <td>{formatDisplayDate(a.createdAt || a.date)}</td>
-                    <td><div style={{ fontWeight: 500, fontSize: '0.85rem' }}>{a.company?.name || "—"}</div></td>
                     <td><div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div></td>
                     <td>
                       {a.isWarehouse ? (
@@ -222,6 +221,9 @@ export default function DeferredPage() {
                     </td>
                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.seats || "—"}</td>
                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.weight || "—"}</td>
+                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                    </td>
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       {a.status === 'draft' ? (
                         <span className="badge" style={{ background: '#f5f5f5', color: '#595959', padding: '2px 6px', fontSize: '0.75rem' }}>Черновик</span>
@@ -241,19 +243,23 @@ export default function DeferredPage() {
                         </>
                       )}
                     </td>
-                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                    </td>
                     <td style={{ textAlign: "right" }}>
-                      <button
-                        className="btn btn--sm btn--primary"
-                        style={{ borderColor: "#108ee9", color: "#108ee9", background: "transparent" }}
-                        type="button"
-                        onClick={() => handleReturn(a.id, a.docNumber || a.number)}
-                        title="Вернуть"
-                      >
-                        Вернуть
-                      </button>
+                      <details className="actions-dropdown">
+                        <summary className="btn-actions">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
+                        </summary>
+                        <div className="actions-menu">
+                          <Link className="actions-item" to={`/deferred/${a.id}`}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            Просмотр
+                          </Link>
+
+                          <button className="actions-item danger" onClick={() => handleReturn(a.id, a.docNumber || a.number)}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                            Вернуть в работу
+                          </button>
+                        </div>
+                      </details>
                     </td>
                   </tr>
                 ))

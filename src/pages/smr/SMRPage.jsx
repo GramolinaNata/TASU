@@ -34,17 +34,6 @@ export default function SmrPage() {
   const [allActs, setAllActs] = useState([]);
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [activeDropdown, setActiveDropdown] = useState(null);
-  
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (!e.target.closest('.action-dropdown-container')) {
-        setActiveDropdown(null);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
 
   const loadData = async () => {
     setLoading(true);
@@ -208,7 +197,7 @@ export default function SmrPage() {
                 <th>Заказчик</th>
                 <th>Вид транспорта</th>
                 <th>Сумма (тг)</th>
-                {(!isAccountant || isAdmin) && <th style={{ width: 170, textAlign: "right" }}>Действия</th>}
+                <th style={{ width: 120, textAlign: "right" }}>Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -245,57 +234,47 @@ export default function SmrPage() {
                     <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                       {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
                     </td>
-                    {(!isAccountant || isAdmin) && (
-                      <td
-                        style={{
-                          textAlign: "right",
-                          display: "flex",
-                          justifyContent: "flex-end",
-                          gap: 8,
-                        }}
-                      >
-                        {(!isAccountant || isAdmin) && (
-                          a.status === 'canceled' ? (
-                            <button className="btn btn--sm" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>
-                              Редактировать
-                            </button>
-                          ) : (
-                            <Link className="btn btn--sm" to={`/smr/${a.id}/edit`}>
+                    <td style={{ textAlign: "right" }}>
+                      <details className="actions-dropdown">
+                        <summary className="btn-actions">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
+                        </summary>
+                        <div className="actions-menu">
+                          <Link className="actions-item" to={`/smr/${a.id}`}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            Просмотр
+                          </Link>
+
+                          {a.status !== 'canceled' && (
+                            <Link className="actions-item" to={`/smr/${a.id}/edit`}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
                               Редактировать
                             </Link>
-                          )
-                        )}
+                          )}
 
-                        {isAdmin ? (
-                          <>
-                            <button
-                              className="btn btn--sm btn--danger"
-                              type="button"
-                              onClick={() => handleDelete(a.id, a.docNumber || a.number)}
-                              style={{ background: '#ff4d4f', color: '#fff' }}
-                            >
-                              Удалить
-                            </button>
-                            {a.status === 'canceled' && (
-                              <button className="btn btn--sm" style={{ borderColor: "#108ee9", color: "#108ee9" }} type="button" onClick={() => handleRestore(a.id, a.docNumber || a.number)}>
-                                Восстановить
-                              </button>
-                            )}
-                            {a.status !== 'canceled' && (
-                              <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
-                                Аннулировать
-                              </button>
-                            )}
-                          </>
-                        ) : (
-                          a.status !== 'canceled' && (
-                            <button className="btn btn--sm btn--danger" type="button" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
+                          {(!isAccountant || isAdmin) && a.status !== 'canceled' && (
+                            <button className="actions-item" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
                               Аннулировать
                             </button>
-                          )
-                        )}
-                      </td>
-                    )}
+                          )}
+
+                          {isAdmin && a.status === 'canceled' && (
+                            <button className="actions-item" onClick={() => handleRestore(a.id, a.docNumber || a.number)}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                              Восстановить
+                            </button>
+                          )}
+
+                          {isAdmin && (
+                            <button className="actions-item danger" onClick={() => handleDelete(a.id, a.docNumber || a.number)}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                              Удалить
+                            </button>
+                          )}
+                        </div>
+                      </details>
+                    </td>
                   </tr>
                 ))
               )}

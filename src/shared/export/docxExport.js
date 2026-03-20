@@ -51,6 +51,19 @@ function formatContractDate(isoString) {
 }
 
 /**
+ * Вспомогательная функция для формата d.m.y г
+ */
+function formatDmy(isoString) {
+    if (!isoString) return "";
+    const date = new Date(isoString);
+    if (isNaN(date.getTime())) return isoString;
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = date.getFullYear();
+    return `${day}.${month}.${year} г.`;
+}
+
+/**
  * Экспорт данных акта в Word по шаблону.
  */
 export async function exportToDocx(act, templateOverride = null) {
@@ -267,6 +280,14 @@ export async function exportToDocx(act, templateOverride = null) {
         total: s.total || "",
       })),
       warehouse_total: (act.warehouseServices || []).reduce((acc, s) => acc + (s.total || 0), 0),
+
+      // --- NEW WAREHOUSE TAGS FOR USER TEMPLATE ---
+      date_dmy: formatDmy(act.date),
+      client_fio_org: `${act.customer?.companyName || ""} ${act.customer?.fio || ""}`.trim(),
+      performer_fio_org: act.company?.name || "",
+      arrival_date_dmy: formatDmy(act.date),
+      export_date_dmy: formatDmy(new Date()), // Текущая дата экспорта
+      // warehouse_services (выше) уже содержит массив для использования {%{#warehouse_services} {name} {/warehouse_services}%}
     };
 
     // --- ДОБАВЛЯЕМ СПЕЦИФИЧЕСКИЕ ТЕГИ ДЛЯ СКЛАДСКОГО АКТА ---

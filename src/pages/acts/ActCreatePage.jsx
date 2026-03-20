@@ -178,6 +178,8 @@ export default function ActCreatePage() {
   const [showSendReq, setShowSendReq] = useState(false);
   const [showRecReq, setShowRecReq] = useState(false);
 
+  const [isDataLoading, setIsDataLoading] = useState(false);
+
   // Автозаполнение totalSum из услуг (Складских или обычных)
   useEffect(() => {
     const sum = warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0);
@@ -204,7 +206,13 @@ export default function ActCreatePage() {
       setAllCompanies(companies);
 
       if (isEditMode) {
+        setIsDataLoading(true);
         try {
+          // Reset states to avoid stale data while loading
+          setCargoRows([]);
+          setWarehouseServices([]);
+          setCargoText("");
+          
           const act = await api.requests.get(id);
           if (act) {
             setDate(act.date || todayIso());
@@ -233,11 +241,6 @@ export default function ActCreatePage() {
             if (details.deliveryTerm) setDeliveryTerm(details.deliveryTerm || "");
             
             setPackaging(details.packaging || "");
-            // Merge existing data if both were present, otherwise use fastening
-            const combinedFastening = details.stackable 
-              ? `${details.fastening || ""} / ${details.stackable}`.replace(/^ \/ /, "")
-              : (details.fastening || "");
-            setFastening(combinedFastening);
             
             if (act.type) {
               setDbType(act.type);
@@ -247,22 +250,35 @@ export default function ActCreatePage() {
             
             setInsured(!!details.insured);
             setCargoValue(details.cargoValue || "");
-            if (Array.isArray(details.cargoRows)) setCargoRows(details.cargoRows);
+            
+            if (Array.isArray(details.cargoRows) && details.cargoRows.length > 0) {
+              setCargoRows(details.cargoRows);
+            } else {
+              setCargoRows([{ id: safeUuid(), title: "", seats: 1, length: "", width: "", height: "", weight: "", volume: 0, volWeight: 0 }]);
+            }
             
             if (typeof details.isWarehouse === 'boolean') {
               setIsWarehouse(details.isWarehouse);
             }
-            if (Array.isArray(details.warehouseServices)) {
+            if (Array.isArray(details.warehouseServices) && details.warehouseServices.length > 0) {
               setWarehouseServices(details.warehouseServices);
+            } else {
+              setWarehouseServices([{ id: safeUuid(), name: "", qty: 1, price: 0, total: 0 }]);
             }
           }
         } catch (e) {
           console.error("Failed to load act for edit", e);
+          alert("Ошибка при загрузке данных заявки. Пожалуйста, попробуйте обновить страницу.");
+        } finally {
+          setIsDataLoading(false);
         }
       } else {
         setSelectedCompanyId(getSelectedCompanyId() || "");
         
-        // Check for warehouse type in query params
+        // Initial defaults for new acts
+        setCargoRows([{ id: safeUuid(), title: "", seats: 1, length: "", width: "", height: "", weight: "", volume: 0, volWeight: 0 }]);
+        setWarehouseServices([{ id: safeUuid(), name: "", qty: 1, price: 0, total: 0 }]);
+
         const params = new URLSearchParams(location.search);
         if (params.get("type") === "warehouse") {
           setIsWarehouse(true);
@@ -495,6 +511,15 @@ export default function ActCreatePage() {
       setLoading(false);
     }
   };
+
+  if (isDataLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: 16 }}>
+        <div className="loader"></div>
+        <div style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Загрузка данных заявки...</div>
+      </div>
+    );
+  }
 
   return (
     <>

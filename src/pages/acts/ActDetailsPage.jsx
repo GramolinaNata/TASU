@@ -581,7 +581,7 @@ export default function ActDetailsPage() {
               <div className="muted" style={{fontSize: '0.9rem'}}>
                 {act.readyForAccountant 
                   ? "" 
-                  : "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СФ/АВР"}
+                  : "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СНО/АВР/ЭСФ"}
               </div>
            </div>
            {!act.readyForAccountant ? (
@@ -738,7 +738,7 @@ export default function ActDetailsPage() {
                  )}
               </div>
 
-              {/* АВР Toggle / Status */}
+               {/* АВР Toggle / Status */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
                     Акт выполненных работ (АВР) отправлен
@@ -775,6 +775,47 @@ export default function ActDetailsPage() {
                      borderColor: act.avrSent ? '#91caff' : '#ffe58f'
                    }}>
                      {act.avrSent ? "Да" : "Нет"}
+                   </span>
+                 )}
+              </div>
+
+              {/* ЭСФ Toggle / Status */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
+                 <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
+                    Электронная счет-фактура (ЭСФ) выставлена
+                 </div>
+                 {isAccountant ? (
+                   <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                      <input 
+                        type="checkbox" 
+                        style={{ display: 'none' }}
+                        checked={!!act.esfIssued} 
+                        onChange={async (e) => {
+                          const val = e.target.checked;
+                          setAct(prev => ({ ...prev, esfIssued: val }));
+                          try { await api.requests.update(act.id, { esfIssued: val }); }
+                          catch (err) { alert(err.message); setAct(prev => ({ ...prev, esfIssued: !val })); }
+                        }}
+                      />
+                      <div className="toggle_slider" style={{
+                        width: 44, height: 24, background: act.esfIssued ? '#722ed1' : 'var(--muted)', 
+                        borderRadius: 24, position: 'relative', transition: 'background 0.3s'
+                      }}>
+                        <div className="toggle_knob" style={{
+                          width: 20, height: 20, background: '#fff', borderRadius: '50%',
+                          position: 'absolute', top: 2, left: act.esfIssued ? 22 : 2,
+                          transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }} />
+                      </div>
+                   </label>
+                 ) : (
+                   <span className="badge" style={{ 
+                     background: act.esfIssued ? '#f9f0ff' : '#fffbe6', 
+                     color: act.esfIssued ? '#722ed1' : '#faad14',
+                     padding: '4px 12px',
+                     borderColor: act.esfIssued ? '#d3adf7' : '#ffe58f'
+                   }}>
+                     {act.esfIssued ? "Да" : "Нет"}
                    </span>
                  )}
               </div>
@@ -990,7 +1031,7 @@ export default function ActDetailsPage() {
 
       {Array.isArray(act.warehouseServices) && act.warehouseServices.length > 0 && (
         <div className="info_card" style={{ marginTop: 14 }}>
-          <div className="info_title">Складские услуги</div>
+          <div className="info_title">{act.isWarehouse ? "Складские услуги" : "Услуги"}</div>
           <div className="table_wrap">
             <table className="table_fixed">
                 <thead>

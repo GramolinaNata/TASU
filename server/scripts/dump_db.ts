@@ -10,17 +10,22 @@ async function dump() {
   const companies = await prisma.company.findMany();
   const users = await prisma.user.findMany();
   const counterparties = await prisma.counterparty.findMany();
+  const requests = await prisma.request.findMany({
+    take: 10,
+    orderBy: { createdAt: 'desc' }
+  });
 
   const data = {
     companies,
     users,
-    counterparties
+    counterparties,
+    requests
   };
 
   const filePath = path.join(__dirname, '../data_backup.json');
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
   
-  console.log(`Successfully dumped ${companies.length} companies, ${users.length} users and ${counterparties.length} counterparties to ${filePath}`);
+  console.log(`Successfully dumped ${companies.length} companies, ${users.length} users, ${counterparties.length} counterparties and ${requests.length} requests to ${filePath}`);
 }
 
 dump()

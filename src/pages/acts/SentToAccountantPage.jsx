@@ -249,21 +249,24 @@ export default function SentToAccountantPage() {
                       )}
                     </td>
                     <td style={{ textAlign: "right" }}>
-                      <div style={{ display: 'flex', gap: 4, justifyContent: 'flex-end' }}>
-                        <Link className="btn btn--sm btn--ghost" to={`/sent/${a.id}`}>
-                          Просмотр
-                        </Link>
-                        {(!isAccountant || isAdmin) && (
-                          <button 
-                             className="btn btn--sm btn--ghost" 
-                             onClick={() => handleReturn(a.id)}
-                             style={{ color: '#f5222d' }}
-                             title="Вернуть в работу"
-                          >
-                             ↩
-                          </button>
-                        )}
-                      </div>
+                      <details className="actions-dropdown">
+                        <summary className="btn-actions">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
+                        </summary>
+                        <div className="actions-menu">
+                          <Link className="actions-item" to={`/sent/${a.id}`}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            Просмотр
+                          </Link>
+
+                          {(!isAccountant || isAdmin) && (
+                            <button className="actions-item danger" onClick={() => handleReturn(a.id)}>
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                              Вернуть в работу
+                            </button>
+                          )}
+                        </div>
+                      </details>
                     </td>
                   </tr>
                 ))

@@ -93,9 +93,10 @@ export default function App() {
           <Route path="/deferred/:id" element={<RequireAuth managerOrAdminOnly><ActDetailsPage /></RequireAuth>} />
           <Route path="/deferred/:id/edit" element={<RequireAuth managerOrAdminOnly><ActCreatePage /></RequireAuth>} />
           
-          {/* Courier Routes */}
-          <Route path="/courier/acts/:id" element={<RequireAuth><CourierActViewPage /></RequireAuth>} />
+          <Route path="/deferred/:id/edit" element={<RequireAuth managerOrAdminOnly><ActCreatePage /></RequireAuth>} />
         </Route>
+        {/* Courier Routes (Outside of Layout and Auth for Guest Access) */}
+        <Route path="/courier/acts/:id" element={<CourierActViewPage />} />
       </Routes>
   );
 }

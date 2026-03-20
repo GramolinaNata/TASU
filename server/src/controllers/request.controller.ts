@@ -153,11 +153,19 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
     }
 
     // Explicitly handle route and cargo for the DB columns
+    // Use fallback to existingDetails ONLY IF req.body.route/cargo are undefined
     const route = req.body.route !== undefined ? req.body.route : existingDetails.route;
     const cargo = req.body.cargo !== undefined ? req.body.cargo : existingDetails.cargo;
     
-    const routeStr = typeof route === 'object' ? `${route.fromCity || ''} -> ${route.toCity || ''}` : route;
-    const cargoStr = typeof cargo === 'object' ? JSON.stringify(cargo) : cargo;
+    let routeStr = undefined;
+    if (route) {
+        routeStr = typeof route === 'object' ? `${route.fromCity || ''} -> ${route.toCity || ''}` : route;
+    }
+
+    let cargoStr = undefined;
+    if (cargo) {
+        cargoStr = typeof cargo === 'object' ? JSON.stringify(cargo) : cargo;
+    }
 
     const updatedRequest = await prisma.request.update({
       where: { id: id as string },

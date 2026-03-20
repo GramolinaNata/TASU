@@ -443,7 +443,6 @@ td {
 
 .card_head {
     padding: 14px 16px;
-    border-bottom: 1px solid var(--line);
     background: #fbfbfb;
 }
 
@@ -1121,3 +1120,191 @@ textarea.error {
     color: var(--text) !important;
 }
 
+/* Consolidated Table Actions */
+.table_wrap {
+    position: relative;
+    overflow-x: auto;
+    overflow-y: visible;
+}
+
+.table_wrap:has(.actions-dropdown) {
+    min-height: 450px;
+    padding-bottom: 200px;
+}
+
+.actions-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.actions-menu {
+    position: absolute;
+    right: 0;
+    top: 110%;
+    margin-top: 4px;
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    box-shadow: var(--shadow-lg);
+    z-index: 1000;
+    padding: 6px 0;
+    min-width: 170px;
+    display: none;
+    text-align: left;
+}
+
+.actions-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+/* Hide default details arrow */
+.actions-dropdown summary::-webkit-details-marker {
+    display: none;
+}
+.actions-dropdown summary {
+    list-style: none;
+    outline: none;
+    user-select: none;
+}
+
+/* Click-outside to close overlay */
+.actions-dropdown[open] > summary::before {
+    content: ' ';
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 100;
+    background: transparent;
+}
+
+.actions-dropdown[open] .actions-menu {
+    display: block;
+}
+
+.actions-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    text-decoration: none;
+    color: var(--text);
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s, color 0.2s;
+    border: none;
+    background: none;
+    width: 100%;
+}
+
+.actions-item:hover {
+    background: var(--bg);
+}
+
+.actions-item.danger {
+    color: var(--danger);
+}
+
+.actions-item svg {
+    width: 18px;
+    height: 18px;
+    opacity: 0.8;
+}
+
+.btn-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-actions:hover {
+    border-color: var(--primary);
+    background: var(--primary-light);
+}
+/* Premium UI & Glassmorphism */
+.glass {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+[data-theme='dark'] .glass {
+    background: rgba(30, 41, 59, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+}
+
+.premium-card {
+    border-radius: 20px;
+    padding: 2rem;
+    background: var(--card);
+    box-shadow: var(--shadow-lg);
+    border: 1px solid var(--line);
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.premium-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 20px 40px rgba(0,0,0,0.08);
+}
+
+.protected-section {
+    position: relative;
+    overflow: hidden;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--primary-light), var(--bg));
+    padding: 1.5rem;
+    border: 1px dashed var(--muted);
+}
+
+[data-theme='dark'] .protected-section {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.5), rgba(15, 23, 42, 0.5));
+    border-style: solid;
+    border-color: var(--line);
+}
+
+.label-mini {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--muted);
+    font-weight: 700;
+    margin-bottom: 4px;
+    display: block;
+}
+
+.status-glow {
+    position: relative;
+}
+
+.status-glow::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    border-radius: inherit;
+    box-shadow: 0 0 12px var(--glow-color);
+    opacity: 0.5;
+}
+
+.animate-pulse {
+    animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-ring {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+}

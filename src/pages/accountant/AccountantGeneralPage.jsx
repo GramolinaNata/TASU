@@ -33,6 +33,7 @@ export default function AccountantGeneralPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [snoFilter, setSnoFilter] = useState("all");
   const [avrFilter, setAvrFilter] = useState("all");
+  const [esfFilter, setEsfFilter] = useState("all"); // Новое: ЭСФ
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -113,6 +114,15 @@ export default function AccountantGeneralPage() {
         }
     }
 
+    // Фильтр по ЭСФ
+    if (esfFilter !== "all") {
+        if (esfFilter === "done") {
+             list = list.filter(a => !!a.esfIssued);
+        } else if (esfFilter === "pending") {
+             list = list.filter(a => !a.esfIssued);
+        }
+    }
+
     // 2. По дате
     if (dateFrom) {
        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
@@ -125,7 +135,16 @@ export default function AccountantGeneralPage() {
     const s = q.trim().toLowerCase();
     if (s) {
        list = list.filter((a) => {
-        const hay = [a.number, a.docNumber, a.date, a.customer?.fio, a.route?.fromCity, a.route?.toCity, a.company?.name]
+        const hay = [
+          a.number, 
+          a.docNumber, 
+          a.date, 
+          a.customer?.fio, 
+          a.customer?.companyName,
+          a.route?.fromCity, 
+          a.route?.toCity, 
+          a.company?.name
+        ]
           .filter(Boolean)
           .join(" ")
           .toLowerCase();
@@ -134,7 +153,7 @@ export default function AccountantGeneralPage() {
     }
     
     return list;
-  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, snoFilter, avrFilter]);
+  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, snoFilter, avrFilter, esfFilter]);
 
 
 
@@ -194,6 +213,14 @@ export default function AccountantGeneralPage() {
            </select>
         </div>
         <div className="field" style={{ width: 140 }}>
+           <div className="label">ЭСФ</div>
+           <select value={esfFilter} onChange={e => setEsfFilter(e.target.value)}>
+               <option value="all">Все</option>
+               <option value="pending">Ожидает ЭСФ</option>
+               <option value="done">Выставлен</option>
+           </select>
+        </div>
+        <div className="field" style={{ width: 140 }}>
            <div className="label">Дата с</div>
            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
         </div>
@@ -212,17 +239,20 @@ export default function AccountantGeneralPage() {
               <tr>
                 <th style={{ width: 100 }}>Номер</th>
                 <th style={{ width: 100 }}>Дата</th>
-                <th>Компания</th>
                 <th>Заказчик</th>
+                <th style={{ width: 80 }}>Мест</th>
+                <th style={{ width: 90 }}>Вес</th>
+                <th style={{ width: 120 }}>Сумма</th>
                 <th>Маршрут</th>
-                <th style={{ width: 80, textAlign: 'center' }}>СНО</th>
-                <th style={{ width: 80, textAlign: 'center' }}>АВР</th>
+                <th style={{ width: 60, textAlign: 'center' }}>СНО</th>
+                <th style={{ width: 60, textAlign: 'center' }}>АВР</th>
+                <th style={{ width: 60, textAlign: 'center' }}>ЭСФ</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
                     В общем котле нет документов.
                   </td>
                 </tr>
@@ -235,8 +265,10 @@ export default function AccountantGeneralPage() {
                       </Link>
                     </td>
                     <td>{formatDisplayDate(a.createdAt || a.date)}</td>
-                    <td><div style={{ fontWeight: 500, fontSize: '0.85rem' }}>{a.company?.name || "—"}</div></td>
-                    <td><div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div></td>
+                    <td><div style={{ fontWeight: 500 }}>{a.customer?.companyName || a.customer?.fio || "—"}</div></td>
+                    <td>{a.totals?.seats || "—"}</td>
+                    <td>{a.totals?.weight ? `${a.totals.weight} кг` : "—"}</td>
+                    <td style={{ fontWeight: 700 }}>{a.totalSum ? `${parseFloat(a.totalSum).toLocaleString()} тг` : "—"}</td>
                     <td>
                       {a.isWarehouse ? (
                         <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Склад</span>
@@ -255,6 +287,13 @@ export default function AccountantGeneralPage() {
                     </td>
                     <td style={{ textAlign: "center" }}>
                       {a.avrSent ? (
+                        <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Да</span>
+                      ) : (
+                        <span className="badge" style={{ background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem' }}>Нет</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {a.esfIssued ? (
                         <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Да</span>
                       ) : (
                         <span className="badge" style={{ background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem' }}>Нет</span>
