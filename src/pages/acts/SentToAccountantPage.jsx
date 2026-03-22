@@ -35,6 +35,7 @@ export default function SentToAccountantPage() {
   const [acts, setActs] = useState([]);
   const [company, setCompany] = useState(null);
   const [docTypeFilter, setDocTypeFilter] = useState("all");
+  const [esfFilter, setEsfFilter] = useState("all");
   const [loading, setLoading] = useState(true);
 
   // Фильтрация: Только отработанные (readyForAccountant === true)
@@ -66,6 +67,15 @@ export default function SentToAccountantPage() {
     if (dateTo) {
        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) <= dateTo);
     }
+    
+    // Фильтр по ЭСФ
+    if (esfFilter !== "all") {
+        if (esfFilter === "done") {
+             list = list.filter(a => !!a.esfIssued);
+        } else if (esfFilter === "pending") {
+             list = list.filter(a => !a.esfIssued);
+        }
+    }
 
     const s = q.trim().toLowerCase();
     if (s) {
@@ -79,7 +89,7 @@ export default function SentToAccountantPage() {
     }
     
     return list;
-  }, [acts, q, company, dateFrom, dateTo, docTypeFilter]);
+  }, [acts, q, company, dateFrom, dateTo, docTypeFilter, esfFilter]);
 
   const loadActs = async () => {
     setLoading(true);
@@ -184,6 +194,14 @@ export default function SentToAccountantPage() {
            <div className="label">Дата по</div>
            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
         </div>
+        {/* <div className="field" style={{ width: 140 }}>
+           <div className="label">ЭСФ</div>
+           <select value={esfFilter} onChange={e => setEsfFilter(e.target.value)}>
+               <option value="all">Все</option>
+               <option value="pending">Ожидает ЭСФ</option>
+               <option value="done">Выставлен</option>
+           </select>
+        </div> */}
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
@@ -203,6 +221,8 @@ export default function SentToAccountantPage() {
                 <th style={{ width: 70, textAlign: 'center' }}>Вес (кг)</th>
                 <th style={{ width: 80, textAlign: 'center' }}>СНО</th>
                 <th style={{ width: 80, textAlign: 'center' }}>АВР</th>
+                <th style={{ width: 80, textAlign: 'center' }}>ЭСФ</th>
+                <th style={{ width: 110, textAlign: 'center' }}>Бухгалтер</th>
                 <th style={{ width: 100, textAlign: "right" }}>Действие</th>
               </tr>
             </thead>
@@ -246,6 +266,22 @@ export default function SentToAccountantPage() {
                         <span className="badge" style={{ background: '#f6ffed', color: '#52c41a' }}>Да</span>
                       ) : (
                         <span className="badge" style={{ background: '#fffbe6', color: '#faad14' }}>Нет</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {a.esfIssued ? (
+                        <span className="badge" style={{ background: '#f6ffed', color: '#52c41a' }}>Да</span>
+                      ) : (
+                        <span className="badge" style={{ background: '#fffbe6', color: '#faad14' }}>Нет</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {a.isProcessedByAccountant ? (
+                        <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', fontWeight: 700 }}>Отработано</span>
+                      ) : a.isViewedByAccountant ? (
+                        <span className="badge" style={{ background: '#fffbe6', color: '#faad14' }}>В работе</span>
+                      ) : (
+                        <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Новое</span>
                       )}
                     </td>
                     <td style={{ textAlign: "right" }}>

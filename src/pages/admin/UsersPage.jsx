@@ -6,6 +6,8 @@ export default function UsersPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState(null);
+  const [roleFilter, setRoleFilter] = useState('ALL');
+  const [searchQuery, setSearchQuery] = useState('');
   
   // Форма
   const [formData, setFormData] = useState({
@@ -30,6 +32,24 @@ export default function UsersPage() {
   useEffect(() => {
     loadUsers();
   }, []);
+
+  const filteredUsers = React.useMemo(() => {
+    let list = [...users];
+    
+    if (roleFilter !== 'ALL') {
+      list = list.filter(u => u.role === roleFilter);
+    }
+    
+    if (searchQuery.trim()) {
+      const s = searchQuery.toLowerCase().trim();
+      list = list.filter(u => 
+        u.name?.toLowerCase().includes(s) || 
+        u.email?.toLowerCase().includes(s)
+      );
+    }
+    
+    return list;
+  }, [users, roleFilter, searchQuery]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -79,8 +99,35 @@ export default function UsersPage() {
           setFormData({ name: '', email: '', password: '', role: 'MANAGER' });
           setIsModalOpen(true);
         }}>
-          Добавить пользователя
+          + Добавить сотрудника
         </button>
+      </div>
+
+      <div className="filter-bar card" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="form_group_clean" style={{ flex: 2, minWidth: '200px' }}>
+          <label className="label_clean">Поиск сотрудника</label>
+          <input 
+            type="text" 
+            className="input_clean" 
+            placeholder="Имя или email..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div className="form_group_clean" style={{ flex: 1, minWidth: '160px' }}>
+          <label className="label_clean">Фильтр по роли</label>
+          <select 
+            className="input_clean" 
+            value={roleFilter}
+            onChange={e => setRoleFilter(e.target.value)}
+          >
+            <option value="ALL">Все роли</option>
+            <option value="ADMIN">Администраторы</option>
+            <option value="MANAGER">Менеджеры</option>
+            <option value="ACCOUNTANT">Бухгалтеры</option>
+            <option value="COURIER">Курьеры</option>
+          </select>
+        </div>
       </div>
 
       {isLoading ? (
@@ -98,22 +145,30 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map(user => (
-                <tr key={user.id}>
-                  <td>{user.name}</td>
-                  <td>{user.email}</td>
-                  <td>
-                    <span className={`badge ${user.role === 'ADMIN' ? 'badge-primary' : user.role === 'ACCOUNTANT' ? 'badge-info' : user.role === 'COURIER' ? 'badge-warning' : 'badge-secondary'}`}>
-                      {user.role === 'ADMIN' ? 'Админ' : user.role === 'ACCOUNTANT' ? 'Бухгалтер' : user.role === 'COURIER' ? 'Курьер' : 'Менеджер'}
-                    </span>
-                  </td>
-                  <td>{new Date(user.createdAt).toLocaleDateString()}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button className="btn btn-sm" onClick={() => openEdit(user)} style={{ marginRight: '8px' }}>Редактировать</button>
-                    <button className="btn btn-sm btn-danger" onClick={() => handleDelete(user.id)}>Удалить</button>
+              {filteredUsers.length === 0 ? (
+                <tr>
+                  <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
+                    Сотрудники не найдены
                   </td>
                 </tr>
-              ))}
+              ) : (
+                filteredUsers.map(user => (
+                  <tr key={user.id}>
+                    <td>{user.name}</td>
+                    <td>{user.email}</td>
+                    <td>
+                      <span className={`badge ${user.role === 'ADMIN' ? 'badge-primary' : user.role === 'ACCOUNTANT' ? 'badge-info' : user.role === 'COURIER' ? 'badge-warning' : 'badge-secondary'}`}>
+                        {user.role === 'ADMIN' ? 'Админ' : user.role === 'ACCOUNTANT' ? 'Бухгалтер' : user.role === 'COURIER' ? 'Курьер' : 'Менеджер'}
+                      </span>
+                    </td>
+                    <td>{new Date(user.createdAt).toLocaleDateString()}</td>
+                    <td style={{ textAlign: 'right' }}>
+                      <button className="btn btn-sm" onClick={() => openEdit(user)} style={{ marginRight: '8px' }}>Редактировать</button>
+                      <button className="btn btn-sm btn-danger" onClick={() => handleDelete(user.id)}>Удалить</button>
+                    </td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>

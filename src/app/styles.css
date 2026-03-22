@@ -1308,3 +1308,41 @@ textarea.error {
     0%, 100% { opacity: 1; }
     50% { opacity: .5; }
 }
+/* --- Accountant Processed Toggle --- */
+.processed_card {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    width: 100%;
+    margin-top: 12px;
+    background: var(--card);
+    transition: all 0.3s ease;
+}
+
+.processed_card--active {
+    background: #f6ffed !important;
+    border-color: #b7eb8f !important;
+}
+
+[data-theme='dark'] .processed_card--active {
+    background: rgba(82, 196, 26, 0.1) !important;
+    border-color: rgba(82, 196, 26, 0.3) !important;
+}
+
+.processed_text {
+    flex: 1;
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text);
+}
+
+.processed_text--active {
+    color: #389e0d;
+}
+
+[data-theme='dark'] .processed_text--active {
+    color: #52c41a;
+}

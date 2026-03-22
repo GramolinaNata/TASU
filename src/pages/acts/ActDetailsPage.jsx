@@ -107,6 +107,21 @@ export default function ActDetailsPage() {
     loadAct();
   }, [id]);
 
+  // Auto-mark as viewed for accountants
+  useEffect(() => {
+    if (act && isAccountant && !act.isViewedByAccountant) {
+      const markAsViewed = async () => {
+        try {
+          await api.requests.update(act.id, { isViewedByAccountant: true });
+          setAct(prev => ({ ...prev, isViewedByAccountant: true }));
+        } catch (e) {
+          console.error("Failed to mark as viewed", e);
+        }
+      };
+      markAsViewed();
+    }
+  }, [act, isAccountant]);
+
   /* ГИБРИДНОЕ ФОРМИРОВАНИЕ */
   const chooseDocType = async (type) => {
     if (!id) return;
@@ -613,7 +628,7 @@ export default function ActDetailsPage() {
         </div>
       )}
 
-      {act.status !== 'canceled' && !act.isWarehouse && !isSentPath && !isDeferredPath && (
+      {act.status !== 'canceled' && !act.isWarehouse && (isSentPath || isAccountantPath) && (
         <div style={{ marginTop: '10px', textAlign: 'right' }}>
            <button 
               className="btn" 
@@ -696,7 +711,7 @@ export default function ActDetailsPage() {
               <span style={{ fontSize: '1.2rem', color: 'var(--info)' }}>Отметка Бухгалтерии</span>
             </div>
             <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
-              
+
               {/* СНО Toggle / Status */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
@@ -820,6 +835,42 @@ export default function ActDetailsPage() {
                  )}
               </div>
 
+               {/* Processed Toggle / Status */}
+               <div className={`processed_card ${act.isProcessedByAccountant ? 'processed_card--active' : ''}`}>
+                  <div className={`processed_text ${act.isProcessedByAccountant ? 'processed_text--active' : ''}`}>
+                     ✅ Заявка полностью обработана (Отработано)
+                  </div>
+                  {(isAccountant || isAdmin) ? (
+                    <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                       <input
+                         type="checkbox"
+                         style={{ display: 'none' }}
+                         checked={!!act.isProcessedByAccountant}
+                         onChange={async (e) => {
+                           const val = e.target.checked;
+                           setAct(prev => ({ ...prev, isProcessedByAccountant: val }));
+                           try { await api.requests.update(act.id, { isProcessedByAccountant: val }); }
+                           catch (err) { alert(err.message); setAct(prev => ({ ...prev, isProcessedByAccountant: !val })); }
+                         }}
+                       />
+                       <div className="toggle_slider" style={{
+                         width: 44, height: 24, background: act.isProcessedByAccountant ? 'var(--success)' : 'var(--muted)',
+                         borderRadius: 24, position: 'relative', transition: 'background 0.3s'
+                       }}>
+                         <div className="toggle_knob" style={{
+                           width: 20, height: 20, background: '#fff', borderRadius: '50%',
+                           position: 'absolute', top: 2, left: act.isProcessedByAccountant ? 22 : 2,
+                           transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                         }} />
+                       </div>
+                    </label>
+                  ) : (
+                    <span className="badge" style={{ background: act.isProcessedByAccountant ? '#f6ffed' : '#fffbe6', color: act.isProcessedByAccountant ? '#52c41a' : '#faad14' }}>
+                       {act.isProcessedByAccountant ? "Да" : "Нет"}
+                    </span>
+                  )}
+               </div>
+
             </div>
           </div>
         )}
@@ -925,6 +976,42 @@ export default function ActDetailsPage() {
                    act.docAttrs?.transportType === "train" ? "Поезд рейс" : "—"}
                 </div>
               </div>
+
+               {/* Processed Toggle / Status */}
+               <div className={`processed_card ${act.isProcessedByAccountant ? 'processed_card--active' : ''}`}>
+                  <div className={`processed_text ${act.isProcessedByAccountant ? 'processed_text--active' : ''}`}>
+                     ✅ Заявка полностью обработана (Отработано)
+                  </div>
+                  {(isAccountant || isAdmin) ? (
+                    <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+                       <input
+                         type="checkbox"
+                         style={{ display: 'none' }}
+                         checked={!!act.isProcessedByAccountant}
+                         onChange={async (e) => {
+                           const val = e.target.checked;
+                           setAct(prev => ({ ...prev, isProcessedByAccountant: val }));
+                           try { await api.requests.update(act.id, { isProcessedByAccountant: val }); }
+                           catch (err) { alert(err.message); setAct(prev => ({ ...prev, isProcessedByAccountant: !val })); }
+                         }}
+                       />
+                       <div className="toggle_slider" style={{
+                         width: 44, height: 24, background: act.isProcessedByAccountant ? 'var(--success)' : 'var(--muted)',
+                         borderRadius: 24, position: 'relative', transition: 'background 0.3s'
+                       }}>
+                         <div className="toggle_knob" style={{
+                           width: 20, height: 20, background: '#fff', borderRadius: '50%',
+                           position: 'absolute', top: 2, left: act.isProcessedByAccountant ? 22 : 2,
+                           transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                         }} />
+                       </div>
+                    </label>
+                  ) : (
+                    <span className="badge" style={{ background: act.isProcessedByAccountant ? '#f6ffed' : '#fffbe6', color: act.isProcessedByAccountant ? '#52c41a' : '#faad14' }}>
+                       {act.isProcessedByAccountant ? "Да" : "Нет"}
+                    </span>
+                  )}
+               </div>
 
               {act.docAttrs?.flightNumber && (
                 <div className="field">

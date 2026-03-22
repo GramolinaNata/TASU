@@ -25,7 +25,7 @@ function normalizeIsoDate(val) {
 }
 
 export default function AccountantGeneralPage() {
-  const { isAccountant } = useAuth();
+  const { isAccountant, isAdmin } = useAuth();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -61,6 +61,16 @@ export default function AccountantGeneralPage() {
       setActs([]);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleProcessed = async (actId, currentVal) => {
+    try {
+      await api.requests.update(actId, { isProcessedByAccountant: !currentVal });
+      // Обновляем локальное состояние для мгновенного отклика
+      setActs(prev => prev.map(a => a.id === actId ? { ...a, isProcessedByAccountant: !currentVal } : a));
+    } catch (err) {
+      alert("Ошибка при обновлении статуса: " + err.message);
     }
   };
 
@@ -247,6 +257,7 @@ export default function AccountantGeneralPage() {
                 <th style={{ width: 60, textAlign: 'center' }}>СНО</th>
                 <th style={{ width: 60, textAlign: 'center' }}>АВР</th>
                 <th style={{ width: 60, textAlign: 'center' }}>ЭСФ</th>
+                <th style={{ width: 80, textAlign: 'center' }}>Статус</th>
               </tr>
             </thead>
             <tbody>
@@ -258,9 +269,18 @@ export default function AccountantGeneralPage() {
                 </tr>
               ) : (
                 filtered.map((a) => (
-                  <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
+                  <tr key={a.id} style={{ 
+                    opacity: a.status === 'canceled' ? 0.5 : 1,
+                    background: !a.isViewedByAccountant ? 'rgba(37, 99, 235, 0.05)' : 'inherit',
+                    borderLeft: !a.isViewedByAccountant ? '4px solid #2563eb' : 'none'
+                  }}>
                     <td className="num">
-                      <Link to={`/accountant/acts/${a.id}`}>
+                      <Link to={`/accountant/acts/${a.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {!a.isViewedByAccountant && (
+                          <span title="Новая заявка" style={{ 
+                            width: 8, height: 8, background: '#2563eb', borderRadius: '50%', display: 'inline-block' 
+                          }} />
+                        )}
                         {a.docNumber || a.number}
                       </Link>
                     </td>
@@ -297,6 +317,27 @@ export default function AccountantGeneralPage() {
                         <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Да</span>
                       ) : (
                         <span className="badge" style={{ background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem' }}>Нет</span>
+                      )}
+                    </td>
+                    <td style={{ textAlign: "center" }}>
+                      {a.isProcessedByAccountant ? (
+                        <button 
+                          className="btn-icon" 
+                          onClick={() => toggleProcessed(a.id, true)}
+                          title="Отработано (Нажмите, чтобы отменить)"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+                        >
+                          ✅
+                        </button>
+                      ) : (
+                        <button 
+                          className="btn-icon" 
+                          onClick={() => toggleProcessed(a.id, false)}
+                          title="Пометить как отработанное"
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', filter: 'grayscale(1)', opacity: 0.4 }}
+                        >
+                          ⏳
+                        </button>
                       )}
                     </td>
                   </tr>

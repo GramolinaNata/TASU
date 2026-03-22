@@ -10,6 +10,7 @@ export default function Layout() {
   const { user, logout, isAdmin, isAccountant, isCourier } = useAuth();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [notifCount, setNotifCount] = useState(0);
 
   useEffect(() => {
     if (!getSelectedCompanyId() && !isCourier) {
@@ -29,6 +30,34 @@ export default function Layout() {
   const toggleSidebar = () => {
     setIsSidebarOpen(prev => !prev);
   }
+
+  const fetchNotifs = async () => {
+    if (!isAccountant && !isAdmin) return;
+    try {
+      const list = await api.requests.list();
+      if (Array.isArray(list)) {
+        const unread = list.filter(a => {
+           let details = {};
+           if (a.details) {
+              try { details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details; } catch(e){}
+           }
+           // Условие: отправлено бухгалтеру, но не просмотрено и не отложено
+           return !!details.readyForAccountant && !details.isViewedByAccountant && !details.isDeferredForAccountant;
+        });
+        setNotifCount(unread.length);
+      }
+    } catch (e) {
+      console.error("Fetch notifs error", e);
+    }
+  };
+
+  useEffect(() => {
+    if (isAccountant || isAdmin) {
+      fetchNotifs();
+      const interval = setInterval(fetchNotifs, 60000); // Check every minute
+      return () => clearInterval(interval);
+    }
+  }, [isAccountant, isAdmin, location.pathname]);
 
   return (
     <main className="main">
@@ -126,7 +155,7 @@ export default function Layout() {
                 </>
               )}
 
-              {(isAccountant && !isAdmin) && (
+              {(isAccountant || isAdmin) && (
                 <div className="accountant_section" style={{  paddingBottom: '10px' }}>
                   <div className="menu_section_title" style={{ padding: '4px 12px', fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                     {isSidebarOpen ? 'Бухгалтерия' : '...'}
@@ -137,7 +166,14 @@ export default function Layout() {
                     title="Все заявки"
                   >
                     <span className="menu_icon">🗂️</span>
-                    <span className="menu_text">Все заявки</span>
+                    <span className="menu_text" style={{ position: 'relative' }}>
+                       Все заявки
+                       {notifCount > 0 && (
+                         <span className="nav_badge animate_pulse">
+                             {notifCount}
+                         </span>
+                       )}
+                    </span>
                   </NavLink>
                 </div>
               )}
@@ -241,6 +277,33 @@ export default function Layout() {
       <button className="theme_toggle_btn" onClick={toggleTheme} title="Переключить тему">
         {theme === 'light' ? '🌙' : '☀️'}
       </button>
+
+      <style>{`
+        .nav_badge {
+           display: inline-flex;
+           align-items: center;
+           justify-content: center;
+           background: #ef4444;
+           color: #fff;
+           font-size: 10px;
+           font-weight: 700;
+           width: 18px;
+           height: 18px;
+           border-radius: 50%;
+           position: absolute;
+           right: -24px;
+           top: 0px;
+           box-shadow: 0 0 0 2px var(--card);
+        }
+        .animate_pulse {
+           animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+           0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+           70% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
+           100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+      `}</style>
     </main>
   );
 }
