@@ -24,6 +24,7 @@ export default function ContractsPage() {
   const [contracts, setContracts] = useState([]);
   const [company, setCompany] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const loadContracts = async () => {
     setLoading(true);
@@ -110,18 +111,26 @@ export default function ContractsPage() {
     }
 
     if (actData) {
-      // Находим актуальные данные компании
-      const allCompanies = await api.companies.list();
-      const comp = allCompanies.find(c => c.id === contract.companyId);
+      setExportLoading(true);
+      try {
+        // Находим актуальные данные компании
+        const allCompanies = await api.companies.list();
+        const comp = allCompanies.find(c => c.id === contract.companyId);
 
-      await exportToDocx({
-        ...actData,
-        company: comp, // Передаем полный объект компании
-        contractNumber: contract.number,
-        contractDate: contract.date,
-        isContract: true,
-        type: contract.type // Передаем тип для выбора шаблона
-      });
+        await exportToDocx({
+          ...actData,
+          company: comp, // Передаем полный объект компании
+          contractNumber: contract.number,
+          contractDate: contract.date,
+          isContract: true,
+          type: contract.type // Передаем тип для выбора шаблона
+        });
+      } catch (e) {
+        console.error("Export error", e);
+        alert("Ошибка при экспорте: " + e.message);
+      } finally {
+        setExportLoading(false);
+      }
     } else {
       alert("Данные заявки для экспорта не найдены");
     }
@@ -225,9 +234,14 @@ export default function ContractsPage() {
                           </Link>
 
                           {c.status !== 'canceled' && (
-                            <button className="actions-item" onClick={() => handleExport(c)}>
+                            <button 
+                              className="actions-item" 
+                              onClick={() => handleExport(c)}
+                              disabled={exportLoading}
+                              style={{ opacity: exportLoading ? 0.7 : 1 }}
+                            >
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                              Экспорт (.docx)
+                              {exportLoading ? "Загрузка..." : "Экспорт (.docx)"}
                             </button>
                           )}
 

@@ -153,8 +153,8 @@ export default function ActCreatePage() {
   // Контрагенты
   const [allCounterparties, setAllCounterparties] = useState([]);
   const [cpSearchModal, setCpSearchModal] = useState(null); // 'customer' | 'receiver' | 'sender'
-  const [saveAsCpCustomer, setSaveAsCpCustomer] = useState(false);
-  const [saveAsCpReceiver, setSaveAsCpReceiver] = useState(false);
+  const [saveAsCpCustomer, setSaveAsCpCustomer] = useState(true);
+  const [saveAsCpReceiver, setSaveAsCpReceiver] = useState(true);
   const [cpSearchQuery, setCpSearchQuery] = useState("");
   const [selectedCpObjCustomer, setSelectedCpObjCustomer] = useState(null);
   const [selectedCpObjReceiver, setSelectedCpObjReceiver] = useState(null);
@@ -190,9 +190,11 @@ export default function ActCreatePage() {
   const [docType, setDocType] = useState(null);
   const [dbType, setDbType] = useState("REQUEST");
   const [docAttrs, setDocAttrs] = useState({
-    vehicle: "",
+    vehicleModel: "",
+    vehicleNumber: "",
     driver: "",
     hasTrailer: false,
+    trailerModel: "",
     trailerNumber: "",
     transportType: "auto_console",
     flightNumber: "",
@@ -1143,11 +1145,13 @@ export default function ActCreatePage() {
                                 setDocAttrs({
                                   ...docAttrs, 
                                   transportType: newVal,
-                                  vehicle: "",
-                                  driver: "",
-                                  hasTrailer: false,
-                                  trailerNumber: "",
-                                  flightNumber: ""
+                                   vehicleModel: "",
+                                   vehicleNumber: "",
+                                   driver: "",
+                                   hasTrailer: false,
+                                   trailerModel: "",
+                                   trailerNumber: "",
+                                   flightNumber: ""
                                 });
                               }}
                             >
@@ -1161,15 +1165,19 @@ export default function ActCreatePage() {
                           {(docAttrs.transportType === 'auto_console' || docAttrs.transportType === 'auto_separate') && (
                             <>
                               <div className="field">
-                                <div className="label">Автомобиль (Марка, гос. номер)</div>
-                                <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} placeholder="Volvo 016ACT02/ 21WSZ05" />
+                                <div className="label">Марка автомобиля</div>
+                                <input value={docAttrs.vehicleModel} onChange={e => setDocAttrs({...docAttrs, vehicleModel: e.target.value})} placeholder="Volvo" />
+                              </div>
+                              <div className="field">
+                                <div className="label">Госномер автомобиля</div>
+                                <input value={docAttrs.vehicleNumber} onChange={e => setDocAttrs({...docAttrs, vehicleNumber: e.target.value})} placeholder="016ACT02" />
                               </div>
                               <div className="field">
                                 <div className="label">Водитель (Ф.И.О.)</div>
                                 <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
                               </div>
-                              <div className="field" style={{ gridColumn: 'span 2' }}>
-                                <label className="label_checkbox">
+                              <div className="field" style={{ gridColumn: 'span 1' }}>
+                                <label className="label_checkbox" style={{ marginTop: 32 }}>
                                   <input 
                                     type="checkbox" 
                                     checked={!!docAttrs.hasTrailer} 
@@ -1179,14 +1187,16 @@ export default function ActCreatePage() {
                                 </label>
                               </div>
                               {docAttrs.hasTrailer && (
-                                <div className="field" style={{ gridColumn: 'span 2' }}>
-                                  <div className="label">Номер (описание) прицепа</div>
-                                  <input 
-                                    value={docAttrs.trailerNumber || ""} 
-                                    onChange={e => setDocAttrs({...docAttrs, trailerNumber: e.target.value})} 
-                                    placeholder="Напр. KZ 123 ABC 02"
-                                  />
-                                </div>
+                                <>
+                                  <div className="field">
+                                    <div className="label">Марка прицепа</div>
+                                    <input value={docAttrs.trailerModel} onChange={e => setDocAttrs({...docAttrs, trailerModel: e.target.value})} placeholder="Schmitz" />
+                                  </div>
+                                  <div className="field">
+                                    <div className="label">Госномер прицепа</div>
+                                    <input value={docAttrs.trailerNumber} onChange={e => setDocAttrs({...docAttrs, trailerNumber: e.target.value})} placeholder="21WSZ05" />
+                                  </div>
+                                </>
                               )}
                             </>
                           )}

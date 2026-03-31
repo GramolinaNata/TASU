@@ -166,9 +166,14 @@ export async function exportToDocx(act, templateOverride = null) {
       expeditor_account: act.company?.account || "",
       expeditor_kbe: act.company?.kbe || "",
       expeditor_director_name: act.company?.director || "",
+      expeditor_full: [
+        act.company?.name,
+        act.company?.address,
+        `БИН ${act.company?.bin}`
+      ].filter(Boolean).join("\n"),
       customer_name: act.customer?.companyName || act.customer?.fio || "",
       customer_director_name: act.customer?.fio || "",
-      receiver_company: act.receiver?.companyName || act.receiver?.fio || "",
+      receiver_company: [act.receiver?.companyName || act.receiver?.fio, act.receiver?.jurAddress].filter(Boolean).join(", "),
       receiver_fio: act.receiver?.fio || "",
       receiver_phone: act.receiver?.phone || "",
       receiver_address: act.receiver?.jurAddress || "",
@@ -199,7 +204,12 @@ export async function exportToDocx(act, templateOverride = null) {
       is_train: act.docAttrs?.transportType === "train",
       has_trailer: (act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate") && !!act.docAttrs?.hasTrailer,
       trailer_number: (act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate") ? (act.docAttrs?.trailerNumber || "") : "",
-      total_seats: act.totals?.seats || 0,
+      vehicle_model: act.docAttrs?.vehicleModel || "",
+      vehicle_number: act.docAttrs?.vehicleNumber || "",
+      trailer_model: act.docAttrs?.trailerModel || "",
+      trailer_number_val: act.docAttrs?.trailerNumber || "",
+      vehicle_full: [act.docAttrs?.vehicleModel, act.docAttrs?.vehicleNumber].filter(Boolean).join(" "),
+      trailer_full: [act.docAttrs?.trailerModel, act.docAttrs?.trailerNumber].filter(Boolean).join(" "),
       total_seats: act.totals?.seats || 0,
       total_weight: act.totals?.weight || 0,
       total_volume: act.totals?.volume ? act.totals.volume.toFixed(0) : 0,
@@ -216,7 +226,7 @@ export async function exportToDocx(act, templateOverride = null) {
       doc15: act.docAttrs?.doc15 || "",
       doc18: act.docAttrs?.doc18 || "",
       vehicle: (act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate") 
-               ? (act.docAttrs?.vehicle || "") 
+               ? (act.docAttrs?.vehicleNumber || act.docAttrs?.vehicle || "") 
                : (act.docAttrs?.flightNumber || ""),
       driver: ((act.docAttrs?.transportType === "auto_console" || act.docAttrs?.transportType === "auto_separate") || act.docAttrs?.transportType === "train" || act.docAttrs?.transportType === "plane")
               ? (act.docAttrs?.driver || "")
@@ -225,13 +235,15 @@ export async function exportToDocx(act, templateOverride = null) {
       driver_label: (act.docAttrs?.transportType === 'plane' || act.docAttrs?.transportType === 'train') ? "Ответственный" : "Водитель",
       vehicle_label: (act.docAttrs?.transportType === 'plane') ? "Номер рейса" : 
                      (act.docAttrs?.transportType === 'train') ? "Номер поезда" : "Марка, гос. номер",
+      manager_name: act.manager?.name || "Система",
+      manager_email: act.manager?.email || "",
+      manager_phone: act.manager?.phone || "",
 
       // --- SMR SPECIFIC BLOCKS ---
       smr_sender: [
         act.isSenderSameAsCustomer ? act.customer?.companyName : act.sender?.companyName,
         act.isSenderSameAsCustomer ? act.customer?.jurAddress : act.sender?.jurAddress,
         `БИН ${act.isSenderSameAsCustomer ? act.customer?.bin : act.sender?.bin}`,
-        (act.route?.fromCity || "").split(",")[0].trim().toUpperCase()
       ].filter(Boolean).join("\n"),
 
       smr_recipient: [
@@ -279,7 +291,8 @@ export async function exportToDocx(act, templateOverride = null) {
         price: s.price || "",
         total: s.total || "",
       })),
-      warehouse_total: (act.warehouseServices || []).reduce((acc, s) => acc + (s.total || 0), 0),
+      warehouse_total: (act.warehouseServices || []).reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0).toLocaleString('ru-RU'),
+      total_sum: (act.warehouseServices || []).reduce((acc, s) => acc + (parseFloat(s.total) || 0), 0).toLocaleString('ru-RU'),
 
       // --- NEW WAREHOUSE TAGS FOR USER TEMPLATE ---
       date_dmy: formatDmy(act.date),

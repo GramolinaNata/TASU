@@ -60,11 +60,15 @@ export default function ActDetailsPage() {
   const [showDocForm, setShowDocForm] = useState(null); // 'ttn' | 'smr' | null
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [notifyingManager, setNotifyingManager] = useState(false);
   const [docAttrs, setDocAttrs] = useState({
     doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
-    vehicle: "",
+    vehicleModel: "",
+    vehicleNumber: "",
     driver: "",
     hasTrailer: false,
+    trailerModel: "",
     trailerNumber: "",
     transportType: "auto_console",
     flightNumber: "",
@@ -121,6 +125,21 @@ export default function ActDetailsPage() {
       markAsViewed();
     }
   }, [act, isAccountant]);
+
+  // Auto-mark as viewed for managers (if updated by accountant)
+  useEffect(() => {
+    if (act && (!isAccountant || isAdmin) && act.updatedByAccountant && !act.isViewedByManager) {
+      const markAsViewedManager = async () => {
+        try {
+          await api.requests.update(act.id, { isViewedByManager: true });
+          setAct(prev => ({ ...prev, isViewedByManager: true }));
+        } catch (e) {
+          console.error("Failed to mark as viewed (manager)", e);
+        }
+      };
+      markAsViewedManager();
+    }
+  }, [act, isAccountant, isAdmin]);
 
   /* ГИБРИДНОЕ ФОРМИРОВАНИЕ */
   const chooseDocType = async (type) => {
@@ -326,6 +345,7 @@ export default function ActDetailsPage() {
       return;
     }
     
+    setExportLoading(true);
     try {
       // Пытаемся загрузить актуальные данные компании с сервера (новый эндпоинт)
       let comp = null;
@@ -343,11 +363,13 @@ export default function ActDetailsPage() {
         return;
       }
       
-      exportToDocx({ ...act, company: comp }, docTypeOverride || act.docType);
+      await exportToDocx({ ...act, company: comp }, docTypeOverride || act.docType);
       setShowExportMenu(false);
     } catch (err) {
       console.error("Export error:", err);
       alert("Ошибка при загрузке данных компании: " + err.message);
+    } finally {
+      setExportLoading(false);
     }
   };
 
@@ -439,19 +461,21 @@ export default function ActDetailsPage() {
           {act.status !== 'canceled' ? (
             <>
               <div style={{ position: 'relative', display: 'inline-block' }}>
-                <button 
-                  className="btn" 
-                  style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797' }}
-                  onClick={() => {
-                    if (act.docType) {
-                      setShowExportMenu(!showExportMenu);
-                    } else {
-                      handleExport();
-                    }
-                  }}
-                >
-                  Экспорт в Word {act.docType ? "▼" : ""}
-                </button>
+                  <button 
+                    className="btn" 
+                    style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797', opacity: exportLoading ? 0.7 : 1 }}
+                    onClick={() => {
+                      if (exportLoading) return;
+                      if (act.docType) {
+                        setShowExportMenu(!showExportMenu);
+                      } else {
+                        handleExport();
+                      }
+                    }}
+                    disabled={exportLoading}
+                  >
+                    {exportLoading ? "⏳ Загрузка..." : (act.docType ? "Экспорт в Word ▼" : "Экспорт в Word")}
+                  </button>
 
                 {showExportMenu && act.docType && (
                   <div style={{
@@ -512,15 +536,19 @@ export default function ActDetailsPage() {
               {docAttrs.transportType.startsWith("auto") && (
                 <>
                   <div className="field">
-                    <div className="label">Автомобиль (Марка, гос. номер)</div>
-                    <input value={docAttrs.vehicle} onChange={e => setDocAttrs({...docAttrs, vehicle: e.target.value})} placeholder="Volvo 016ACT02/ 21WSZ05" />
+                    <div className="label">Марка автомобиля</div>
+                    <input value={docAttrs.vehicleModel} onChange={e => setDocAttrs({...docAttrs, vehicleModel: e.target.value})} placeholder="Volvo" />
+                  </div>
+                  <div className="field">
+                    <div className="label">Госномер автомобиля</div>
+                    <input value={docAttrs.vehicleNumber} onChange={e => setDocAttrs({...docAttrs, vehicleNumber: e.target.value})} placeholder="016ACT02" />
                   </div>
                   <div className="field">
                     <div className="label">Водитель (Ф.И.О.)</div>
                     <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
                   </div>
-                  <div className="field" style={{ gridColumn: 'span 2' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, cursor: 'pointer' }}>
+                  <div className="field" style={{ gridColumn: 'span 1' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, cursor: 'pointer', marginTop: 32 }}>
                       <input 
                         type="checkbox" 
                         checked={!!docAttrs.hasTrailer} 
@@ -530,14 +558,16 @@ export default function ActDetailsPage() {
                     </label>
                   </div>
                   {docAttrs.hasTrailer && (
-                    <div className="field" style={{ gridColumn: 'span 2' }}>
-                      <div className="label">Номер (описание) прицепа</div>
-                      <input 
-                        value={docAttrs.trailerNumber || ""} 
-                        onChange={e => setDocAttrs({...docAttrs, trailerNumber: e.target.value})} 
-                        placeholder="Напр. KZ 123 ABC 02"
-                      />
-                    </div>
+                    <>
+                      <div className="field">
+                        <div className="label">Марка прицепа</div>
+                        <input value={docAttrs.trailerModel} onChange={e => setDocAttrs({...docAttrs, trailerModel: e.target.value})} placeholder="Schmitz" />
+                      </div>
+                      <div className="field">
+                        <div className="label">Госномер прицепа</div>
+                        <input value={docAttrs.trailerNumber} onChange={e => setDocAttrs({...docAttrs, trailerNumber: e.target.value})} placeholder="21WSZ05" />
+                      </div>
+                    </>
                   )}
                 </>
               )}
@@ -840,6 +870,41 @@ export default function ActDetailsPage() {
                   <div className={`processed_text ${act.isProcessedByAccountant ? 'processed_text--active' : ''}`}>
                      ✅ Заявка полностью обработана (Отработано)
                   </div>
+
+                  {/* Notify Manager Button (for accountants) */}
+                  {isAccountant && (
+                    <div style={{ marginTop: 12 }}>
+                      <button 
+                        className="btn btn--sm" 
+                        style={{ 
+                          width: '100%', 
+                          background: act.updatedByAccountant && !act.isViewedByManager ? 'var(--bg)' : 'var(--info)', 
+                          color: act.updatedByAccountant && !act.isViewedByManager ? 'var(--text-muted)' : '#fff',
+                          borderColor: 'var(--line)',
+                          fontWeight: 700,
+                          height: '42px'
+                        }}
+                        onClick={async () => {
+                           if (notifyingManager) return;
+                           setNotifyingManager(true);
+                           try {
+                             await api.requests.update(act.id, { 
+                               updatedByAccountant: true, 
+                               isViewedByManager: false 
+                             });
+                             setAct(prev => ({ ...prev, updatedByAccountant: true, isViewedByManager: false }));
+                           } catch (e) {
+                             alert("Ошибка при уведомлении: " + e.message);
+                           } finally {
+                             setNotifyingManager(false);
+                           }
+                        }}
+                        disabled={act.updatedByAccountant && !act.isViewedByManager || notifyingManager}
+                      >
+                        {act.updatedByAccountant && !act.isViewedByManager ? "⏳ Уведомление отправлено" : (notifyingManager ? "⏳ Отправка..." : "🔔 Уведомить менеджера об изменениях")}
+                      </button>
+                    </div>
+                  )}
                   {(isAccountant || isAdmin) ? (
                     <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
                        <input
@@ -977,41 +1042,7 @@ export default function ActDetailsPage() {
                 </div>
               </div>
 
-               {/* Processed Toggle / Status */}
-               <div className={`processed_card ${act.isProcessedByAccountant ? 'processed_card--active' : ''}`}>
-                  <div className={`processed_text ${act.isProcessedByAccountant ? 'processed_text--active' : ''}`}>
-                     ✅ Заявка полностью обработана (Отработано)
-                  </div>
-                  {(isAccountant || isAdmin) ? (
-                    <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                       <input
-                         type="checkbox"
-                         style={{ display: 'none' }}
-                         checked={!!act.isProcessedByAccountant}
-                         onChange={async (e) => {
-                           const val = e.target.checked;
-                           setAct(prev => ({ ...prev, isProcessedByAccountant: val }));
-                           try { await api.requests.update(act.id, { isProcessedByAccountant: val }); }
-                           catch (err) { alert(err.message); setAct(prev => ({ ...prev, isProcessedByAccountant: !val })); }
-                         }}
-                       />
-                       <div className="toggle_slider" style={{
-                         width: 44, height: 24, background: act.isProcessedByAccountant ? 'var(--success)' : 'var(--muted)',
-                         borderRadius: 24, position: 'relative', transition: 'background 0.3s'
-                       }}>
-                         <div className="toggle_knob" style={{
-                           width: 20, height: 20, background: '#fff', borderRadius: '50%',
-                           position: 'absolute', top: 2, left: act.isProcessedByAccountant ? 22 : 2,
-                           transition: 'left 0.3s', boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                         }} />
-                       </div>
-                    </label>
-                  ) : (
-                    <span className="badge" style={{ background: act.isProcessedByAccountant ? '#f6ffed' : '#fffbe6', color: act.isProcessedByAccountant ? '#52c41a' : '#faad14' }}>
-                       {act.isProcessedByAccountant ? "Да" : "Нет"}
-                    </span>
-                  )}
-               </div>
+               
 
               {act.docAttrs?.flightNumber && (
                 <div className="field">
@@ -1019,17 +1050,51 @@ export default function ActDetailsPage() {
                   <div className="v v--bold">{act.docAttrs.flightNumber}</div>
                 </div>
               )}
- {act.docAttrs?.vehicle && (
-                <div className="field">
-                  <div className="label">Автомобиль</div>
-                  <div className="v v--bold">{act.docAttrs.vehicle}</div>
-                </div>
+              {(act.docAttrs?.vehicleModel || act.docAttrs?.vehicleNumber || act.docAttrs?.vehicle) && (
+                <>
+                  {act.docAttrs?.vehicleModel && (
+                    <div className="field">
+                      <div className="label">Марка автомобиля</div>
+                      <div className="v v--bold">{act.docAttrs.vehicleModel}</div>
+                    </div>
+                  )}
+                  {act.docAttrs?.vehicleNumber ? (
+                    <div className="field">
+                      <div className="label">Госномер автомобиля</div>
+                      <div className="v v--bold">{act.docAttrs.vehicleNumber}</div>
+                    </div>
+                  ) : (
+                    !act.docAttrs?.vehicleModel && act.docAttrs?.vehicle && (
+                      <div className="field">
+                        <div className="label">Автомобиль</div>
+                        <div className="v v--bold">{act.docAttrs.vehicle}</div>
+                      </div>
+                    )
+                  )}
+                </>
               )}
- {act.docAttrs?.hasTrailer && (
-                <div className="field">
-                  <div className="label">Прицеп</div>
-                  <div className="v v--bold">{act.docAttrs.trailerNumber || "Да"}</div>
-                </div>
+              {act.docAttrs?.hasTrailer && (
+                <>
+                  {act.docAttrs?.trailerModel && (
+                    <div className="field">
+                      <div className="label">Марка прицепа</div>
+                      <div className="v v--bold">{act.docAttrs.trailerModel}</div>
+                    </div>
+                  )}
+                  {act.docAttrs?.trailerNumber ? (
+                    <div className="field">
+                      <div className="label">Госномер прицепа</div>
+                      <div className="v v--bold">{act.docAttrs.trailerNumber}</div>
+                    </div>
+                  ) : (
+                    !act.docAttrs?.trailerModel && (
+                      <div className="field">
+                        <div className="label">Прицеп</div>
+                        <div className="v v--bold">Да</div>
+                      </div>
+                    )
+                  )}
+                </>
               )}
  {act.docAttrs?.driver && (
                 <div className="field">

@@ -19,6 +19,7 @@ export default function ContractDetailsPage() {
   const { id } = useParams();
   const [contract, setContract] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [exportLoading, setExportLoading] = useState(false);
 
   const loadContract = async () => {
     if (!id) return;
@@ -65,17 +66,25 @@ export default function ContractDetailsPage() {
 
   const handleExport = async () => {
     if (contract?.actData) {
-      const allCompanies = await api.companies.list();
-      const comp = allCompanies.find(c => c.id === contract.companyId);
+      setExportLoading(true);
+      try {
+        const allCompanies = await api.companies.list();
+        const comp = allCompanies.find(c => c.id === contract.companyId);
 
-      await exportToDocx({
-        ...contract.actData,
-        company: comp,
-        contractNumber: contract.number,
-        contractDate: contract.date,
-        isContract: true,
-        type: contract.type // Передаем тип для выбора шаблона
-      });
+        await exportToDocx({
+          ...contract.actData,
+          company: comp,
+          contractNumber: contract.number,
+          contractDate: contract.date,
+          isContract: true,
+          type: contract.type // Передаем тип для выбора шаблона
+        });
+      } catch (e) {
+        console.error("Export error", e);
+        alert("Ошибка при экспорте: " + e.message);
+      } finally {
+        setExportLoading(false);
+      }
     }
   };
 
@@ -110,7 +119,14 @@ export default function ContractDetailsPage() {
           
           {contract.status !== 'canceled' && (
             <>
-              <button className="btn btn--accent" onClick={handleExport}>Экспорт в Word</button>
+              <button 
+                className="btn btn--accent" 
+                onClick={handleExport}
+                disabled={exportLoading}
+                style={{ opacity: exportLoading ? 0.7 : 1 }}
+              >
+                {exportLoading ? "⏳ Загрузка..." : "Экспорт в Word"}
+              </button>
               <button className="btn btn--danger" onClick={handleAnnul}>Аннулировать</button>
             </>
           )}

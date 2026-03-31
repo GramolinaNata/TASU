@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useLocation } from "react-router-dom";
 import CompanySelector from "../shared/ui/CompanySelector.jsx";
-import { getSelectedCompanyId } from "../shared/storage/companyStorage.js";
+import { getSelectedCompanyId, getSelectedCompany, subscribeSelectedCompany } from "../shared/storage/companyStorage.js";
 import { useAuth } from "../shared/auth/AuthContext";
+import { api } from "../shared/api/api.js";
 
 export default function Layout() {
   const [selectorOpen, setSelectorOpen] = useState(false);
@@ -11,17 +12,25 @@ export default function Layout() {
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [notifCount, setNotifCount] = useState(0);
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifMenu, setShowNotifMenu] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState(getSelectedCompany());
+  const location = useLocation();
 
   useEffect(() => {
-    if (!getSelectedCompanyId() && !isCourier) {
+    if (!getSelectedCompanyId() && !isCourier && !isAccountant) {
       setSelectorOpen(true);
     }
-  }, [isCourier]);
+  }, [isCourier, isAccountant]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
     localStorage.setItem('tasu_theme', theme);
   }, [theme]);
+
+  useEffect(() => {
+    return subscribeSelectedCompany((c) => setSelectedCompany(c));
+  }, []);
 
   const toggleTheme = () => {
     setTheme(prev => prev === 'light' ? 'dark' : 'light');
@@ -32,19 +41,55 @@ export default function Layout() {
   }
 
   const fetchNotifs = async () => {
-    if (!isAccountant && !isAdmin) return;
+    if (!user) return;
     try {
-      const list = await api.requests.list();
+      const currentCompanyId = getSelectedCompanyId();
+      const list = await api.requests.list(); 
       if (Array.isArray(list)) {
-        const unread = list.filter(a => {
+        // Бухгалтеры и админы видят уведомления по всем компаниям (как и в таблице)
+        // Обычные менеджеры - только по выбранной
+        const allNotifs = (isAccountant || isAdmin) ? list : list.filter(a => a.companyId === currentCompanyId);
+        
+        const mapped = allNotifs.map(a => {
            let details = {};
-           if (a.details) {
-              try { details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details; } catch(e){}
+           if (a.details) { try { details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details; } catch(e){} }
+           
+           let type = "";
+           let text = "";
+           let isNew = false;
+           
+           // Приоритет топ-левел свойствам, фоллбэк на details
+           const isReady = !!a.readyForAccountant || !!details.readyForAccountant;
+           const isViewedAcc = !!a.isViewedByAccountant || !!details.isViewedByAccountant;
+           const isUpdatedAcc = !!a.updatedByAccountant || !!details.updatedByAccountant;
+           const isViewedMan = !!a.isViewedByManager || !!details.isViewedByManager;
+
+           if (isReady && (isAccountant || isAdmin)) {
+             type = "to_accountant";
+             text = `📝 Заявка №${a.docNumber || a.number} от менеджерa`;
+             isNew = !isViewedAcc;
+           } else if (isUpdatedAcc && (!isAccountant || isAdmin)) {
+             type = "to_manager";
+             text = `✅ Обновление в №${a.docNumber || a.number}`;
+             isNew = !isViewedMan;
            }
-           // Условие: отправлено бухгалтеру, но не просмотрено и не отложено
-           return !!details.readyForAccountant && !details.isViewedByAccountant && !details.isDeferredForAccountant;
-        });
-        setNotifCount(unread.length);
+           
+           if (!text) return null;
+           
+           return { 
+             id: a.id, 
+             text, 
+             type, 
+             isNew,
+             date: a.updatedAt || a.createdAt,
+             link: type === "to_accountant" ? `/accountant/acts/${a.id}` : `/sent/${a.id}`
+           };
+        })
+        .filter(Boolean)
+        .sort((a, b) => new Date(b.date) - new Date(a.date));
+        
+        setNotifications(mapped.slice(0, 10)); // Последние 10 событий
+        setNotifCount(mapped.filter(n => n.isNew).length);
       }
     } catch (e) {
       console.error("Fetch notifs error", e);
@@ -52,26 +97,28 @@ export default function Layout() {
   };
 
   useEffect(() => {
-    if (isAccountant || isAdmin) {
+    if (user) {
       fetchNotifs();
       const interval = setInterval(fetchNotifs, 60000); // Check every minute
       return () => clearInterval(interval);
     }
-  }, [isAccountant, isAdmin, location.pathname]);
+  }, [user, isAccountant, isAdmin, location.pathname, selectedCompany?.id]);
 
   return (
     <main className="main">
-      {!isCourier && <CompanySelector open={selectorOpen} onClose={() => setSelectorOpen(false)} />}
+      {!isCourier && !isAccountant && <CompanySelector open={selectorOpen} onClose={() => setSelectorOpen(false)} />}
 
       <div className="container">
         <div className="main_wrapper">
           {!isCourier && (
             <aside className={`sidebar ${!isSidebarOpen ? 'sidebar--collapsed' : ''}`} style={{ display: 'flex', flexDirection: 'column' }}>
-            <div className="sidebar_logo" onClick={() => setSelectorOpen(true)} style={{ cursor: "pointer", display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <div className="sidebar_logo" onClick={() => !isAccountant && setSelectorOpen(true)} style={{ cursor: isAccountant ? "default" : "pointer", display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px' }}>
               {!isSidebarOpen ? (
-                 <div style={{fontWeight: 900, fontSize: 18, color: 'var(--accent)', marginLeft: 4}}>T</div>
+                 <div style={{fontWeight: 900, fontSize: 22, color: 'var(--accent)', width: '100%', textAlign: 'center'}}>
+                   {selectedCompany?.name ? selectedCompany.name.charAt(0).toUpperCase() : 'T'}
+                 </div>
               ) : (
-                 <img src="https://tasu-test.vercel.app/images/logo.svg" alt="logo" />
+                 <img src={selectedCompany?.logo || "https://tasu-test.vercel.app/images/logo.svg"} alt="logo" style={{ maxHeight: '42px', maxWidth: '160px', objectFit: 'contain' }} />
               )}
                <button 
                   onClick={(e) => { e.stopPropagation(); toggleSidebar(); }} 
@@ -155,7 +202,7 @@ export default function Layout() {
                 </>
               )}
 
-              {(isAccountant || isAdmin) && (
+              {isAccountant && (
                 <div className="accountant_section" style={{  paddingBottom: '10px' }}>
                   <div className="menu_section_title" style={{ padding: '4px 12px', fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
                     {isSidebarOpen ? 'Бухгалтерия' : '...'}
@@ -253,9 +300,58 @@ export default function Layout() {
           </aside>
           )}
 
-          <section className="content" style={{ maxWidth: isCourier ? '100%' : (isSidebarOpen ? 'calc(100% - 280px)' : 'calc(100% - 80px)'), padding: isCourier ? 0 : 'inherit' }}>
-            {isCourier && (
-              <div className="content_header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 20px', background: 'var(--card)', borderBottom: '1px solid var(--border-color)', marginBottom: 20 }}>
+           <section className="content" style={{ maxWidth: isCourier ? '100%' : (isSidebarOpen ? 'calc(100% - 280px)' : 'calc(100% - 80px)'), padding: 0 }}>
+             {!isCourier ? (
+               <div className="content_header" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '10px 24px', background: 'var(--card)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 100 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
+                     <div style={{ position: 'relative' }}>
+                        <button className="btn--notif" onClick={() => setShowNotifMenu(!showNotifMenu)} title="Уведомления">
+                           <span style={{ fontSize: '1.2rem' }}>🔔</span>
+                           {notifCount > 0 && <span className="nav_badge_top">{notifCount}</span>}
+                        </button>
+                        
+                        {showNotifMenu && (
+                          <div className="notif_dropdown" onClick={(e) => e.stopPropagation()}>
+                             <div className="notif_header">Уведомления</div>
+                             <div className="notif_list">
+                                {notifications.length === 0 ? (
+                                  <div className="notif_empty">
+                                     <div style={{ fontSize: '2rem', marginBottom: '10px' }}>📭</div>
+                                     <div>У вас нет новых уведомлений</div>
+                                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '4px' }}>Мы сообщим, когда появится что-то важное</div>
+                                  </div>
+                                ) : (
+                                  notifications.map(n => (
+                                    <NavLink 
+                                      key={n.id} 
+                                      to={n.link} 
+                                      className={`notif_item ${n.isNew ? 'notif_item--new' : ''}`} 
+                                      onClick={() => setShowNotifMenu(false)}
+                                    >
+                                       <div className="notif_dot_container">
+                                          {n.isNew && <span className="notif_dot" />}
+                                       </div>
+                                       <div style={{ flex: 1 }}>
+                                          <div className="notif_text" style={{ opacity: n.isNew ? 1 : 0.6 }}>{n.text}</div>
+                                          <div className="notif_date">{new Date(n.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                                       </div>
+                                    </NavLink>
+                                  ))
+                                )}
+                             </div>
+                          </div>
+                        )}
+                     </div>
+                     <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{user?.name}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                           {user?.role === 'ADMIN' ? 'Администратор' : user?.role === 'ACCOUNTANT' ? 'Бухгалтер' : 'Менеджер'}
+                        </div>
+                     </div>
+                  </div>
+               </div>
+             ) : (
+               <div className="content_header" style={{ display: 'flex', justifyContent: 'flex-end', padding: '10px 20px', background: 'var(--card)', borderBottom: '1px solid var(--border-color)', marginBottom: 20 }}>
                    <div style={{ display: 'flex', alignItems: 'center', gap: 15 }}>
                       <div style={{ textAlign: 'right' }}>
                          <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>{user?.name}</div>
