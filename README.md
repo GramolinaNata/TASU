@@ -12,7 +12,7 @@
 ### 📄 Автоматизация документов (DOCX)
 Генерация юридически значимых документов по шаблонам одним кликом:
 - **ТТН** (Товарно-транспортная накладная)
-- **SMR** (Международная накладная)
+- **CMR** (Международная накладная)
 - **АВР** (Акт выполненных работ)
 - **Договоры**: Складское хранение и транспортная экспедиция.
 
@@ -28,14 +28,38 @@
 ## Технологический стек
 
 - **Frontend**: React + Vite (Vanilla CSS)
-- **Backend**: Node.js + Express
-- **Database**: SQLite + Prisma ORM
+- **Backend**: Node.js + Express (TypeScript)
+- **Database**: PostgreSQL (Neon) + Prisma ORM
 - **Export**: PizZip + Docxtemplater for DOCX generation
+- **Security**: Helmet, Express Rate Limit, bcryptjs, JWT
 
 ## Особенности интерфейса
 - **Dark Mode**: Полная поддержка темной темы для комфортной работы.
 - **Responsive Design**: Адаптивный интерфейс, оптимизированный под современные браузеры.
 - **Premium UI**: Современный дизайн с использованием CSS-переменных и динамических анимаций.
+
+## Запуск проекта для Production
+
+### 1. Подготовка и запуск Backend
+```bash
+cd server
+npm install
+# Настройте .env файл: добавьте DATABASE_URL (укажите ваш PostgreSQL) и JWT_SECRET
+npx prisma db push
+npm run seed  # Заполнение базы первичными админом и компаниями
+npm run build
+npm start
+```
+
+### 2. Подготовка и запуск Frontend
+```bash
+# В корневой директории
+npm install
+# Настройте .env файл: укажите VITE_API_URL для указания адреса бэкенда
+npm run build
+# Используйте serve или любой другой статический сервер для /dist:
+npx serve -s dist
+```
 
 ---
 
