@@ -6,9 +6,9 @@ const prisma = new PrismaClient();
 export const contractController = {
   list: async (req: Request, res: Response) => {
     try {
-      const { companyId } = req.query;
+      const companyId = req.query.companyId as string | undefined;
       const contracts = await prisma.contract.findMany({
-        where: companyId ? { companyId: String(companyId) } : {},
+        where: companyId ? { companyId } : {},
         orderBy: { createdAt: 'desc' },
       });
       res.json(contracts);
@@ -20,7 +20,7 @@ export const contractController = {
   get: async (req: Request, res: Response) => {
     try {
       const contract = await prisma.contract.findUnique({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
       });
       if (!contract) return res.status(404).json({ message: 'Contract not found' });
       res.json(contract);
@@ -54,7 +54,7 @@ export const contractController = {
       }
       
       const contract = await prisma.contract.update({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
         data: data,
       });
       res.json(contract);
@@ -66,7 +66,7 @@ export const contractController = {
   delete: async (req: Request, res: Response) => {
     try {
       await prisma.contract.delete({
-        where: { id: req.params.id },
+        where: { id: req.params.id as string },
       });
       res.json({ message: 'Contract deleted' });
     } catch (err: any) {

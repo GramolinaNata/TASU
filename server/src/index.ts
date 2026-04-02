@@ -1,6 +1,8 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/auth.route';
 import companyRoutes from './routes/company.route';
 import requestRoutes from './routes/request.route';
@@ -14,7 +16,18 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+app.use(helmet());
 app.use(cors());
+
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: 'Слишком много запросов с этого IP, пожалуйста, повторите попытку позже.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api', limiter);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
@@ -57,8 +70,8 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   console.error(err);
   res.status(500).json({ 
     message: 'Внутренняя ошибка сервера',
-    error: err.message,
-    stack: process.env.NODE_ENV === 'development' ? err.stack : undefined 
+    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+    stack: process.env.NODE_ENV === 'production' ? undefined : err.stack 
   });
 });
 
