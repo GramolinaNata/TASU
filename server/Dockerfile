@@ -1,4 +1,4 @@
-FROM node:20-alpine AS build
+FROM node:20-bullseye-slim AS build
 
 WORKDIR /app
 
@@ -17,9 +17,13 @@ COPY src ./src
 # Build TypeScript -> dist
 RUN npm run build
 
-FROM node:20-alpine
+FROM node:20-bullseye-slim
 
 WORKDIR /app
+
+# Ensure OpenSSL is available for Prisma engines
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 # Copy built artifacts and node_modules
 COPY --from=build /app/node_modules ./node_modules
