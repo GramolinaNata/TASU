@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/auth.route';
@@ -11,7 +12,8 @@ import contractRoutes from './routes/contract.route';
 import publicRoutes from './routes/public.route';
 import counterpartyRoutes from './routes/counterparty.routes';
 
-dotenv.config();
+// Load .env from project root (works in Docker / production too)
+dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 3001;

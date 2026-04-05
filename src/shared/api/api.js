@@ -1,4 +1,5 @@
-const API_URL = '/api';
+// Use Vite env override when available (falls back to same-origin /api)
+const API_URL = import.meta?.env?.VITE_API_URL || '/api';
 
 const getAuthHeader = () => {
   const token = localStorage.getItem('tasu_token');

@@ -11,7 +11,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "seed": "npm run seed --prefix server",
-    "vercel-build": "npm run build && npx prisma generate --schema=server/prisma/schema.prisma"
+    "vercel-build": "npm run build && npx prisma generate --schema=server/prisma/schema.prisma",
+    "docker:up": "docker compose up -d --build",
+    "docker:down": "docker compose down",
+    "docker:seed": "docker compose exec api npm run seed"
   },
   "workspaces": [
     "server"

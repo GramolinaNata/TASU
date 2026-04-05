@@ -40,6 +40,23 @@
 
 ## Запуск проекта для Production
 
+### Вариант 1. Docker (быстрый старт)
+1. Скопируйте примеры окружения и при необходимости поправьте значения:
+   - `cp .env.example .env` (VITE_API_URL — обычно `/api`)
+   - `cp server/.env.example server/.env` (DATABASE_URL, JWT_SECRET, PORT)
+2. Запустить одной командой:
+   ```bash
+   npm run docker:up
+   ```
+3. Откройте фронт: http://localhost (API проксируется на `/api`).
+4. При первом запуске (или после очистки БД) выполните сидирование:
+   ```bash
+   docker compose exec api npm run seed   # или npm run docker:seed
+   ```
+> server/.env.example уже настроен под docker-compose (хост `db`). Для локальной БД поменяйте на `localhost`.
+
+Учётные данные заданы в `server/prisma/seed.ts` (можно заменить перед запуском).
+
 ### 1. Подготовка и запуск Backend
 ```bash
 cd server

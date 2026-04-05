@@ -1,0 +1,51 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-tasu}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tasu}
+      POSTGRES_DB: ${POSTGRES_DB:-tasu}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tasu"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    ports:
+      - "5432:5432"
+
+  api:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    env_file:
+      - server/.env
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://tasu:tasu@db:5432/tasu?schema=public}
+      JWT_SECRET: ${JWT_SECRET:-change_me}
+      PORT: ${PORT:-3001}
+      NODE_ENV: production
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+      args:
+        VITE_API_URL: /api
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "80:80"
+
+volumes:
+  db-data:
