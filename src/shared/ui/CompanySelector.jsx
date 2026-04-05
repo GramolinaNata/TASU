@@ -36,7 +36,7 @@ export default function CompanySelector({ open, onClose }) {
   if (!open) return null;
 
   return (
-    <Modal title="Выберите компанию" onClose={onClose} closable={!!getSelectedCompanyId()}>
+    <Modal title="Выберите компанию" onClose={onClose} closable={true}>
       <div className="company_list">
         {loading ? (
           <div style={{ padding: "40px 0" }}>
