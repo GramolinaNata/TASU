@@ -11,8 +11,8 @@ import userRoutes from './routes/user.route';
 import contractRoutes from './routes/contract.route';
 import publicRoutes from './routes/public.route';
 import counterpartyRoutes from './routes/counterparty.routes';
+import expenseRoutes from './routes/expense.route';
 
-// Load .env from project root (works in Docker / production too)
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
@@ -22,24 +22,22 @@ app.use(helmet());
 app.use(cors());
 
 const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
   message: 'Слишком много запросов с этого IP, пожалуйста, повторите попытку позже.',
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api', limiter);
 
+app.use('/api', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
-// Log all requests
 app.use((req, res, next) => {
   console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
 
-// Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/companies', companyRoutes);
 app.use('/api/requests', requestRoutes);
@@ -47,8 +45,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/contracts', contractRoutes);
 app.use('/api/public', publicRoutes);
 app.use('/api/counterparties', counterpartyRoutes);
+app.use('/api/expenses', expenseRoutes);
 
-// Basic test route
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
@@ -57,16 +55,14 @@ app.get('/api/ping', (req, res) => {
   res.send('Server is alive and reachable!');
 });
 
-// Final 404 Handler
 app.use((req, res) => {
   console.log(`!!! 404 NOT FOUND !!! - ${req.method} ${req.url}`);
   res.status(404).json({ 
     message: `Маршрут ${req.method} ${req.url} не найден на этом сервере.`,
-    availableRoutes: ['/api/auth', '/api/users', '/api/companies', '/api/requests', '/api/contracts', '/api/counterparties', '/api/health']
+    availableRoutes: ['/api/auth', '/api/users', '/api/companies', '/api/requests', '/api/contracts', '/api/counterparties', '/api/expenses', '/api/health']
   });
 });
 
-// Global Error Handler
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('!!! GLOBAL SERVER ERROR !!!');
   console.error(err);
@@ -77,7 +73,6 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   });
 });
 
-// Start server unless we are in a serverless/Vercel environment
 const isVercel = process.env.VERCEL === '1';
 if (!isVercel) {
   app.listen(PORT, () => {

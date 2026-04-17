@@ -1,8 +1,8 @@
 import { useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
-export function RequireAuth({ children, adminOnly = false, accountantOnly = false, accountantOrAdminOnly = false, managerOrAdminOnly = false, courierOnly = false }) {
-  const { user, loading, isAdmin, isAccountant, isCourier } = useAuth();
+export function RequireAuth({ children, adminOnly = false, accountantOnly = false, accountant1Only = false, accountant2Only = false, accountantOrAdminOnly = false, managerOrAdminOnly = false, courierOnly = false }) {
+  const { user, loading, isAdmin, isAccountant, isAccountant2, isCourier } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -21,19 +21,27 @@ export function RequireAuth({ children, adminOnly = false, accountantOnly = fals
     return <Navigate to="/" replace />;
   }
 
-  if (accountantOnly && !isAccountant) {
+  if (accountant1Only && !isAccountant) {
     return <Navigate to="/" replace />;
   }
 
-  if (accountantOrAdminOnly && !isAdmin && !isAccountant) {
+  if (accountantOnly && !isAccountant && !isAccountant2 && !isAdmin) {
     return <Navigate to="/" replace />;
   }
 
-  if (managerOrAdminOnly && !isAdmin && isAccountant) {
+  if (accountant2Only && !isAccountant2 && !isAdmin) {
     return <Navigate to="/" replace />;
   }
 
-  if (courierOnly && !isCourier && !isAdmin && !isAccountant) {
+  if (accountantOrAdminOnly && !isAdmin && !isAccountant && !isAccountant2) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (managerOrAdminOnly && !isAdmin && (isAccountant || isAccountant2)) {
+    return <Navigate to="/" replace />;
+  }
+
+  if (courierOnly && !isCourier && !isAdmin) {
     return <Navigate to="/" replace />;
   }
 

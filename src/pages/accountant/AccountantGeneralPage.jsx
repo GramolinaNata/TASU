@@ -1,3 +1,356 @@
+// import React, { useEffect, useMemo, useState } from "react";
+// import { Link } from "react-router-dom";
+// import { api } from "../../shared/api/api.js";
+// import { useAuth } from "../../shared/auth/AuthContext";
+// import Loader from "../../shared/components/Loader";
+
+// function formatDisplayDate(val) {
+//   if (!val) return "—";
+//   const d = new Date(val);
+//   if (isNaN(d.getTime())) return val;
+//   const day = String(d.getDate()).padStart(2, "0");
+//   const month = String(d.getMonth() + 1).padStart(2, "0");
+//   const year = d.getFullYear();
+//   return `${day}.${month}.${year}`;
+// }
+
+// function normalizeIsoDate(val) {
+//   if (!val) return "";
+//   const d = new Date(val);
+//   if (isNaN(d.getTime())) return "";
+//   const yyyy = d.getFullYear();
+//   const mm = String(d.getMonth() + 1).padStart(2, "0");
+//   const dd = String(d.getDate()).padStart(2, "0");
+//   return `${yyyy}-${mm}-${dd}`;
+// }
+
+// export default function AccountantGeneralPage() {
+//   const { isAccountant, isAdmin } = useAuth();
+//   const [q, setQ] = useState("");
+//   const [dateFrom, setDateFrom] = useState("");
+//   const [dateTo, setDateTo] = useState("");
+//   const [docTypeFilter, setDocTypeFilter] = useState("all");
+//   const [statusFilter, setStatusFilter] = useState("all");
+//   const [snoFilter, setSnoFilter] = useState("all");
+//   const [avrFilter, setAvrFilter] = useState("all");
+//   const [esfFilter, setEsfFilter] = useState("all"); // Новое: ЭСФ
+//   const [acts, setActs] = useState([]);
+//   const [loading, setLoading] = useState(true);
+
+//   const loadActs = async () => {
+//     setLoading(true);
+//     try {
+//       // Загружаем все заявки со всех компаний
+//       const list = await api.requests.list();
+//       if (Array.isArray(list)) {
+//         const parsed = list.map(a => {
+//            let details = {};
+//            if (a.details) {
+//               try {
+//                 details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
+//               } catch (e) { console.error("Parse error", e); }
+//            }
+//            return { ...a, ...details };
+//         });
+//         setActs(parsed);
+//       } else {
+//         setActs([]);
+//       }
+//     } catch (e) {
+//       console.error("Failed to load acts", e);
+//       setActs([]);
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   const toggleProcessed = async (actId, currentVal) => {
+//     try {
+//       await api.requests.update(actId, { isProcessedByAccountant: !currentVal });
+//       // Обновляем локальное состояние для мгновенного отклика
+//       setActs(prev => prev.map(a => a.id === actId ? { ...a, isProcessedByAccountant: !currentVal } : a));
+//     } catch (err) {
+//       alert("Ошибка при обновлении статуса: " + err.message);
+//     }
+//   };
+
+//   useEffect(() => {
+//     loadActs();
+//   }, []);
+
+//   const filtered = useMemo(() => {
+//     // 1. Обязательное условие: только отработанные (отправленные бухгалтеру) и не отложенные
+//     let list = acts.filter(a => !!a.readyForAccountant && !a.isDeferredForAccountant);
+
+//     // Фильтр по типу документа
+//     if (docTypeFilter !== "all") {
+//         if (docTypeFilter === "warehouse") {
+//             list = list.filter(a => a.isWarehouse);
+//         } else if (docTypeFilter === "ttn") {
+//             list = list.filter(a => !a.isWarehouse && (a.docType === "ttn" || a.type === "ttn"));
+//         } else if (docTypeFilter === "smr") {
+//             list = list.filter(a => !a.isWarehouse && (a.docType === "smr" || a.type === "smr"));
+//         } else if (docTypeFilter === "request") {
+//             list = list.filter(a => !a.isWarehouse && !a.docType && a.type !== "ttn" && a.type !== "smr");
+//         }
+//     }
+
+//     // Фильтр по статусу (Активные / Аннулированные)
+//     if (statusFilter !== "all") {
+//         if (statusFilter === "canceled") {
+//             list = list.filter(a => a.status === "canceled");
+//         } else if (statusFilter === "active") {
+//             list = list.filter(a => a.status !== "canceled" && a.status !== "draft");
+//         } else if (statusFilter === "draft") {
+//             list = list.filter(a => a.status === "draft");
+//         }
+//     }
+
+//     // Фильтр по СНО
+//     if (snoFilter !== "all") {
+//         if (snoFilter === "done") {
+//              list = list.filter(a => !!a.snoIssued);
+//         } else if (snoFilter === "pending") {
+//              list = list.filter(a => !a.snoIssued);
+//         }
+//     }
+
+//     // Фильтр по АВР
+//     if (avrFilter !== "all") {
+//         if (avrFilter === "done") {
+//              list = list.filter(a => !!a.avrSent);
+//         } else if (avrFilter === "pending") {
+//              list = list.filter(a => !a.avrSent);
+//         }
+//     }
+
+//     // Фильтр по ЭСФ
+//     if (esfFilter !== "all") {
+//         if (esfFilter === "done") {
+//              list = list.filter(a => !!a.esfIssued);
+//         } else if (esfFilter === "pending") {
+//              list = list.filter(a => !a.esfIssued);
+//         }
+//     }
+
+//     // 2. По дате
+//     if (dateFrom) {
+//        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
+//     }
+//     if (dateTo) {
+//        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) <= dateTo);
+//     }
+
+//     // 3. Поиск
+//     const s = q.trim().toLowerCase();
+//     if (s) {
+//        list = list.filter((a) => {
+//         const hay = [
+//           a.number, 
+//           a.docNumber, 
+//           a.date, 
+//           a.customer?.fio, 
+//           a.customer?.companyName,
+//           a.route?.fromCity, 
+//           a.route?.toCity, 
+//           a.company?.name
+//         ]
+//           .filter(Boolean)
+//           .join(" ")
+//           .toLowerCase();
+//         return hay.includes(s);
+//       });
+//     }
+    
+//     return list;
+//   }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, snoFilter, avrFilter, esfFilter]);
+
+
+
+//   return (
+//     <>
+//       <div className="navbar">
+//         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+//           <h1>Все заявки</h1>
+//           <div className="chip" style={{ background: "#f6ffed", borderColor: "#b7eb8f", color: "#389e0d" }}>
+//             Бухгалтерия
+//           </div>
+//         </div>
+//       </div>
+
+//       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+//         <div className="field" style={{ minWidth: 200, flex: 1 }}>
+//           <div className="label">Поиск</div>
+//           <input
+//             value={q}
+//             onChange={(e) => setQ(e.target.value)}
+//             placeholder="Номер, заказчик, компания..."
+//           />
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">Тип</div>
+//            <select value={docTypeFilter} onChange={e => setDocTypeFilter(e.target.value)}>
+//                <option value="all">Все</option>
+//                <option value="request">Только Заявки</option>
+//                <option value="ttn">ТТН</option>
+//                <option value="smr">СМР</option>
+//                <option value="warehouse">Склад</option>
+//            </select>
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">Статус</div>
+//            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+//                <option value="all">Все</option>
+//                <option value="active">Активные</option>
+//                <option value="canceled">Аннулированные</option>
+//                <option value="draft">Черновики</option>
+//            </select>
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">СНО</div>
+//            <select value={snoFilter} onChange={e => setSnoFilter(e.target.value)}>
+//                <option value="all">Все</option>
+//                <option value="pending">Ожидает СНО</option>
+//                <option value="done">Выставлен</option>
+//            </select>
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">АВР</div>
+//            <select value={avrFilter} onChange={e => setAvrFilter(e.target.value)}>
+//                <option value="all">Все</option>
+//                <option value="pending">Ожидает АВР</option>
+//                <option value="done">Отправлен</option>
+//            </select>
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">ЭСФ</div>
+//            <select value={esfFilter} onChange={e => setEsfFilter(e.target.value)}>
+//                <option value="all">Все</option>
+//                <option value="pending">Ожидает ЭСФ</option>
+//                <option value="done">Выставлен</option>
+//            </select>
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">Дата с</div>
+//            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">Дата по</div>
+//            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+//         </div>
+//       </div>
+
+//       <div className="table_wrap" style={{ marginTop: 16 }}>
+//         {loading ? (
+//           <Loader />
+//         ) : (
+//           <table className="table_fixed">
+//             <thead>
+//               <tr>
+//                 <th style={{ width: 100 }}>Номер</th>
+//                 <th style={{ width: 100 }}>Дата</th>
+//                 <th>Заказчик</th>
+//                 <th style={{ width: 80 }}>Мест</th>
+//                 <th style={{ width: 90 }}>Вес</th>
+//                 <th style={{ width: 120 }}>Сумма</th>
+//                 <th>Маршрут</th>
+//                 <th style={{ width: 60, textAlign: 'center' }}>СНО</th>
+//                 <th style={{ width: 60, textAlign: 'center' }}>АВР</th>
+//                 <th style={{ width: 60, textAlign: 'center' }}>ЭСФ</th>
+//                 <th style={{ width: 80, textAlign: 'center' }}>Статус</th>
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {filtered.length === 0 ? (
+//                 <tr>
+//                   <td colSpan={10} className="muted" style={{ padding: 16 }}>
+//                     В общем котле нет документов.
+//                   </td>
+//                 </tr>
+//               ) : (
+//                 filtered.map((a) => (
+//                   <tr key={a.id} style={{ 
+//                     opacity: a.status === 'canceled' ? 0.5 : 1,
+//                     background: !a.isViewedByAccountant ? 'rgba(37, 99, 235, 0.05)' : 'inherit',
+//                     borderLeft: !a.isViewedByAccountant ? '4px solid #2563eb' : 'none'
+//                   }}>
+//                     <td className="num">
+//                       <Link to={`/accountant/acts/${a.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+//                         {!a.isViewedByAccountant && (
+//                           <span title="Новая заявка" style={{ 
+//                             width: 8, height: 8, background: '#2563eb', borderRadius: '50%', display: 'inline-block' 
+//                           }} />
+//                         )}
+//                         {a.docNumber || a.number}
+//                       </Link>
+//                     </td>
+//                     <td>{formatDisplayDate(a.createdAt || a.date)}</td>
+//                     <td><div style={{ fontWeight: 500 }}>{a.customer?.companyName || a.customer?.fio || "—"}</div></td>
+//                     <td>{a.totals?.seats || "—"}</td>
+//                     <td>{a.totals?.weight ? `${a.totals.weight} кг` : "—"}</td>
+//                     <td style={{ fontWeight: 700 }}>{a.totalSum ? `${parseFloat(a.totalSum).toLocaleString()} тг` : "—"}</td>
+//                     <td>
+//                       {a.isWarehouse ? (
+//                         <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Склад</span>
+//                       ) : (
+//                         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+//                           {a.route?.fromCity || "—"} → {a.route?.toCity || "—"}
+//                         </div>
+//                       )}
+//                     </td>
+//                     <td style={{ textAlign: "center" }}>
+//                       {a.snoIssued ? (
+//                         <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Да</span>
+//                       ) : (
+//                         <span className="badge" style={{ background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem' }}>Нет</span>
+//                       )}
+//                     </td>
+//                     <td style={{ textAlign: "center" }}>
+//                       {a.avrSent ? (
+//                         <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Да</span>
+//                       ) : (
+//                         <span className="badge" style={{ background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem' }}>Нет</span>
+//                       )}
+//                     </td>
+//                     <td style={{ textAlign: "center" }}>
+//                       {a.esfIssued ? (
+//                         <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Да</span>
+//                       ) : (
+//                         <span className="badge" style={{ background: '#fffbe6', color: '#faad14', padding: '2px 6px', fontSize: '0.75rem' }}>Нет</span>
+//                       )}
+//                     </td>
+//                     <td style={{ textAlign: "center" }}>
+//                       {a.isProcessedByAccountant ? (
+//                         <button 
+//                           className="btn-icon" 
+//                           onClick={() => toggleProcessed(a.id, true)}
+//                           title="Отработано (Нажмите, чтобы отменить)"
+//                           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
+//                         >
+//                           ✅
+//                         </button>
+//                       ) : (
+//                         <button 
+//                           className="btn-icon" 
+//                           onClick={() => toggleProcessed(a.id, false)}
+//                           title="Пометить как отработанное"
+//                           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', filter: 'grayscale(1)', opacity: 0.4 }}
+//                         >
+//                           ⏳
+//                         </button>
+//                       )}
+//                     </td>
+//                   </tr>
+//                 ))
+//               )}
+//             </tbody>
+//           </table>
+//         )}
+//       </div>
+//     </>
+//   );
+// }
+
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
@@ -24,6 +377,16 @@ function normalizeIsoDate(val) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+const COMPANY_COLORS = {
+  'tasu_kz': '#7c3aed',
+  'aldiyar': '#059669',
+  'tasu_kaz': '#d97706',
+};
+
+const getCompanyColor = (companyId) => {
+  return COMPANY_COLORS[companyId] || '#cbd5e1';
+};
+
 export default function AccountantGeneralPage() {
   const { isAccountant, isAdmin } = useAuth();
   const [q, setQ] = useState("");
@@ -33,14 +396,14 @@ export default function AccountantGeneralPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [snoFilter, setSnoFilter] = useState("all");
   const [avrFilter, setAvrFilter] = useState("all");
-  const [esfFilter, setEsfFilter] = useState("all"); // Новое: ЭСФ
+  const [esfFilter, setEsfFilter] = useState("all");
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [tab, setTab] = useState("active");
 
   const loadActs = async () => {
     setLoading(true);
     try {
-      // Загружаем все заявки со всех компаний
       const list = await api.requests.list();
       if (Array.isArray(list)) {
         const parsed = list.map(a => {
@@ -67,7 +430,6 @@ export default function AccountantGeneralPage() {
   const toggleProcessed = async (actId, currentVal) => {
     try {
       await api.requests.update(actId, { isProcessedByAccountant: !currentVal });
-      // Обновляем локальное состояние для мгновенного отклика
       setActs(prev => prev.map(a => a.id === actId ? { ...a, isProcessedByAccountant: !currentVal } : a));
     } catch (err) {
       alert("Ошибка при обновлении статуса: " + err.message);
@@ -79,10 +441,14 @@ export default function AccountantGeneralPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    // 1. Обязательное условие: только отработанные (отправленные бухгалтеру) и не отложенные
     let list = acts.filter(a => !!a.readyForAccountant && !a.isDeferredForAccountant);
 
-    // Фильтр по типу документа
+    if (tab === "active") {
+      list = list.filter(a => !a.isProcessedByAccountant);
+    } else {
+      list = list.filter(a => !!a.isProcessedByAccountant);
+    }
+
     if (docTypeFilter !== "all") {
         if (docTypeFilter === "warehouse") {
             list = list.filter(a => a.isWarehouse);
@@ -95,7 +461,6 @@ export default function AccountantGeneralPage() {
         }
     }
 
-    // Фильтр по статусу (Активные / Аннулированные)
     if (statusFilter !== "all") {
         if (statusFilter === "canceled") {
             list = list.filter(a => a.status === "canceled");
@@ -106,66 +471,75 @@ export default function AccountantGeneralPage() {
         }
     }
 
-    // Фильтр по СНО
     if (snoFilter !== "all") {
-        if (snoFilter === "done") {
-             list = list.filter(a => !!a.snoIssued);
-        } else if (snoFilter === "pending") {
-             list = list.filter(a => !a.snoIssued);
-        }
+        if (snoFilter === "done") list = list.filter(a => !!a.snoIssued);
+        else if (snoFilter === "pending") list = list.filter(a => !a.snoIssued);
     }
 
-    // Фильтр по АВР
     if (avrFilter !== "all") {
-        if (avrFilter === "done") {
-             list = list.filter(a => !!a.avrSent);
-        } else if (avrFilter === "pending") {
-             list = list.filter(a => !a.avrSent);
-        }
+        if (avrFilter === "done") list = list.filter(a => !!a.avrSent);
+        else if (avrFilter === "pending") list = list.filter(a => !a.avrSent);
     }
 
-    // Фильтр по ЭСФ
     if (esfFilter !== "all") {
-        if (esfFilter === "done") {
-             list = list.filter(a => !!a.esfIssued);
-        } else if (esfFilter === "pending") {
-             list = list.filter(a => !a.esfIssued);
-        }
+        if (esfFilter === "done") list = list.filter(a => !!a.esfIssued);
+        else if (esfFilter === "pending") list = list.filter(a => !a.esfIssued);
     }
 
-    // 2. По дате
-    if (dateFrom) {
-       list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
-    }
-    if (dateTo) {
-       list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) <= dateTo);
-    }
+    if (dateFrom) list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
+    if (dateTo) list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) <= dateTo);
 
-    // 3. Поиск
     const s = q.trim().toLowerCase();
     if (s) {
        list = list.filter((a) => {
         const hay = [
-          a.number, 
-          a.docNumber, 
-          a.date, 
-          a.customer?.fio, 
-          a.customer?.companyName,
-          a.route?.fromCity, 
-          a.route?.toCity, 
-          a.company?.name
-        ]
-          .filter(Boolean)
-          .join(" ")
-          .toLowerCase();
+          a.number, a.docNumber, a.date,
+          a.customer?.fio, a.customer?.companyName,
+          a.route?.fromCity, a.route?.toCity, a.company?.name
+        ].filter(Boolean).join(" ").toLowerCase();
         return hay.includes(s);
       });
     }
-    
+
     return list;
-  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, snoFilter, avrFilter, esfFilter]);
+  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, snoFilter, avrFilter, esfFilter, tab]);
 
+  const totals = useMemo(() => {
+    return filtered.reduce((acc, a) => {
+      acc.count += 1;
+      acc.seats += Number(a.totals?.seats) || 0;
+      acc.weight += Number(a.totals?.weight) || 0;
+      acc.sum += Number(a.totalSum) || 0;
+      return acc;
+    }, { count: 0, seats: 0, weight: 0, sum: 0 });
+  }, [filtered]);
 
+  const exportToExcel = (data) => {
+    const rows = [
+      ['Номер', 'Дата', 'Заказчик', 'Маршрут', 'Мест', 'Вес (кг)', 'Сумма (тг)', 'СНО', 'АВР', 'ЭСФ', 'Компания'],
+      ...data.map(a => [
+        a.docNumber || a.number || '',
+        formatDisplayDate(a.createdAt || a.date),
+        a.customer?.companyName || a.customer?.fio || '',
+        `${a.route?.fromCity || ''} → ${a.route?.toCity || ''}`,
+        a.totals?.seats || '',
+        a.totals?.weight || '',
+        a.totalSum ? parseFloat(a.totalSum).toLocaleString() : '',
+        a.snoIssued ? 'Да' : 'Нет',
+        a.avrSent ? 'Да' : 'Нет',
+        a.esfIssued ? 'Да' : 'Нет',
+        a.company?.name || a.companyId || '',
+      ])
+    ];
+    const csv = rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `заявки_${new Date().toLocaleDateString('ru')}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <>
@@ -176,16 +550,45 @@ export default function AccountantGeneralPage() {
             Бухгалтерия
           </div>
         </div>
+        <button className="btn" onClick={() => exportToExcel(filtered)}>
+          📥 Скачать Excel
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        <button
+          className={`btn ${tab === 'active' ? 'btn--accent' : ''}`}
+          onClick={() => setTab('active')}
+        >
+          Активные
+        </button>
+        <button
+          className={`btn ${tab === 'processed' ? 'btn--accent' : ''}`}
+          onClick={() => setTab('processed')}
+        >
+          Отработанные
+        </button>
+      </div>
+
+      <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, background: '#7c3aed', display: 'inline-block' }} />
+          ИП TASU KZ
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, background: '#059669', display: 'inline-block' }} />
+          ИП Алдияр
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.85rem' }}>
+          <span style={{ width: 12, height: 12, borderRadius: 2, background: '#d97706', display: 'inline-block' }} />
+          ТОО TASU KAZAKHSTAN
+        </div>
       </div>
 
       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <div className="field" style={{ minWidth: 200, flex: 1 }}>
           <div className="label">Поиск</div>
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Номер, заказчик, компания..."
-          />
+          <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Номер, заказчик, компания..." />
         </div>
         <div className="field" style={{ width: 140 }}>
            <div className="label">Тип</div>
@@ -240,6 +643,22 @@ export default function AccountantGeneralPage() {
         </div>
       </div>
 
+      {/* Итоги */}
+      <div style={{ display: 'flex', gap: 16, marginTop: 12, flexWrap: 'wrap' }}>
+        <div style={{ padding: '8px 16px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--line)', fontSize: '0.9rem' }}>
+          Заявок: <strong>{totals.count}</strong>
+        </div>
+        <div style={{ padding: '8px 16px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--line)', fontSize: '0.9rem' }}>
+          Мест: <strong>{totals.seats}</strong>
+        </div>
+        <div style={{ padding: '8px 16px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--line)', fontSize: '0.9rem' }}>
+          Вес: <strong>{totals.weight} кг</strong>
+        </div>
+        <div style={{ padding: '8px 16px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--line)', fontSize: '0.9rem' }}>
+          Сумма: <strong>{totals.sum.toLocaleString()} тг</strong>
+        </div>
+      </div>
+
       <div className="table_wrap" style={{ marginTop: 16 }}>
         {loading ? (
           <Loader />
@@ -263,22 +682,22 @@ export default function AccountantGeneralPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={11} className="muted" style={{ padding: 16 }}>
                     В общем котле нет документов.
                   </td>
                 </tr>
               ) : (
                 filtered.map((a) => (
-                  <tr key={a.id} style={{ 
+                  <tr key={a.id} style={{
                     opacity: a.status === 'canceled' ? 0.5 : 1,
                     background: !a.isViewedByAccountant ? 'rgba(37, 99, 235, 0.05)' : 'inherit',
-                    borderLeft: !a.isViewedByAccountant ? '4px solid #2563eb' : 'none'
+                    borderLeft: !a.isViewedByAccountant ? '4px solid #2563eb' : `4px solid ${getCompanyColor(a.companyId)}`
                   }}>
                     <td className="num">
                       <Link to={`/accountant/acts/${a.id}`} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         {!a.isViewedByAccountant && (
-                          <span title="Новая заявка" style={{ 
-                            width: 8, height: 8, background: '#2563eb', borderRadius: '50%', display: 'inline-block' 
+                          <span title="Новая заявка" style={{
+                            width: 8, height: 8, background: '#2563eb', borderRadius: '50%', display: 'inline-block'
                           }} />
                         )}
                         {a.docNumber || a.number}
@@ -321,8 +740,8 @@ export default function AccountantGeneralPage() {
                     </td>
                     <td style={{ textAlign: "center" }}>
                       {a.isProcessedByAccountant ? (
-                        <button 
-                          className="btn-icon" 
+                        <button
+                          className="btn-icon"
                           onClick={() => toggleProcessed(a.id, true)}
                           title="Отработано (Нажмите, чтобы отменить)"
                           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px' }}
@@ -330,8 +749,8 @@ export default function AccountantGeneralPage() {
                           ✅
                         </button>
                       ) : (
-                        <button 
-                          className="btn-icon" 
+                        <button
+                          className="btn-icon"
                           onClick={() => toggleProcessed(a.id, false)}
                           title="Пометить как отработанное"
                           style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '4px', filter: 'grayscale(1)', opacity: 0.4 }}
