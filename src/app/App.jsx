@@ -13,6 +13,9 @@ import ContractCreatePage from "../pages/contracts/ContractCreatePage.jsx";
 import ContractDetailsPage from "../pages/contracts/ContractDetailsPage.jsx";
 import CounterpartiesPage from "../pages/companies/CounterpartiesPage.jsx";
 import AccountantExpensesPage from "../pages/accountant/ExpensesPage.jsx";
+import SimpleActsListPage from "../pages/simple/SimpleActsListPage.jsx";
+import SimpleActPage from "../pages/simple/SimpleActPage.jsx";
+import TariffsPage from "../pages/admin/TariffsPage.jsx";
 
 import { useEffect } from "react";
 import { loadCompanies } from "../shared/storage/companyStorage.js";
@@ -80,14 +83,17 @@ export default function App() {
         <Route path="/companies" element={<RequireAuth adminOnly><CompaniesPage /></RequireAuth>} />
         <Route path="/admin" element={<RequireAuth adminOnly><AdminStatsPage /></RequireAuth>} />
         <Route path="/admin/users" element={<RequireAuth adminOnly><UsersPage /></RequireAuth>} />
+        <Route path="/admin/tariffs" element={<RequireAuth adminOnly><TariffsPage /></RequireAuth>} />
         <Route path="/counterparties" element={<CounterpartiesPage />} />
         <Route path="/accountant/general" element={<RequireAuth accountantOnly><AccountantGeneralPage /></RequireAuth>} />
         <Route path="/accountant/acts/:id" element={<RequireAuth accountantOnly><ActDetailsPage /></RequireAuth>} />
-       <Route path="/accountant/expenses" element={<RequireAuth accountant1Only><AccountantExpensesPage /></RequireAuth>} />
+        <Route path="/accountant/expenses" element={<RequireAuth accountant1Only><AccountantExpensesPage /></RequireAuth>} />
         <Route path="/courier" element={<RequireAuth courierOnly><CourierPage /></RequireAuth>} />
         <Route path="/deferred" element={<RequireAuth managerOrAdminOnly><DeferredPage /></RequireAuth>} />
         <Route path="/deferred/:id" element={<RequireAuth managerOrAdminOnly><ActDetailsPage /></RequireAuth>} />
         <Route path="/deferred/:id/edit" element={<RequireAuth managerOrAdminOnly><ActCreatePage /></RequireAuth>} />
+        <Route path="/simple" element={<SimpleActsListPage />} />
+        <Route path="/simple/new" element={<SimpleActPage />} />
       </Route>
       <Route path="/courier/acts/:id" element={<CourierActViewPage />} />
     </Routes>

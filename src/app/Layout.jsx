@@ -95,7 +95,7 @@ export default function Layout() {
 
   return (
     <main className="main">
-      {!isCourier && !isAnyAccountant && <CompanySelector open={selectorOpen} onClose={() => setSelectorOpen(false)} />}
+      {!isCourier && <CompanySelector open={selectorOpen} onClose={() => setSelectorOpen(false)} />}
 
       <div className="container">
         <div className="main_wrapper">
@@ -149,6 +149,10 @@ export default function Layout() {
                       <span className="menu_icon">✅</span>
                       <span className="menu_text">Отработанные</span>
                     </NavLink>
+                    <NavLink to="/simple" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Частные лица">
+  <span className="menu_icon">📋</span>
+  <span className="menu_text">Частные лица</span>
+</NavLink>
                   </>
                 )}
 
@@ -192,6 +196,10 @@ export default function Layout() {
                       <span className="menu_icon">🏢</span>
                       <span className="menu_text">Компании</span>
                     </NavLink>
+                    <NavLink to="/admin/tariffs" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Тарифы">
+  <span className="menu_icon">💰</span>
+  <span className="menu_text">Тарифы</span>
+</NavLink>
                   </div>
                 )}
               </nav>
