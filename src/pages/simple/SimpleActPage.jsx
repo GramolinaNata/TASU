@@ -88,12 +88,41 @@ export default function SimpleActPage() {
         }),
       });
 
-      if (saveAndNext) {
-        setSaved(true);
-        resetForm();
-      } else {
-        navigate("/simple");
-      }
+      // Генерируем наклейку
+const label = `<!DOCTYPE html><html><head><meta charset="utf-8">
+<style>
+  body{font-family:Arial,sans-serif;margin:0;padding:10px;}
+  .label{border:2px solid #333;padding:12px;width:280px;font-size:12px;}
+  .title{font-size:16px;font-weight:bold;text-align:center;margin-bottom:8px;border-bottom:1px solid #333;padding-bottom:6px;}
+  .row{margin:4px 0;}
+  .label-key{color:#666;font-size:11px;}
+  .label-val{font-weight:600;}
+  .big{font-size:18px;font-weight:bold;text-align:center;margin:8px 0;padding:6px;background:#f0f0f0;border-radius:4px;}
+</style></head><body>
+<div class="label">
+  <div class="title">ГРУЗ / TASU KZ</div>
+  <div class="row"><span class="label-key">Отправитель:</span><br/><span class="label-val">${form.senderName}</span></div>
+  <div class="row"><span class="label-key">Тел:</span> <span class="label-val">${form.senderPhone}</span></div>
+  <div class="row"><span class="label-key">Получатель:</span><br/><span class="label-val">${form.receiverName}</span></div>
+  <div class="row"><span class="label-key">Тел:</span> <span class="label-val">${form.receiverPhone}</span></div>
+  <div class="big">→ ${form.toCity}</div>
+  <div class="row"><span class="label-key">Мест:</span> <span class="label-val">${form.seats || "—"}</span> &nbsp; <span class="label-key">Вес:</span> <span class="label-val">${form.weight || "—"} кг</span></div>
+  <div class="row"><span class="label-key">Груз:</span> <span class="label-val">${form.cargoText || "—"}</span></div>
+  <div class="row"><span class="label-key">Сумма:</span> <span class="label-val">${form.totalSum ? Number(form.totalSum).toLocaleString() + " тг" : "—"}</span></div>
+  <div class="row"><span class="label-key">Дата:</span> <span class="label-val">${new Date().toLocaleDateString("ru")}</span></div>
+</div>
+<script>window.onload=function(){window.print();}</script>
+</body></html>`;
+
+const blob = new Blob([label], { type: "text/html; charset=utf-8" });
+window.open(URL.createObjectURL(blob), "_blank");
+
+if (saveAndNext) {
+  setSaved(true);
+  resetForm();
+} else {
+  navigate("/simple");
+}
     } catch (err) {
       alert("Ошибка: " + err.message);
     } finally {

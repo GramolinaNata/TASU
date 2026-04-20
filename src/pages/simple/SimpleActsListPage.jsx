@@ -11,6 +11,18 @@ function formatDate(val) {
   return d.toLocaleDateString("ru");
 }
 
+const STATUS_LABELS = {
+  "act": "В стоке",
+  "sent": "Подано",
+  "done": "Отработано",
+};
+
+const STATUS_COLORS = {
+  "act": { bg: "#e6f7ff", color: "#1890ff" },
+  "sent": { bg: "#fffbe6", color: "#d48806" },
+  "done": { bg: "#f6ffed", color: "#52c41a" },
+};
+
 export default function SimpleActsListPage() {
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19,6 +31,7 @@ export default function SimpleActsListPage() {
   const [selected, setSelected] = useState([]);
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [activeTab, setActiveTab] = useState("all");
 
   useEffect(() => {
     return subscribeSelectedCompany(c => setCompany(c));
@@ -44,15 +57,15 @@ export default function SimpleActsListPage() {
             let details = {};
             if (a.details) try { details = typeof a.details === "string" ? JSON.parse(a.details) : a.details; } catch(e) {}
             return {
-  ...a,
-  customer: details.customer || a.customer,
-  receiver: details.receiver || a.receiver,
-  route: details.route || a.route,
-  cargoText: details.cargoText || a.cargoText || "",
-  totals: details.totals || a.totals || {},
-  transportType: details.transportType || a.transportType,
-  totalSum: a.totalSum || details.totalSum || "",
-};
+              ...a,
+              customer: details.customer || a.customer,
+              receiver: details.receiver || a.receiver,
+              route: details.route || a.route,
+              cargoText: details.cargoText || a.cargoText || "",
+              totals: details.totals || a.totals || {},
+              transportType: details.transportType || a.transportType,
+              totalSum: a.totalSum || details.totalSum || "",
+            };
           });
         setActs(simple);
       }
@@ -63,6 +76,15 @@ export default function SimpleActsListPage() {
     }
   };
 
+  const updateStatus = async (id, newStatus) => {
+    try {
+      await api.requests.update(id, { status: newStatus });
+      load();
+    } catch(e) {
+      alert("Ошибка: " + e.message);
+    }
+  };
+
   const filtered = acts.filter(a => {
     const s = search.trim().toLowerCase();
     const matchSearch = !s || [a.docNumber, a.number, a.customer?.fio, a.receiver?.fio, a.route?.toCity]
@@ -70,12 +92,17 @@ export default function SimpleActsListPage() {
     let matchDate = true;
     if (dateFrom) matchDate = matchDate && new Date(a.createdAt || a.date) >= new Date(dateFrom);
     if (dateTo) matchDate = matchDate && new Date(a.createdAt || a.date) <= new Date(dateTo + "T23:59:59");
-    return matchSearch && matchDate;
+    let matchTab = true;
+    if (activeTab === "stock") matchTab = a.status === "act";
+    if (activeTab === "sent") matchTab = a.status === "sent";
+    if (activeTab === "done") matchTab = a.status === "done";
+    return matchSearch && matchDate && matchTab;
   });
 
-  const totalSeats = filtered.reduce((acc, a) => acc + (Number(a.totals?.seats) || 0), 0);
-  const totalWeight = filtered.reduce((acc, a) => acc + (Number(a.totals?.weight) || 0), 0);
-  const totalSum = filtered.reduce((acc, a) => acc + (Number(a.totalSum) || 0), 0);
+  const displayActs = selected.length > 0 ? filtered.filter(a => selected.includes(a.id)) : filtered;
+  const totalSeats = displayActs.reduce((acc, a) => acc + (Number(a.totals?.seats) || 0), 0);
+  const totalWeight = displayActs.reduce((acc, a) => acc + (Number(a.totals?.weight) || 0), 0);
+  const totalSum = displayActs.reduce((acc, a) => acc + (Number(a.totalSum) || 0), 0);
 
   const toggleSelect = (id) => {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -157,6 +184,13 @@ export default function SimpleActsListPage() {
     window.open(URL.createObjectURL(blob), "_blank");
   };
 
+  const tabCounts = {
+    all: acts.length,
+    stock: acts.filter(a => a.status === "act").length,
+    sent: acts.filter(a => a.status === "sent").length,
+    done: acts.filter(a => a.status === "done").length,
+  };
+
   return (
     <>
       <div className="navbar">
@@ -173,6 +207,33 @@ export default function SimpleActsListPage() {
           )}
           <Link className="btn btn--accent" to="/simple/new">+ Новая накладная</Link>
         </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 4, marginTop: 16, borderBottom: "2px solid var(--line)" }}>
+        {[
+          { key: "all", label: "Все" },
+          { key: "stock", label: "В стоке" },
+          { key: "sent", label: "Подано" },
+          { key: "done", label: "Отработано" },
+        ].map(tab => (
+          <button
+            key={tab.key}
+            onClick={() => { setActiveTab(tab.key); setSelected([]); }}
+            style={{
+              padding: "8px 16px",
+              border: "none",
+              borderBottom: activeTab === tab.key ? "2px solid var(--accent)" : "2px solid transparent",
+              background: "none",
+              cursor: "pointer",
+              fontWeight: activeTab === tab.key ? 700 : 400,
+              color: activeTab === tab.key ? "var(--accent)" : "var(--text-muted)",
+              marginBottom: -2,
+              fontSize: "0.9rem",
+            }}
+          >
+            {tab.label} <span style={{ fontSize: "0.8rem", opacity: 0.7 }}>({tabCounts[tab.key]})</span>
+          </button>
+        ))}
       </div>
 
       <div className="filter" style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap" }}>
@@ -192,7 +253,8 @@ export default function SimpleActsListPage() {
 
       <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
         <div style={{ padding: "8px 16px", background: "var(--card)", borderRadius: 8, border: "1px solid var(--line)", fontSize: "0.9rem" }}>
-          Накладных: <strong>{filtered.length}</strong>
+          Накладных: <strong>{selected.length > 0 ? selected.length : filtered.length}</strong>
+          {selected.length > 0 && <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}> (выбрано)</span>}
         </div>
         <div style={{ padding: "8px 16px", background: "var(--card)", borderRadius: 8, border: "1px solid var(--line)", fontSize: "0.9rem" }}>
           Мест: <strong>{totalSeats}</strong>
@@ -222,38 +284,62 @@ export default function SimpleActsListPage() {
                 <th style={{ width: 90 }}>Вес</th>
                 <th style={{ width: 120 }}>Сумма</th>
                 <th>Груз</th>
+                <th style={{ width: 120 }}>Статус</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
-                <tr><td colSpan={10} className="muted" style={{ padding: 16 }}>
+                <tr><td colSpan={11} className="muted" style={{ padding: 16 }}>
                   {company ? "Накладных пока нет." : "Выберите компанию."}
                 </td></tr>
               ) : (
-                filtered.map(a => (
-                  <tr key={a.id} style={{ background: selected.includes(a.id) ? "rgba(24,144,255,0.06)" : "" }}>
-                    <td style={{ textAlign: "center" }}>
-                      <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} />
-                    </td>
-                    <td className="num">
-                      <Link to={`/simple/${a.id}`}>{a.docNumber || a.number || a.id?.slice(0, 8)}</Link>
-                    </td>
-                    <td>{formatDate(a.createdAt || a.date)}</td>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div>
-                      {a.customer?.phone && <div className="muted" style={{ fontSize: "0.8rem" }}>{a.customer.phone}</div>}
-                    </td>
-                    <td>
-                      <div style={{ fontWeight: 500 }}>{a.receiver?.fio || "—"}</div>
-                      {a.receiver?.phone && <div className="muted" style={{ fontSize: "0.8rem" }}>{a.receiver.phone}</div>}
-                    </td>
-                    <td>{a.route?.toCity || "—"}</td>
-                    <td style={{ textAlign: "center" }}>{a.totals?.seats || "—"}</td>
-                    <td style={{ textAlign: "center" }}>{a.totals?.weight ? `${a.totals.weight} кг` : "—"}</td>
-                    <td style={{ fontWeight: 700 }}>{a.totalSum ? `${Number(a.totalSum).toLocaleString()} тг` : "—"}</td>
-                    <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{a.cargoText || "—"}</td>
-                  </tr>
-                ))
+                filtered.map(a => {
+                  const statusStyle = STATUS_COLORS[a.status] || { bg: "#f5f5f5", color: "#999" };
+                  return (
+                    <tr key={a.id} style={{ background: selected.includes(a.id) ? "rgba(24,144,255,0.06)" : "" }}>
+                      <td style={{ textAlign: "center" }}>
+                        <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} />
+                      </td>
+                      <td className="num">
+                        <Link to={`/acts/${a.id}`}>{a.docNumber || a.number || a.id?.slice(0, 8)}</Link>
+                      </td>
+                      <td>{formatDate(a.createdAt || a.date)}</td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div>
+                        {a.customer?.phone && <div className="muted" style={{ fontSize: "0.8rem" }}>{a.customer.phone}</div>}
+                      </td>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{a.receiver?.fio || "—"}</div>
+                        {a.receiver?.phone && <div className="muted" style={{ fontSize: "0.8rem" }}>{a.receiver.phone}</div>}
+                      </td>
+                      <td>{a.route?.toCity || "—"}</td>
+                      <td style={{ textAlign: "center" }}>{a.totals?.seats || "—"}</td>
+                      <td style={{ textAlign: "center" }}>{a.totals?.weight ? `${a.totals.weight} кг` : "—"}</td>
+                      <td style={{ fontWeight: 700 }}>{a.totalSum ? `${Number(a.totalSum).toLocaleString()} тг` : "—"}</td>
+                      <td style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{a.cargoText || "—"}</td>
+                      <td>
+                        <select
+                          value={a.status || "act"}
+                          onChange={e => updateStatus(a.id, e.target.value)}
+                          style={{
+                            background: statusStyle.bg,
+                            color: statusStyle.color,
+                            border: "none",
+                            borderRadius: 4,
+                            padding: "3px 6px",
+                            fontSize: "0.8rem",
+                            fontWeight: 600,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <option value="act">В стоке</option>
+                          <option value="sent">Подано</option>
+                          <option value="done">Отработано</option>
+                        </select>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
