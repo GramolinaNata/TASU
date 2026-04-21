@@ -49,26 +49,37 @@ export default function Layout() {
       const list = await api.requests.list();
       if (Array.isArray(list)) {
         const allNotifs = (isAnyAccountant || isAdmin) ? list : list.filter(a => a.companyId === currentCompanyId);
-        const mapped = allNotifs.map(a => {
-           let details = {};
-           if (a.details) { try { details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details; } catch(e){} }
-           let type = "", text = "", isNew = false;
-           const isReady = !!a.readyForAccountant || !!details.readyForAccountant;
-           const isViewedAcc = !!a.isViewedByAccountant || !!details.isViewedByAccountant;
-           const isUpdatedAcc = !!a.updatedByAccountant || !!details.updatedByAccountant;
-           const isViewedMan = !!a.isViewedByManager || !!details.isViewedByManager;
-           if (isReady && (isAnyAccountant || isAdmin)) {
-             type = "to_accountant";
-             text = `📝 Заявка №${a.docNumber || a.number} от менеджера`;
-             isNew = !isViewedAcc;
-           } else if (isUpdatedAcc && (!isAnyAccountant || isAdmin)) {
-             type = "to_manager";
-             text = `✅ Обновление в №${a.docNumber || a.number}`;
-             isNew = !isViewedMan;
-           }
-           if (!text) return null;
-           return { id: a.id, text, type, isNew, date: a.updatedAt || a.createdAt, link: type === "to_accountant" ? `/accountant/acts/${a.id}` : `/sent/${a.id}` };
-        }).filter(Boolean).sort((a, b) => new Date(b.date) - new Date(a.date));
+        const now = new Date();
+const mapped = allNotifs
+  .filter(a => a.type !== 'SIMPLE')
+  .map(a => {
+    let details = {};
+    if (a.details) { try { details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details; } catch(e){} }
+    let type = "", text = "", isNew = false;
+    const isReady = !!a.readyForAccountant || !!details.readyForAccountant;
+    const isViewedAcc = !!a.isViewedByAccountant || !!details.isViewedByAccountant;
+    const isUpdatedAcc = !!a.updatedByAccountant || !!details.updatedByAccountant;
+    const isViewedMan = !!a.isViewedByManager || !!details.isViewedByManager;
+    const createdAt = new Date(a.createdAt);
+    const isRecent = (now - createdAt) < 24 * 60 * 60 * 1000;
+
+    if (isReady && (isAnyAccountant || isAdmin)) {
+      type = "to_accountant";
+      text = `📝 Заявка №${a.docNumber || a.number} от менеджера`;
+      isNew = !isViewedAcc;
+    } else if (isUpdatedAcc && (!isAnyAccountant || isAdmin)) {
+      type = "to_manager";
+      text = `✅ Обновление в №${a.docNumber || a.number}`;
+      isNew = !isViewedMan;
+    } else if (isRecent && isAdmin) {
+      type = "new";
+      text = `📝 Новая заявка №${a.docNumber || a.number}`;
+      isNew = true;
+      return { id: a.id, text, type, isNew, date: a.createdAt, link: `/acts/${a.id}` };
+    }
+    if (!text) return null;
+    return { id: a.id, text, type, isNew, date: a.updatedAt || a.createdAt, link: type === "to_accountant" ? `/accountant/acts/${a.id}` : `/sent/${a.id}` };
+  }).filter(Boolean).sort((a, b) => new Date(b.date) - new Date(a.date));
         setNotifications(mapped.slice(0, 10));
         setNotifCount(mapped.filter(n => n.isNew).length);
       }
