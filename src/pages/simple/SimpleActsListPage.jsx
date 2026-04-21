@@ -11,12 +11,6 @@ function formatDate(val) {
   return d.toLocaleDateString("ru");
 }
 
-const STATUS_LABELS = {
-  "act": "В стоке",
-  "sent": "Подано",
-  "done": "Отработано",
-};
-
 const STATUS_COLORS = {
   "act": { bg: "#e6f7ff", color: "#1890ff" },
   "sent": { bg: "#fffbe6", color: "#d48806" },
@@ -127,55 +121,74 @@ export default function SimpleActsListPage() {
 
     const rows = selectedActs.map((a, i) => `
       <tr>
-        <td>${i + 1}</td>
+        <td style="text-align:center">${i + 1}</td>
         <td>${a.docNumber || a.number || a.id?.slice(0,8) || "—"}</td>
         <td>${formatDate(a.createdAt || a.date)}</td>
-        <td>${a.customer?.fio || "—"}<br/><small>${a.customer?.phone || ""}</small></td>
-        <td>${a.receiver?.fio || "—"}<br/><small>${a.receiver?.phone || ""}</small></td>
+        <td>${a.customer?.fio || "—"}<br/><small style="color:#666">${a.customer?.phone || ""}</small></td>
+        <td>${a.receiver?.fio || "—"}<br/><small style="color:#666">${a.receiver?.phone || ""}</small></td>
         <td>${a.route?.toCity || "—"}</td>
         <td style="text-align:center">${a.totals?.seats || "—"}</td>
         <td style="text-align:center">${a.totals?.weight ? `${a.totals.weight} кг` : "—"}</td>
         <td>${a.cargoText || "—"}</td>
-        <td style="text-align:right">${a.totalSum ? `${Number(a.totalSum).toLocaleString()} тг` : "—"}</td>
+        <td style="text-align:right;font-weight:700">${a.totalSum ? `${Number(a.totalSum).toLocaleString()} тг` : "—"}</td>
+        <td></td>
       </tr>
     `).join("");
 
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Грузовая ведомость</title>
     <style>
-      body{font-family:Arial,sans-serif;font-size:12px;padding:20px;}
-      h2{text-align:center;margin-bottom:4px;}
-      .sub{text-align:center;color:#666;margin-bottom:20px;}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px;}
-      table{width:100%;border-collapse:collapse;margin-top:10px;}
-      th,td{border:1px solid #333;padding:5px 8px;font-size:11px;}
-      th{background:#f0f0f0;font-weight:bold;text-align:center;}
-      .totals{margin-top:16px;display:flex;gap:20px;font-weight:bold;flex-wrap:wrap;}
-      .totals span{background:#f5f5f5;padding:6px 12px;border-radius:4px;border:1px solid #ddd;}
-      .signatures{margin-top:40px;display:flex;justify-content:space-between;}
-      .sig{flex:1;margin:0 20px;}
-      .sig-line{border-bottom:1px solid #333;margin-top:30px;margin-bottom:4px;}
+      @media print { body { margin: 0; padding: 15px; } }
+      body { font-family: Arial, sans-serif; font-size: 12px; padding: 20px; background: white; color: #000; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #000; }
+      .header-left h2 { margin: 0 0 4px 0; font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
+      .header-left .sub { color: #333; font-size: 11px; margin-top: 4px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+      th { background: #333; color: #fff; padding: 8px; font-size: 11px; text-align: center; border: 1px solid #333; }
+      td { border: 1px solid #aaa; padding: 6px 8px; font-size: 11px; vertical-align: middle; }
+      tr:nth-child(even) td { background: #f5f5f5; }
+      .totals { margin-top: 16px; display: flex; gap: 0; border: 1px solid #aaa; }
+      .totals-cell { flex: 1; padding: 8px 12px; border-right: 1px solid #aaa; font-size: 11px; }
+      .totals-cell:last-child { border-right: none; }
+      .totals-label { color: #666; font-size: 10px; margin-bottom: 2px; }
+      .totals-val { font-weight: 700; font-size: 13px; }
+      .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 30px; }
+      .sig { flex: 1; }
+      .sig-line { border-bottom: 1px solid #000; margin-bottom: 5px; height: 28px; }
+      .sig-label { font-size: 10px; color: #333; text-align: center; }
     </style></head><body>
     <div class="header">
-      <div>
-        <h2>ГРУЗОВАЯ ВЕДОМОСТЬ</h2>
-        <div class="sub">${company?.name || ""} | Дата: ${new Date().toLocaleDateString("ru")} | Накладных: ${selectedActs.length}</div>
+      <div class="header-left">
+        <h2>Грузовая ведомость</h2>
+        <div class="sub">${company?.name || ""} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")} &nbsp;&nbsp; Накладных: ${selectedActs.length}</div>
       </div>
-      <img src="${qrUrl}" width="120" height="120"/>
+      <img src="${qrUrl}" width="90" height="90" style="border:1px solid #ccc;padding:3px;"/>
     </div>
-    <table><thead><tr>
-      <th>№</th><th>Накладная</th><th>Дата</th><th>Отправитель</th>
-      <th>Получатель</th><th>Город</th><th>Мест</th><th>Вес</th><th>Груз</th><th>Сумма</th>
-    </tr></thead><tbody>${rows}</tbody></table>
+    <table>
+      <thead><tr>
+        <th style="width:28px">№</th>
+        <th style="width:90px">Накладная</th>
+        <th style="width:70px">Дата</th>
+        <th>Отправитель</th>
+        <th>Получатель</th>
+        <th style="width:70px">Город</th>
+        <th style="width:45px">Мест</th>
+        <th style="width:55px">Вес</th>
+        <th>Груз</th>
+        <th style="width:80px">Сумма</th>
+        <th style="width:80px">Номер авто</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
     <div class="totals">
-      <span>Накладных: ${selectedActs.length}</span>
-      <span>Мест: ${totalS}</span>
-      <span>Вес: ${totalW} кг</span>
-      <span>Сумма: ${totalSm.toLocaleString()} тг</span>
+      <div class="totals-cell"><div class="totals-label">Всего накладных</div><div class="totals-val">${selectedActs.length}</div></div>
+      <div class="totals-cell"><div class="totals-label">Мест</div><div class="totals-val">${totalS}</div></div>
+      <div class="totals-cell"><div class="totals-label">Вес</div><div class="totals-val">${totalW} кг</div></div>
+      <div class="totals-cell"><div class="totals-label">Сумма</div><div class="totals-val">${totalSm.toLocaleString()} тг</div></div>
     </div>
     <div class="signatures">
-      <div class="sig"><div class="sig-line"></div><div>Перевозчик (подпись, М.П.)</div></div>
-      <div class="sig"><div class="sig-line"></div><div>Отправитель (подпись, М.П.)</div></div>
-      <div class="sig"><div class="sig-line"></div><div>Получатель (подпись, М.П.)</div></div>
+      <div class="sig"><div class="sig-line"></div><div class="sig-label">Перевозчик (подпись, М.П.)</div></div>
+      <div class="sig"><div class="sig-line"></div><div class="sig-label">Отправитель (подпись, М.П.)</div></div>
+      <div class="sig"><div class="sig-line"></div><div class="sig-label">Получатель (подпись, М.П.)</div></div>
     </div>
     <script>window.onload=function(){window.print();}</script>
     </body></html>`;
