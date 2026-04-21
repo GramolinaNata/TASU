@@ -12,8 +12,6 @@ const s = (v: any): string => {
 export const getBatches = async (req: AuthRequest, res: Response) => {
   try {
     const where: any = {};
-    const cId = req.query.companyId;
-    if (cId) where.companyId = String(Array.isArray(cId) ? cId[0] : cId);
     const batches = await prisma.batch.findMany({ where, orderBy: { createdAt: 'desc' } });
     res.json(batches);
   } catch (error: any) {
