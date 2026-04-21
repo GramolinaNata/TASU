@@ -84,5 +84,12 @@ export const api = {
   },
   public: {
     getAct: (id) => request(`/public/acts/${id}`, { headers: {} }),
-  }
+  },
+  batches: {
+    list: (companyId) => request(`/batches${companyId ? `?companyId=${companyId}` : ''}`),
+    get: (id) => request(`/batches/${id}`),
+    create: (data) => request('/batches', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => request(`/batches/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id) => request(`/batches/${id}`, { method: 'DELETE' }),
+  },
 };

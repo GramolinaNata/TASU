@@ -153,6 +153,10 @@ export default function Layout() {
   <span className="menu_icon">📋</span>
   <span className="menu_text">Частные лица</span>
 </NavLink>
+<NavLink to="/simple/batches" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Партии">
+  <span className="menu_icon">📦</span>
+  <span className="menu_text">Партии</span>
+</NavLink>
                   </>
                 )}
 

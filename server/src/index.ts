@@ -13,6 +13,7 @@ import publicRoutes from './routes/public.route';
 import counterpartyRoutes from './routes/counterparty.routes';
 import expenseRoutes from './routes/expense.route';
 import tariffRoutes from './routes/tariff.route';
+import batchRoutes from './routes/batch.route';
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
@@ -48,6 +49,7 @@ app.use('/api/public', publicRoutes);
 app.use('/api/counterparties', counterpartyRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/tariffs', tariffRoutes);
+app.use('/api/batches', batchRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });

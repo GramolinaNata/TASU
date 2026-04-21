@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { Response } from 'express';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';

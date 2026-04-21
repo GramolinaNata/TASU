@@ -16,7 +16,8 @@ import AccountantExpensesPage from "../pages/accountant/ExpensesPage.jsx";
 import SimpleActsListPage from "../pages/simple/SimpleActsListPage.jsx";
 import SimpleActPage from "../pages/simple/SimpleActPage.jsx";
 import TariffsPage from "../pages/admin/TariffsPage.jsx";
-
+import SimpleActDetailPage from "../pages/simple/SimpleActDetailPage.jsx";
+import BatchesPage from "../pages/simple/BatchesPage.jsx";
 import { useEffect } from "react";
 import { loadCompanies } from "../shared/storage/companyStorage.js";
 import { loadActs } from "../shared/storage/actsStorage.js";
@@ -94,6 +95,8 @@ export default function App() {
         <Route path="/deferred/:id/edit" element={<RequireAuth managerOrAdminOnly><ActCreatePage /></RequireAuth>} />
         <Route path="/simple" element={<SimpleActsListPage />} />
         <Route path="/simple/new" element={<SimpleActPage />} />
+        <Route path="/simple/:id" element={<SimpleActDetailPage />} />\
+        <Route path="/simple/batches" element={<BatchesPage />} />
       </Route>
       <Route path="/courier/acts/:id" element={<CourierActViewPage />} />
     </Routes>

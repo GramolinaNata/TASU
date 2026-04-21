@@ -217,6 +217,10 @@ export default function ActCreatePage() {
           
           const act = await api.requests.get(id);
           if (act) {
+            setShowCustCard(true);
+setShowRecCard(true);
+setShowRouteCard(true);
+setShowTransportCard(true);
             setDate(act.date || todayIso());
             setCreatedAt(act.createdAt || todayIso());
             

@@ -26,6 +26,10 @@ export default function SimpleActsListPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  const [showBatchModal, setShowBatchModal] = useState(false);
+  const [batchForm, setBatchForm] = useState({
+    number: "", city: "", driverName: "", driverPhone: "", carNumber: "", deliveryCost: ""
+  });
 
   useEffect(() => {
     return subscribeSelectedCompany(c => setCompany(c));
@@ -107,15 +111,43 @@ export default function SimpleActsListPage() {
     else setSelected(filtered.map(a => a.id));
   };
 
-  const generateVedomost = async () => {
+  const openBatchModal = () => {
+    if (selected.length === 0) return alert("Выберите накладные");
     const selectedActs = filtered.filter(a => selected.includes(a.id));
-    if (selectedActs.length === 0) return alert("Выберите накладные");
+    const city = selectedActs[0]?.route?.toCity || "";
+    setBatchForm({
+      number: "П" + String(Date.now()).slice(-6),
+      city,
+      driverName: "", driverPhone: "", carNumber: "", deliveryCost: ""
+    });
+    setShowBatchModal(true);
+  };
 
+  const saveBatchAndPrint = async () => {
+    if (!batchForm.number || !batchForm.city) return alert("Укажите номер и город");
+    const selectedActs = filtered.filter(a => selected.includes(a.id));
+
+    try {
+      await api.batches.create({
+        ...batchForm,
+        companyId: company?.id,
+        requestIds: selected,
+      });
+
+      await printVedomost(selectedActs, batchForm);
+      setShowBatchModal(false);
+      setSelected([]);
+    } catch(e) {
+      alert("Ошибка: " + e.message);
+    }
+  };
+
+  const printVedomost = async (selectedActs, batchData) => {
     const totalS = selectedActs.reduce((acc, a) => acc + (Number(a.totals?.seats) || 0), 0);
     const totalW = selectedActs.reduce((acc, a) => acc + (Number(a.totals?.weight) || 0), 0);
     const totalSm = selectedActs.reduce((acc, a) => acc + (Number(a.totalSum) || 0), 0);
 
-    const qrData = `TASU-${Date.now()}-${selectedActs.length}шт-${totalW}кг`;
+    const qrData = `TASU-BATCH-${batchData.number}-${batchData.city}`;
     const { toDataURL } = await import("qrcode");
     const qrUrl = await toDataURL(qrData, { width: 120, margin: 1 });
 
@@ -131,17 +163,22 @@ export default function SimpleActsListPage() {
         <td style="text-align:center">${a.totals?.weight ? `${a.totals.weight} кг` : "—"}</td>
         <td>${a.cargoText || "—"}</td>
         <td style="text-align:right;font-weight:700">${a.totalSum ? `${Number(a.totalSum).toLocaleString()} тг` : "—"}</td>
-        <td></td>
+        <td style="text-align:center">${batchData.carNumber || ""}</td>
       </tr>
     `).join("");
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Грузовая ведомость</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Грузовая ведомость ${batchData.number}</title>
     <style>
       @media print { body { margin: 0; padding: 15px; } }
       body { font-family: Arial, sans-serif; font-size: 12px; padding: 20px; background: white; color: #000; }
       .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #000; }
       .header-left h2 { margin: 0 0 4px 0; font-size: 20px; font-weight: 900; text-transform: uppercase; letter-spacing: 1px; }
       .header-left .sub { color: #333; font-size: 11px; margin-top: 4px; }
+      .batch-info { display: flex; gap: 0; border: 1px solid #aaa; margin-bottom: 12px; }
+      .batch-cell { flex: 1; padding: 6px 10px; border-right: 1px solid #aaa; font-size: 11px; }
+      .batch-cell:last-child { border-right: none; }
+      .batch-label { color: #666; font-size: 10px; margin-bottom: 2px; }
+      .batch-val { font-weight: 700; }
       table { width: 100%; border-collapse: collapse; margin-top: 12px; }
       th { background: #333; color: #fff; padding: 8px; font-size: 11px; text-align: center; border: 1px solid #333; }
       td { border: 1px solid #aaa; padding: 6px 8px; font-size: 11px; vertical-align: middle; }
@@ -158,10 +195,16 @@ export default function SimpleActsListPage() {
     </style></head><body>
     <div class="header">
       <div class="header-left">
-        <h2>Грузовая ведомость</h2>
-        <div class="sub">${company?.name || ""} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")} &nbsp;&nbsp; Накладных: ${selectedActs.length}</div>
+        <h2>Грузовая ведомость № ${batchData.number}</h2>
+        <div class="sub">${company?.name || ""} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")} &nbsp;&nbsp; Город: ${batchData.city} &nbsp;&nbsp; Накладных: ${selectedActs.length}</div>
       </div>
       <img src="${qrUrl}" width="90" height="90" style="border:1px solid #ccc;padding:3px;"/>
+    </div>
+    <div class="batch-info">
+      <div class="batch-cell"><div class="batch-label">Водитель</div><div class="batch-val">${batchData.driverName || "—"}</div></div>
+      <div class="batch-cell"><div class="batch-label">Телефон</div><div class="batch-val">${batchData.driverPhone || "—"}</div></div>
+      <div class="batch-cell"><div class="batch-label">Номер авто</div><div class="batch-val">${batchData.carNumber || "—"}</div></div>
+      <div class="batch-cell"><div class="batch-label">Стоимость перевозки</div><div class="batch-val">${batchData.deliveryCost ? Number(batchData.deliveryCost).toLocaleString() + " тг" : "—"}</div></div>
     </div>
     <table>
       <thead><tr>
@@ -214,13 +257,52 @@ export default function SimpleActsListPage() {
         </div>
         <div style={{ display: "flex", gap: 10 }}>
           {selected.length > 0 && (
-            <button className="btn btn--accent" onClick={generateVedomost}>
+            <button className="btn btn--accent" onClick={openBatchModal}>
               📋 Грузовая ведомость ({selected.length})
             </button>
           )}
           <Link className="btn btn--accent" to="/simple/new">+ Новая накладная</Link>
         </div>
       </div>
+
+      {showBatchModal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <div style={{ background: "var(--card)", borderRadius: 12, padding: 24, width: 520, maxWidth: "95vw" }}>
+            <h2 style={{ margin: "0 0 4px" }}>Создать партию и распечатать ведомость</h2>
+            <p style={{ margin: "0 0 16px", color: "var(--text-muted)", fontSize: "0.9rem" }}>Накладных: {selected.length}</p>
+            <div className="form_grid">
+              <div className="field">
+                <div className="label">Номер партии *</div>
+                <input value={batchForm.number} onChange={e => setBatchForm({...batchForm, number: e.target.value})} placeholder="П000001" />
+              </div>
+              <div className="field">
+                <div className="label">Город назначения *</div>
+                <input value={batchForm.city} onChange={e => setBatchForm({...batchForm, city: e.target.value})} placeholder="Астана" />
+              </div>
+              <div className="field">
+                <div className="label">ФИО водителя</div>
+                <input value={batchForm.driverName} onChange={e => setBatchForm({...batchForm, driverName: e.target.value})} placeholder="Иванов Иван" />
+              </div>
+              <div className="field">
+                <div className="label">Телефон водителя</div>
+                <input value={batchForm.driverPhone} onChange={e => setBatchForm({...batchForm, driverPhone: e.target.value})} placeholder="+7 777 123 45 67" />
+              </div>
+              <div className="field">
+                <div className="label">Номер авто</div>
+                <input value={batchForm.carNumber} onChange={e => setBatchForm({...batchForm, carNumber: e.target.value})} placeholder="777 ABC 01" />
+              </div>
+              <div className="field">
+                <div className="label">Стоимость перевозки (тг)</div>
+                <input type="number" value={batchForm.deliveryCost} onChange={e => setBatchForm({...batchForm, deliveryCost: e.target.value})} placeholder="0" />
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
+              <button className="btn btn--accent" onClick={saveBatchAndPrint}>💾 Сохранить и распечатать</button>
+              <button className="btn" onClick={() => setShowBatchModal(false)}>Отмена</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 4, marginTop: 16, borderBottom: "2px solid var(--line)" }}>
         {[
@@ -314,7 +396,7 @@ export default function SimpleActsListPage() {
                         <input type="checkbox" checked={selected.includes(a.id)} onChange={() => toggleSelect(a.id)} />
                       </td>
                       <td className="num">
-                        <Link to={`/acts/${a.id}`}>{a.docNumber || a.number || a.id?.slice(0, 8)}</Link>
+                        <Link to={`/simple/${a.id}`}>{a.docNumber || a.number || a.id?.slice(0, 8)}</Link>
                       </td>
                       <td>{formatDate(a.createdAt || a.date)}</td>
                       <td>

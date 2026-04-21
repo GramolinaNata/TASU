@@ -45,7 +45,7 @@ export default function ActsListPage() {
 
     // 1. Фильтр по компании и отсутствие docType, и исключение склада
     if (company) {
-       list = list.filter(a => a.companyId === company.id && (!a.docType || a.type === 'REQUEST') && !a.isWarehouse && !a.isDeferredForAccountant && !a.readyForAccountant);
+       list = list.filter(a => a.companyId === company.id && a.type !== 'SIMPLE' && !a.isWarehouse && !a.isDeferredForAccountant && !a.readyForAccountant);
     } else {
        return [];
     }
@@ -85,7 +85,7 @@ export default function ActsListPage() {
                 details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
               } catch (e) { console.error("Parse error", e); }
            }
-           return { ...a, ...details };
+           return { ...details, ...a };
         });
         setActs(parsed);
       } else {
@@ -314,3 +314,4 @@ export default function ActsListPage() {
     </>
   );
 }
+
