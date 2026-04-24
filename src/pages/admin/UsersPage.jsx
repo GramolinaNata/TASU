@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../shared/api/api';
 
 export default function UsersPage() {
@@ -8,7 +8,15 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState(null);
   const [roleFilter, setRoleFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
-  
+
+  // Сортировка
+  const [sortBy, setSortBy] = useState('createdAt');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  // Показ паролей
+  const [revealedPasswords, setRevealedPasswords] = useState(new Set());
+  const [showAllPasswords, setShowAllPasswords] = useState(false);
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -19,7 +27,7 @@ export default function UsersPage() {
   const loadUsers = async () => {
     setIsLoading(true);
     try {
-      const data = await api.users.list();
+      const data = await api.users.list({ sortBy, order: sortOrder });
       setUsers(data);
     } catch (err) {
       console.error(err);
@@ -30,22 +38,123 @@ export default function UsersPage() {
 
   useEffect(() => {
     loadUsers();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sortBy, sortOrder]);
 
-  const filteredUsers = React.useMemo(() => {
+  const filteredUsers = useMemo(() => {
     let list = [...users];
     if (roleFilter !== 'ALL') {
       list = list.filter(u => u.role === roleFilter);
     }
     if (searchQuery.trim()) {
       const s = searchQuery.toLowerCase().trim();
-      list = list.filter(u => 
-        u.name?.toLowerCase().includes(s) || 
+      list = list.filter(u =>
+        u.name?.toLowerCase().includes(s) ||
         u.email?.toLowerCase().includes(s)
       );
     }
     return list;
   }, [users, roleFilter, searchQuery]);
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const getSortIndicator = (field) => {
+    if (sortBy !== field) return '';
+    return sortOrder === 'asc' ? ' ↑' : ' ↓';
+  };
+
+  const togglePasswordReveal = (userId) => {
+    setRevealedPasswords(prev => {
+      const next = new Set(prev);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  };
+
+  const toggleShowAllPasswords = () => {
+    if (showAllPasswords) {
+      setRevealedPasswords(new Set());
+      setShowAllPasswords(false);
+    } else {
+      setRevealedPasswords(new Set(users.map(u => u.id)));
+      setShowAllPasswords(true);
+    }
+  };
+
+  const renderPassword = (user) => {
+    const isRevealed = revealedPasswords.has(user.id);
+    const pwd = user.plainPassword;
+
+    if (!pwd) {
+      return (
+        <span style={{ color: 'var(--muted)', fontSize: '12px', fontStyle: 'italic' }}>
+          — (сбросьте пароль)
+        </span>
+      );
+    }
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <code style={{
+          fontFamily: 'ui-monospace, monospace',
+          fontSize: '13px',
+          background: '#f5f5f5',
+          padding: '2px 8px',
+          borderRadius: '4px',
+          minWidth: '80px',
+          display: 'inline-block'
+        }}>
+          {isRevealed ? pwd : '••••••••'}
+        </code>
+        <button
+          type="button"
+          onClick={() => togglePasswordReveal(user.id)}
+          title={isRevealed ? 'Скрыть' : 'Показать'}
+          style={{
+            background: isRevealed ? '#e0e7ff' : '#f3f4f6',
+            border: '1px solid var(--border-color)',
+            borderRadius: '4px',
+            padding: '3px 10px',
+            cursor: 'pointer',
+            fontSize: '12px',
+            fontWeight: 500,
+            color: '#374151'
+          }}
+        >
+          {isRevealed ? 'Скрыть' : 'Показать'}
+        </button>
+        {isRevealed && (
+          <button
+            type="button"
+            onClick={() => {
+              navigator.clipboard.writeText(pwd);
+            }}
+            title="Скопировать в буфер обмена"
+            style={{
+              background: '#f3f4f6',
+              border: '1px solid var(--border-color)',
+              borderRadius: '4px',
+              padding: '3px 10px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              fontWeight: 500,
+              color: '#374151'
+            }}
+          >
+            Копировать
+          </button>
+        )}
+      </div>
+    );
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -106,13 +215,26 @@ export default function UsersPage() {
     <div className="users_page">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
         <h1>Управление персоналом</h1>
-        <button className="btn btn-primary" onClick={() => {
-          setEditingUser(null);
-          setFormData({ name: '', email: '', password: '', role: 'MANAGER' });
-          setIsModalOpen(true);
-        }}>
-          + Добавить сотрудника
-        </button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button
+            className="btn"
+            onClick={toggleShowAllPasswords}
+            style={{
+              background: showAllPasswords ? '#fef3c7' : '#f3f4f6',
+              border: '1px solid var(--border-color)',
+              fontWeight: 500
+            }}
+          >
+            {showAllPasswords ? 'Скрыть пароли' : 'Показать все пароли'}
+          </button>
+          <button className="btn btn-primary" onClick={() => {
+            setEditingUser(null);
+            setFormData({ name: '', email: '', password: '', role: 'MANAGER' });
+            setIsModalOpen(true);
+          }}>
+            + Добавить сотрудника
+          </button>
+        </div>
       </div>
 
       <div className="filter-bar card" style={{ padding: '1.25rem', marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
@@ -140,17 +262,42 @@ export default function UsersPage() {
           <table className="table">
             <thead>
               <tr>
-                <th>Имя</th>
-                <th>Email</th>
-                <th>Роль</th>
-                <th>Дата регистрации</th>
+                <th
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('name')}
+                  title="Сортировать по имени"
+                >
+                  Имя{getSortIndicator('name')}
+                </th>
+                <th
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('email')}
+                  title="Сортировать по email"
+                >
+                  Email{getSortIndicator('email')}
+                </th>
+                <th
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('role')}
+                  title="Сортировать по роли"
+                >
+                  Роль{getSortIndicator('role')}
+                </th>
+                <th>Пароль</th>
+                <th
+                  style={{ cursor: 'pointer', userSelect: 'none' }}
+                  onClick={() => handleSort('createdAt')}
+                  title="Сортировать по дате"
+                >
+                  Дата регистрации{getSortIndicator('createdAt')}
+                </th>
                 <th style={{ textAlign: 'right' }}>Действия</th>
               </tr>
             </thead>
             <tbody>
               {filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
+                  <td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--muted)' }}>
                     Сотрудники не найдены
                   </td>
                 </tr>
@@ -164,6 +311,7 @@ export default function UsersPage() {
                         {getRoleName(user.role)}
                       </span>
                     </td>
+                    <td>{renderPassword(user)}</td>
                     <td>{new Date(user.createdAt).toLocaleDateString()}</td>
                     <td style={{ textAlign: 'right' }}>
                       <button className="btn btn-sm" onClick={() => openEdit(user)} style={{ marginRight: '8px' }}>Редактировать</button>
@@ -184,7 +332,7 @@ export default function UsersPage() {
               <h2 style={{ margin: 0, fontSize: '20px', fontWeight: 700 }}>
                 {editingUser ? 'Редактирование профиля' : 'Добавление сотрудника'}
               </h2>
-              <button className="modal_close_btn" onClick={() => setIsModalOpen(false)}>✕</button>
+              <button className="modal_close_btn" onClick={() => setIsModalOpen(false)}>×</button>
             </div>
 
             <form onSubmit={handleSubmit}>
@@ -202,7 +350,7 @@ export default function UsersPage() {
                 <label className="label_clean">
                   Пароль {editingUser && <span style={{ fontWeight: 400, fontSize: '12px', color: 'var(--muted)' }}>(оставьте пустым для сохранения)</span>}
                 </label>
-                <input type="password" className="input_clean" placeholder="••••••••" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required={!editingUser} />
+                <input type="text" className="input_clean" placeholder="••••••••" value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} required={!editingUser} />
               </div>
 
               <div className="form_group_clean" style={{ marginTop: '18px' }}>
@@ -229,7 +377,7 @@ export default function UsersPage() {
 
       <style>{`
         .modal_overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-        .modal_close_btn { background: none; border: none; font-size: 18px; color: var(--muted); cursor: pointer; transition: color 0.2s; padding: 4px; }
+        .modal_close_btn { background: none; border: none; font-size: 24px; color: var(--muted); cursor: pointer; transition: color 0.2s; padding: 4px; line-height: 1; }
         .modal_close_btn:hover { color: var(--text-main); }
         .form_group_clean { display: flex; flex-direction: column; gap: 6px; }
         .label_clean { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
@@ -249,4 +397,4 @@ export default function UsersPage() {
       `}</style>
     </div>
   );
-}
+} 
