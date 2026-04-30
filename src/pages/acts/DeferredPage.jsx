@@ -1,3 +1,278 @@
+// import React, { useEffect, useMemo, useState } from "react";
+// import { Link } from "react-router-dom";
+// import { api } from "../../shared/api/api.js";
+// import { useAuth } from "../../shared/auth/AuthContext";
+// import Loader from "../../shared/components/Loader";
+
+// function formatDisplayDate(val) {
+//   if (!val) return "—";
+//   const d = new Date(val);
+//   if (isNaN(d.getTime())) return val;
+//   const day = String(d.getDate()).padStart(2, "0");
+//   const month = String(d.getMonth() + 1).padStart(2, "0");
+//   const year = d.getFullYear();
+//   return `${day}.${month}.${year}`;
+// }
+
+// function normalizeIsoDate(val) {
+//   if (!val) return "";
+//   const d = new Date(val);
+//   if (isNaN(d.getTime())) return "";
+//   const yyyy = d.getFullYear();
+//   const mm = String(d.getMonth() + 1).padStart(2, "0");
+//   const dd = String(d.getDate()).padStart(2, "0");
+//   return `${yyyy}-${mm}-${dd}`;
+// }
+
+// export default function DeferredPage() {
+//   const [q, setQ] = useState("");
+//   const [dateFrom, setDateFrom] = useState("");
+//   const [dateTo, setDateTo] = useState("");
+//   const [docTypeFilter, setDocTypeFilter] = useState("all");
+//   const [statusFilter, setStatusFilter] = useState("all");
+//   const [acts, setActs] = useState([]);
+//   const [loading, setLoading] = useState(true);
+
+//   const loadActs = async () => {
+//     setLoading(true);
+//     try {
+//       const list = await api.requests.list();
+//       if (Array.isArray(list)) {
+//         const parsed = list.map(a => {
+//            let details = {};
+//            if (a.details) {
+//               try {
+//                 details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
+//               } catch (e) { console.error("Parse error", e); }
+//            }
+//            return { ...a, ...details };
+//         });
+//         setActs(parsed);
+//       } else {
+//         setActs([]);
+//       }
+//     } catch (e) {
+//       console.error("Failed to load acts", e);
+//       setActs([]);
+//     } finally {
+//       setLoading(false);
+//     }
+//   };
+
+//   useEffect(() => {
+//     loadActs();
+//   }, []);
+
+//   const filtered = useMemo(() => {
+//     // 1. Оставляем ТОЛЬКО отложенные и не отправленные повторно
+//     let list = acts.filter(a => !!a.isDeferredForAccountant && !a.readyForAccountant);
+
+//     // Фильтр по типу документа
+//     if (docTypeFilter !== "all") {
+//         if (docTypeFilter === "warehouse") {
+//             list = list.filter(a => a.isWarehouse);
+//         } else if (docTypeFilter === "ttn") {
+//             list = list.filter(a => !a.isWarehouse && (a.docType === "ttn" || a.type === "ttn"));
+//         } else if (docTypeFilter === "smr") {
+//             list = list.filter(a => !a.isWarehouse && (a.docType === "smr" || a.type === "smr"));
+//         } else if (docTypeFilter === "request") {
+//             list = list.filter(a => !a.isWarehouse && !a.docType && a.type !== "ttn" && a.type !== "smr");
+//         }
+//     }
+
+//     // Фильтр по статусу (Активные / Аннулированные)
+//     if (statusFilter !== "all") {
+//         if (statusFilter === "canceled") {
+//             list = list.filter(a => a.status === "canceled");
+//         } else if (statusFilter === "active") {
+//             list = list.filter(a => a.status !== "canceled" && a.status !== "draft");
+//         } else if (statusFilter === "draft") {
+//             list = list.filter(a => a.status === "draft");
+//         }
+//     }
+
+
+
+//     // 2. По дате
+//     if (dateFrom) {
+//        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
+//     }
+//     if (dateTo) {
+//        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) <= dateTo);
+//     }
+
+//     // 3. Поиск
+//     const s = q.trim().toLowerCase();
+//     if (s) {
+//        list = list.filter((a) => {
+//         const hay = [a.number, a.docNumber, a.date, a.customer?.fio, a.route?.fromCity, a.route?.toCity, a.company?.name]
+//           .filter(Boolean)
+//           .join(" ")
+//           .toLowerCase();
+//         return hay.includes(s);
+//       });
+//     }
+    
+//     return list;
+//   }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter]);
+
+//   const handleReturn = async (id, number) => {
+//     if (window.confirm(`Вернуть документ №${number} из отложенных?`)) {
+//       try {
+//         await api.requests.update(id, { isDeferredForAccountant: false });
+//         setActs(prev => prev.filter(a => a.id !== id));
+//       } catch (err) {
+//         alert("Ошибка: " + err.message);
+//       }
+//     }
+//   };
+
+//   return (
+//     <>
+//       <div className="navbar">
+//         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+//           <h1>Отложенные заявки</h1>
+//         </div>
+//       </div>
+
+//       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+//         <div className="field" style={{ minWidth: 200, flex: 1 }}>
+//           <div className="label">Поиск</div>
+//           <input
+//             value={q}
+//             onChange={(e) => setQ(e.target.value)}
+//             placeholder="Номер, заказчик, компания..."
+//           />
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">Тип</div>
+//            <select value={docTypeFilter} onChange={e => setDocTypeFilter(e.target.value)}>
+//                <option value="all">Все</option>
+//                <option value="request">Только Заявки</option>
+//                <option value="ttn">ТТН</option>
+//                <option value="smr">СМР</option>
+//                <option value="warehouse">Склад</option>
+//            </select>
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">Статус</div>
+//            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+//                <option value="all">Все</option>
+//                <option value="active">Активные</option>
+//                <option value="canceled">Аннулированные</option>
+//                <option value="draft">Черновики</option>
+//            </select>
+//         </div>
+
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">Дата с</div>
+//            <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+//         </div>
+//         <div className="field" style={{ width: 140 }}>
+//            <div className="label">Дата по</div>
+//            <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+//         </div>
+//       </div>
+
+//       <div className="table_wrap" style={{ marginTop: 16 }}>
+//         {loading ? (
+//           <Loader />
+//         ) : (
+//           <table className="table_fixed">
+//             <thead>
+//               <tr>
+//                 <th style={{ width: 100 }}>Номер</th>
+//                 <th style={{ width: 100 }}>Дата</th>
+                
+//                 <th>Заказчик</th>
+//                 <th>Маршрут</th>
+//                 <th style={{ width: 60, textAlign: 'center' }}>Мест</th>
+//                 <th style={{ width: 70, textAlign: 'center' }}>Вес (кг)</th>
+//                 <th style={{ width: 100 }}>Сумма (тг)</th>
+//                 <th>Статус</th>
+//                 <th style={{ width: 120, textAlign: "right" }}>Действия</th>
+//               </tr>
+//             </thead>
+//             <tbody>
+//               {filtered.length === 0 ? (
+//                 <tr>
+//                   <td colSpan={10} className="muted" style={{ padding: 16 }}>
+//                     Нет отложенных заявок.
+//                   </td>
+//                 </tr>
+//               ) : (
+//                 filtered.map((a) => (
+//                   <tr key={a.id} style={{ opacity: a.status === 'canceled' ? 0.5 : 1 }}>
+//                     <td className="num">
+//                       <Link to={`/deferred/${a.id}`}>
+//                         {a.docNumber || a.number}
+//                       </Link>
+//                     </td>
+//                     <td>{formatDisplayDate(a.createdAt || a.date)}</td>
+//                     <td><div style={{ fontWeight: 500 }}>{a.customer?.fio || "—"}</div></td>
+//                     <td>
+//                       {a.isWarehouse ? (
+//                         <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Склад</span>
+//                       ) : (
+//                         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+//                           {a.route?.fromCity || "—"} → {a.route?.toCity || "—"}
+//                         </div>
+//                       )}
+//                     </td>
+//                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.seats || "—"}</td>
+//                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.weight || "—"}</td>
+//                     <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+//                       {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+//                     </td>
+//                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+//                       {a.status === 'draft' ? (
+//                         <span className="badge" style={{ background: '#f5f5f5', color: '#595959', padding: '2px 6px', fontSize: '0.75rem' }}>Черновик</span>
+//                       ) : a.status === 'canceled' ? (
+//                         <span className="badge" style={{ background: '#fff1f0', color: '#f5222d', padding: '2px 6px', fontSize: '0.75rem' }}>Аннулирован</span>
+//                       ) : (
+//                         <>
+//                           {a.isWarehouse ? (
+//                             <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', padding: '2px 6px', fontSize: '0.75rem' }}>Складская</span>
+//                           ) : a.docType === 'ttn' || a.type === 'ttn' ? (
+//                             <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff', padding: '2px 6px', fontSize: '0.75rem' }}>ТТН</span>
+//                           ) : a.docType === 'smr' || a.type === 'smr' ? (
+//                             <span className="badge" style={{ background: '#fff0f6', color: '#eb2f96', padding: '2px 6px', fontSize: '0.75rem' }}>СМР</span>
+//                           ) : (
+//                             <span className="badge" style={{ background: '#f0f5ff', color: '#2f54eb', padding: '2px 6px', fontSize: '0.75rem' }}>Заявка</span>
+//                           )}
+//                         </>
+//                       )}
+//                     </td>
+//                     <td style={{ textAlign: "right" }}>
+//                       <details className="actions-dropdown">
+//                         <summary className="btn-actions">
+//                           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
+//                         </summary>
+//                         <div className="actions-menu">
+//                           <Link className="actions-item" to={`/deferred/${a.id}`}>
+//                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+//                             Просмотр
+//                           </Link>
+
+//                           <button className="actions-item danger" onClick={() => handleReturn(a.id, a.docNumber || a.number)}>
+//                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+//                             Вернуть в работу
+//                           </button>
+//                         </div>
+//                       </details>
+//                     </td>
+//                   </tr>
+//                 ))
+//               )}
+//             </tbody>
+//           </table>
+//         )}
+//       </div>
+//     </>
+//   );
+// }
+
+
 import React, { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
@@ -24,6 +299,21 @@ function normalizeIsoDate(val) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+// ---- СОРТИРОВКА ----
+function getSortValue(a, field) {
+  switch (field) {
+    case 'number':   return (a.docNumber || a.number || '').toString().toLowerCase();
+    case 'date':     return new Date(a.createdAt || a.date || 0).getTime();
+    case 'customer': return (a.customer?.fio || '').toString().toLowerCase();
+    case 'route':    return ((a.route?.fromCity || '') + ' ' + (a.route?.toCity || '')).toLowerCase();
+    case 'seats':    return Number(a.totals?.seats) || 0;
+    case 'weight':   return Number(a.totals?.weight) || 0;
+    case 'totalSum': return Number(a.totalSum) || 0;
+    case 'status':   return (a.status || '') + (a.isWarehouse ? '_warehouse' : '');
+    default:         return '';
+  }
+}
+
 export default function DeferredPage() {
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -32,6 +322,34 @@ export default function DeferredPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  // Сортировка
+  const [sortBy, setSortBy] = useState('date');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const sortArrow = (field) => {
+    if (sortBy !== field) return <span style={{ color: '#bbb', marginLeft: 4 }}>⇅</span>;
+    return <span style={{ color: '#1890ff', marginLeft: 4, fontWeight: 700 }}>{sortOrder === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const SortableTh = ({ field, children, style }) => (
+    <th
+      style={{ cursor: 'pointer', userSelect: 'none', ...style }}
+      onClick={() => handleSort(field)}
+      title="Клик для сортировки"
+    >
+      {children}{sortArrow(field)}
+    </th>
+  );
 
   const loadActs = async () => {
     setLoading(true);
@@ -64,10 +382,8 @@ export default function DeferredPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    // 1. Оставляем ТОЛЬКО отложенные и не отправленные повторно
     let list = acts.filter(a => !!a.isDeferredForAccountant && !a.readyForAccountant);
 
-    // Фильтр по типу документа
     if (docTypeFilter !== "all") {
         if (docTypeFilter === "warehouse") {
             list = list.filter(a => a.isWarehouse);
@@ -80,7 +396,6 @@ export default function DeferredPage() {
         }
     }
 
-    // Фильтр по статусу (Активные / Аннулированные)
     if (statusFilter !== "all") {
         if (statusFilter === "canceled") {
             list = list.filter(a => a.status === "canceled");
@@ -91,9 +406,6 @@ export default function DeferredPage() {
         }
     }
 
-
-
-    // 2. По дате
     if (dateFrom) {
        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
     }
@@ -101,7 +413,6 @@ export default function DeferredPage() {
        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) <= dateTo);
     }
 
-    // 3. Поиск
     const s = q.trim().toLowerCase();
     if (s) {
        list = list.filter((a) => {
@@ -112,9 +423,18 @@ export default function DeferredPage() {
         return hay.includes(s);
       });
     }
-    
-    return list;
-  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter]);
+
+    // СОРТИРОВКА
+    const sorted = [...list].sort((a, b) => {
+      const av = getSortValue(a, sortBy);
+      const bv = getSortValue(b, sortBy);
+      if (av < bv) return sortOrder === 'asc' ? -1 : 1;
+      if (av > bv) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return sorted;
+  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, sortBy, sortOrder]);
 
   const handleReturn = async (id, number) => {
     if (window.confirm(`Вернуть документ №${number} из отложенных?`)) {
@@ -181,15 +501,14 @@ export default function DeferredPage() {
           <table className="table_fixed">
             <thead>
               <tr>
-                <th style={{ width: 100 }}>Номер</th>
-                <th style={{ width: 100 }}>Дата</th>
-                
-                <th>Заказчик</th>
-                <th>Маршрут</th>
-                <th style={{ width: 60, textAlign: 'center' }}>Мест</th>
-                <th style={{ width: 70, textAlign: 'center' }}>Вес (кг)</th>
-                <th style={{ width: 100 }}>Сумма (тг)</th>
-                <th>Статус</th>
+                <SortableTh field="number" style={{ width: 100 }}>Номер</SortableTh>
+                <SortableTh field="date" style={{ width: 100 }}>Дата</SortableTh>
+                <SortableTh field="customer">Заказчик</SortableTh>
+                <SortableTh field="route">Маршрут</SortableTh>
+                <SortableTh field="seats" style={{ width: 60, textAlign: 'center' }}>Мест</SortableTh>
+                <SortableTh field="weight" style={{ width: 70, textAlign: 'center' }}>Вес (кг)</SortableTh>
+                <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>
+                <SortableTh field="status">Статус</SortableTh>
                 <th style={{ width: 120, textAlign: "right" }}>Действия</th>
               </tr>
             </thead>

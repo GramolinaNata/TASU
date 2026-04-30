@@ -310,7 +310,7 @@ export default function SimpleActDetailPage() {
   <div class="receiver-block">
     <div class="receiver-label">получатель</div>
     <div class="receiver-name">${escapeHtml(receiverDisplay)}</div>
-    <div class="receiver-phone">📞 ${escapeHtml(receiverPhone)}</div>
+    
   </div>
   <div class="qr-block">
     <img src="${qrUrl}" alt="QR" style="width:100px;height:100px;display:block;margin:0 auto;"/>

@@ -443,9 +443,7 @@
 //     </>
 //   );
 // }
-
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
@@ -458,9 +456,6 @@ function formatDate(val) {
   return d.toLocaleDateString("ru");
 }
 
-/**
- * HTML-escape для безопасной подстановки в шаблон ведомости.
- */
 function escapeHtml(str) {
   if (str === null || str === undefined) return "";
   return String(str)
@@ -477,6 +472,29 @@ const STATUS_COLORS = {
   "done": { bg: "#f6ffed", color: "#52c41a" },
 };
 
+// Вспомогательная функция для отображения отправителя/получателя
+function displayName(party) {
+  if (!party) return "—";
+  if (party.companyName && party.fio) return `${party.companyName}, ${party.fio}`;
+  return party.companyName || party.fio || "—";
+}
+
+// ---- СОРТИРОВКА ----
+function getSortValue(a, field) {
+  switch (field) {
+    case 'number':   return (a.docNumber || a.number || a.id || '').toString().toLowerCase();
+    case 'date':     return new Date(a.createdAt || a.date || 0).getTime();
+    case 'customer': return displayName(a.customer).toLowerCase();
+    case 'receiver': return displayName(a.receiver).toLowerCase();
+    case 'city':     return (a.route?.toCity || '').toString().toLowerCase();
+    case 'seats':    return Number(a.totals?.seats) || 0;
+    case 'weight':   return Number(a.totals?.weight) || 0;
+    case 'cargo':    return (a.cargoText || '').toString().toLowerCase();
+    case 'status':   return (a.status || '').toString().toLowerCase();
+    default:         return '';
+  }
+}
+
 export default function SimpleActsListPage() {
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -490,6 +508,34 @@ export default function SimpleActsListPage() {
   const [batchForm, setBatchForm] = useState({
     number: "", city: "", driverName: "", driverPhone: "", carNumber: "", deliveryCost: ""
   });
+
+  // Сортировка
+  const [sortBy, setSortBy] = useState('date');
+  const [sortOrder, setSortOrder] = useState('desc');
+
+  const handleSort = (field) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const sortArrow = (field) => {
+    if (sortBy !== field) return <span style={{ color: '#bbb', marginLeft: 4 }}>⇅</span>;
+    return <span style={{ color: '#1890ff', marginLeft: 4, fontWeight: 700 }}>{sortOrder === 'asc' ? '↑' : '↓'}</span>;
+  };
+
+  const SortableTh = ({ field, children, style }) => (
+    <th
+      style={{ cursor: 'pointer', userSelect: 'none', ...style }}
+      onClick={() => handleSort(field)}
+      title="Клик для сортировки"
+    >
+      {children}{sortArrow(field)}
+    </th>
+  );
 
   useEffect(() => {
     return subscribeSelectedCompany(c => setCompany(c));
@@ -543,33 +589,42 @@ export default function SimpleActsListPage() {
     }
   };
 
-  const filtered = acts.filter(a => {
-    const s = search.trim().toLowerCase();
-    // Учитываем и ФИО, и название компании получателя
-    const searchFields = [
-      a.docNumber, a.number,
-      a.customer?.fio, a.customer?.companyName,
-      a.receiver?.fio, a.receiver?.companyName,
-      a.route?.toCity
-    ].filter(Boolean).join(" ").toLowerCase();
-    const matchSearch = !s || searchFields.includes(s);
+  const filtered = useMemo(() => {
+    let list = acts.filter(a => {
+      const s = search.trim().toLowerCase();
+      const searchFields = [
+        a.docNumber, a.number,
+        a.customer?.fio, a.customer?.companyName,
+        a.receiver?.fio, a.receiver?.companyName,
+        a.route?.toCity
+      ].filter(Boolean).join(" ").toLowerCase();
+      const matchSearch = !s || searchFields.includes(s);
 
-    let matchDate = true;
-    if (dateFrom) matchDate = matchDate && new Date(a.createdAt || a.date) >= new Date(dateFrom);
-    if (dateTo) matchDate = matchDate && new Date(a.createdAt || a.date) <= new Date(dateTo + "T23:59:59");
-    let matchTab = true;
-    if (activeTab === "stock") matchTab = a.status === "act";
-    if (activeTab === "sent") matchTab = a.status === "sent";
-    if (activeTab === "done") matchTab = a.status === "done";
-    return matchSearch && matchDate && matchTab;
-  });
+      let matchDate = true;
+      if (dateFrom) matchDate = matchDate && new Date(a.createdAt || a.date) >= new Date(dateFrom);
+      if (dateTo) matchDate = matchDate && new Date(a.createdAt || a.date) <= new Date(dateTo + "T23:59:59");
+      let matchTab = true;
+      if (activeTab === "stock") matchTab = a.status === "act";
+      if (activeTab === "sent") matchTab = a.status === "sent";
+      if (activeTab === "done") matchTab = a.status === "done";
+      return matchSearch && matchDate && matchTab;
+    });
+
+    // СОРТИРОВКА
+    const sorted = [...list].sort((a, b) => {
+      const av = getSortValue(a, sortBy);
+      const bv = getSortValue(b, sortBy);
+      if (av < bv) return sortOrder === 'asc' ? -1 : 1;
+      if (av > bv) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+    return sorted;
+  }, [acts, search, dateFrom, dateTo, activeTab, sortBy, sortOrder]);
 
   const displayActs = selected.length > 0 ? filtered.filter(a => selected.includes(a.id)) : filtered;
   const totalSeats = displayActs.reduce((acc, a) => acc + (Number(a.totals?.seats) || 0), 0);
   const totalWeight = displayActs.reduce((acc, a) => acc + (Number(a.totals?.weight) || 0), 0);
-  // ТЗ: Частные лица: Сток не должен содержать сумму.
-  // Сумма продолжает считаться внутри на случай ведомости для перевозчика,
-  // но пользователям она не показывается в этом списке.
 
   const toggleSelect = (id) => {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -614,7 +669,6 @@ export default function SimpleActsListPage() {
   const printVedomost = async (selectedActs, batchData) => {
     const totalS = selectedActs.reduce((acc, a) => acc + (Number(a.totals?.seats) || 0), 0);
     const totalW = selectedActs.reduce((acc, a) => acc + (Number(a.totals?.weight) || 0), 0);
-    // Ведомость — внутренний документ для перевозчика, суммы здесь оставляем.
     const totalSm = selectedActs.reduce((acc, a) => acc + (Number(a.totalSum) || 0), 0);
 
     const qrData = `TASU-BATCH-${batchData.number}-${batchData.city}`;
@@ -622,7 +676,6 @@ export default function SimpleActsListPage() {
     const qrUrl = await toDataURL(qrData, { width: 120, margin: 1 });
 
     const rows = selectedActs.map((a, i) => {
-      // Полное отображение отправителя/получателя с учётом компании
       const customerDisplay = a.customer?.companyName && a.customer?.fio
         ? `${a.customer.companyName}, ${a.customer.fio}`
         : (a.customer?.companyName || a.customer?.fio || "—");
@@ -727,13 +780,6 @@ export default function SimpleActsListPage() {
     done: acts.filter(a => a.status === "done").length,
   };
 
-  // Полное отображение имён в таблице
-  const displayName = (party) => {
-    if (!party) return "—";
-    if (party.companyName && party.fio) return `${party.companyName}, ${party.fio}`;
-    return party.companyName || party.fio || "—";
-  };
-
   return (
     <>
       <div className="navbar">
@@ -833,7 +879,6 @@ export default function SimpleActsListPage() {
         </div>
       </div>
 
-      {/* ТЗ: Частные лица - Сток не должен содержать сумму. Сводка суммы удалена. */}
       <div style={{ display: "flex", gap: 16, marginTop: 16, flexWrap: "wrap" }}>
         <div style={{ padding: "8px 16px", background: "var(--card)", borderRadius: 8, border: "1px solid var(--line)", fontSize: "0.9rem" }}>
           Накладных: <strong>{selected.length > 0 ? selected.length : filtered.length}</strong>
@@ -855,16 +900,15 @@ export default function SimpleActsListPage() {
                 <th style={{ width: 40 }}>
                   <input type="checkbox" checked={selected.length === filtered.length && filtered.length > 0} onChange={toggleAll} />
                 </th>
-                <th style={{ width: 120 }}>Номер</th>
-                <th style={{ width: 100 }}>Дата</th>
-                <th>Отправитель</th>
-                <th>Получатель</th>
-                <th>Город</th>
-                <th style={{ width: 70 }}>Мест</th>
-                <th style={{ width: 90 }}>Вес</th>
-                {/* ТЗ: Частные лица - Сток не должен содержать сумму. Колонка удалена. */}
-                <th>Груз</th>
-                <th style={{ width: 120 }}>Статус</th>
+                <SortableTh field="number" style={{ width: 120 }}>Номер</SortableTh>
+                <SortableTh field="date" style={{ width: 100 }}>Дата</SortableTh>
+                <SortableTh field="customer">Отправитель</SortableTh>
+                <SortableTh field="receiver">Получатель</SortableTh>
+                <SortableTh field="city">Город</SortableTh>
+                <SortableTh field="seats" style={{ width: 70 }}>Мест</SortableTh>
+                <SortableTh field="weight" style={{ width: 90 }}>Вес</SortableTh>
+                <SortableTh field="cargo">Груз</SortableTh>
+                <SortableTh field="status" style={{ width: 120 }}>Статус</SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -885,7 +929,6 @@ export default function SimpleActsListPage() {
                       </td>
                       <td>{formatDate(a.createdAt || a.date)}</td>
                       <td>
-                        {/* ТЗ: ФИО/компания полностью */}
                         <div style={{ fontWeight: 500 }}>{displayName(a.customer)}</div>
                         {a.customer?.phone && <div className="muted" style={{ fontSize: "0.8rem" }}>{a.customer.phone}</div>}
                       </td>
