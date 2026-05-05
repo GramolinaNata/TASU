@@ -109,7 +109,6 @@
 //   }
 // };
 
-
 import { Response } from 'express';
 import prisma from '../lib/prisma';
 import bcrypt from 'bcryptjs';
@@ -139,6 +138,9 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
         createdAt: true,
         updatedAt: true,
         plainPassword: isAdmin,
+        // 🆕 ТЗ v2
+        assignedCompanyId: true,
+        contactPhone: true,
       },
       orderBy: { [sortBy]: order },
     });
@@ -152,10 +154,23 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
 
 export const createUser = async (req: AuthRequest, res: Response) => {
   try {
-    const { email, password, name, role } = req.body;
+    const {
+      email,
+      password,
+      name,
+      role,
+      // 🆕 ТЗ v2
+      assignedCompanyId,
+      contactPhone,
+    } = req.body;
 
     if (!email || !password || !name) {
       return res.status(400).json({ message: 'email, password и name обязательны' });
+    }
+
+    // 🆕 ТЗ v2: для роли PRIVATE компания обязательна
+    if (role === 'PRIVATE' && !assignedCompanyId) {
+      return res.status(400).json({ message: 'Для роли "Частное лицо" необходимо указать компанию (assignedCompanyId)' });
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
@@ -165,14 +180,20 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    const data: any = {
+      email,
+      password: hashedPassword,
+      plainPassword: password,
+      name,
+      role: role || 'MANAGER',
+    };
+
+    // 🆕 Сохраняем привязку к компании только если она задана (для PRIVATE — обязательно)
+    if (assignedCompanyId) data.assignedCompanyId = assignedCompanyId;
+    if (contactPhone !== undefined) data.contactPhone = contactPhone;
+
     const newUser = await prisma.user.create({
-      data: {
-        email,
-        password: hashedPassword,
-        plainPassword: password,
-        name,
-        role: role || 'MANAGER',
-      },
+      data,
       select: {
         id: true,
         email: true,
@@ -180,6 +201,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         role: true,
         createdAt: true,
         plainPassword: true,
+        assignedCompanyId: true,
+        contactPhone: true,
       },
     });
 
@@ -193,7 +216,15 @@ export const createUser = async (req: AuthRequest, res: Response) => {
 export const updateUser = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { email, name, role, password } = req.body;
+    const {
+      email,
+      name,
+      role,
+      password,
+      // 🆕 ТЗ v2
+      assignedCompanyId,
+      contactPhone,
+    } = req.body;
 
     const updateData: any = {};
     if (email !== undefined) updateData.email = email;
@@ -205,6 +236,25 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       updateData.plainPassword = password;
     }
 
+    // 🆕 ТЗ v2: привязка к компании
+    if (assignedCompanyId !== undefined) {
+      updateData.assignedCompanyId = assignedCompanyId || null;
+    }
+    if (contactPhone !== undefined) {
+      updateData.contactPhone = contactPhone;
+    }
+
+    // 🆕 ТЗ v2: при смене роли с PRIVATE на любую другую — сбрасываем assignedCompanyId
+    // если клиент сам не передал значение
+    if (role !== undefined && role !== 'PRIVATE' && assignedCompanyId === undefined) {
+      updateData.assignedCompanyId = null;
+    }
+
+    // 🆕 Если роль остаётся/становится PRIVATE — assignedCompanyId обязателен
+    if (role === 'PRIVATE' && updateData.assignedCompanyId === null) {
+      return res.status(400).json({ message: 'Для роли "Частное лицо" необходимо указать компанию' });
+    }
+
     const updatedUser = await prisma.user.update({
       where: { id: parseInt(id as string) },
       data: updateData,
@@ -214,6 +264,8 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         name: true,
         role: true,
         plainPassword: true,
+        assignedCompanyId: true,
+        contactPhone: true,
       },
     });
 

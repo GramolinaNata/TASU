@@ -22,3 +22,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Backups and temp files
+*.sql
+*OLD.docx
+schema.NEW_TZ.prisma

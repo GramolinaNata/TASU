@@ -1,3 +1,66 @@
+// import { Request, Response } from 'express';
+// import bcrypt from 'bcryptjs';
+// import jwt from 'jsonwebtoken';
+// import prisma from '../lib/prisma';
+
+// export const login = async (req: Request, res: Response) => {
+//   try {
+//     const { email, password } = req.body;
+
+//     const user = await prisma.user.findUnique({ where: { email } });
+//     if (!user) {
+//       return res.status(401).json({ message: 'Неверный email или пароль' });
+//     }
+
+//     const isValidPassword = await bcrypt.compare(password, user.password);
+//     if (!isValidPassword) {
+//       return res.status(401).json({ message: 'Неверный email или пароль' });
+//     }
+
+//     const token = jwt.sign(
+//       { id: user.id, email: user.email, role: user.role },
+//       process.env.JWT_SECRET || 'tasu_super_secret_key_123',
+//       { expiresIn: '24h' }
+//     );
+
+//     res.json({
+//       token,
+//       user: {
+//         id: user.id,
+//         name: user.name,
+//         email: user.email,
+//         role: user.role
+//       }
+//     });
+
+//   } catch (error: any) {
+//     console.error('Login error:', error);
+//     res.status(500).json({ 
+//       message: 'Внутренняя ошибка сервера', 
+//       error: error.message,
+//       stack: error.stack
+//     });
+//   }
+// };
+
+// export const getMe = async (req: any, res: Response) => {
+//   try {
+//     const user = await prisma.user.findUnique({
+//       where: { id: req.user.id },
+//       select: { id: true, name: true, email: true, role: true }
+//     });
+
+//     if (!user) {
+//       return res.status(404).json({ message: 'Пользователь не найден' });
+//     }
+
+//     res.json(user);
+//   } catch (error) {
+//     res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+//   }
+// };
+
+
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -6,37 +69,35 @@ import prisma from '../lib/prisma';
 export const login = async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
-
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
       return res.status(401).json({ message: 'Неверный email или пароль' });
     }
-
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({ message: 'Неверный email или пароль' });
     }
-
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role },
       process.env.JWT_SECRET || 'tasu_super_secret_key_123',
       { expiresIn: '24h' }
     );
-
     res.json({
       token,
       user: {
         id: user.id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
+        // 🆕 ТЗ v2: чтоб PRIVATE на фронте знал свою компанию
+        assignedCompanyId: (user as any).assignedCompanyId || null,
+        contactPhone: (user as any).contactPhone || null,
       }
     });
-
   } catch (error: any) {
     console.error('Login error:', error);
-    res.status(500).json({ 
-      message: 'Внутренняя ошибка сервера', 
+    res.status(500).json({
+      message: 'Внутренняя ошибка сервера',
       error: error.message,
       stack: error.stack
     });
@@ -47,15 +108,22 @@ export const getMe = async (req: any, res: Response) => {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
-      select: { id: true, name: true, email: true, role: true }
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        // 🆕 ТЗ v2
+        assignedCompanyId: true,
+        contactPhone: true,
+      }
     });
-
     if (!user) {
       return res.status(404).json({ message: 'Пользователь не найден' });
     }
-
     res.json(user);
-  } catch (error) {
-    res.status(500).json({ message: 'Внутренняя ошибка сервера' });
+  } catch (error: any) {
+    console.error('getMe error:', error);
+    res.status(500).json({ message: 'Внутренняя ошибка сервера', details: error.message });
   }
 };

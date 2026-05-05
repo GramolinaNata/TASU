@@ -1,3 +1,4 @@
+
 // const API_URL = import.meta?.env?.VITE_API_URL || '/api';
 
 // const getAuthHeader = () => {
@@ -28,6 +29,22 @@
 //   return res.json().catch(() => null);
 // };
 
+// /**
+//  * Собирает querystring из объекта параметров, пропуская пустые значения.
+//  * buildQuery({ companyId: 'abc', scope: 'active', sortBy: null })
+//  *   → '?companyId=abc&scope=active'
+//  */
+// const buildQuery = (params = {}) => {
+//   const entries = Object.entries(params).filter(
+//     ([, v]) => v !== undefined && v !== null && v !== ''
+//   );
+//   if (entries.length === 0) return '';
+//   const qs = entries
+//     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+//     .join('&');
+//   return `?${qs}`;
+// };
+
 // export const api = {
 //   auth: {
 //     login: (email, password) => request('/auth/login', {
@@ -44,14 +61,42 @@
 //     delete: (id) => request(`/companies/${id}`, { method: 'DELETE' }),
 //   },
 //   requests: {
-//     list: (companyId) => request(`/requests${companyId ? `?companyId=${companyId}` : ''}`),
+//     /**
+//      * Универсальный список с фильтрами и сортировкой.
+//      * Старая сигнатура тоже работает: api.requests.list('companyId123')
+//      * Новая: api.requests.list({ companyId, scope, status, type, sortBy, order })
+//      */
+//     list: (paramsOrCompanyId) => {
+//       let params = {};
+//       if (typeof paramsOrCompanyId === 'string') {
+//         params = { companyId: paramsOrCompanyId };
+//       } else if (typeof paramsOrCompanyId === 'object' && paramsOrCompanyId !== null) {
+//         params = paramsOrCompanyId;
+//       }
+//       return request(`/requests${buildQuery(params)}`);
+//     },
 //     get: (id) => request(`/requests/${id}`),
 //     create: (data) => request('/requests', { method: 'POST', body: JSON.stringify(data) }),
 //     update: (id, data) => request(`/requests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 //     delete: (id) => request(`/requests/${id}`, { method: 'DELETE' }),
+
+//     // Новое: кнопка "Заявка отработана бухгалтером"
+//     completeByAccountant: (id) => request(`/requests/${id}/complete-by-accountant`, {
+//       method: 'POST',
+//     }),
+
+//     // Новое: возврат заявки из архива (обновляет дату на сегодня)
+//     restore: (id, targetStatus) => request(`/requests/${id}/restore`, {
+//       method: 'POST',
+//       body: JSON.stringify({ targetStatus }),
+//     }),
 //   },
 //   users: {
-//     list: () => request('/users'),
+//     /**
+//      * Поддержка сортировки: api.users.list({ sortBy: 'name', order: 'asc' })
+//      * Старый вызов api.users.list() тоже работает.
+//      */
+//     list: (params = {}) => request(`/users${buildQuery(params)}`),
 //     create: (data) => request('/users', { method: 'POST', body: JSON.stringify(data) }),
 //     update: (id, data) => request(`/users/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 //     delete: (id) => request(`/users/${id}`, { method: 'DELETE' }),
@@ -93,6 +138,7 @@
 //     delete: (id) => request(`/batches/${id}`, { method: 'DELETE' }),
 //   },
 // };
+
 
 
 const API_URL = import.meta?.env?.VITE_API_URL || '/api';
@@ -160,7 +206,11 @@ export const api = {
     /**
      * Универсальный список с фильтрами и сортировкой.
      * Старая сигнатура тоже работает: api.requests.list('companyId123')
-     * Новая: api.requests.list({ companyId, scope, status, type, sortBy, order })
+     * Новая: api.requests.list({
+     *   companyId, scope, status, type, sortBy, order,
+     *   isPaid, isFullyCompleted, isDeferred,    // 🆕 ТЗ v2
+     *   dateFrom, dateTo                          // 🆕 ТЗ v2
+     * })
      */
     list: (paramsOrCompanyId) => {
       let params = {};
@@ -176,15 +226,33 @@ export const api = {
     update: (id, data) => request(`/requests/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id) => request(`/requests/${id}`, { method: 'DELETE' }),
 
-    // Новое: кнопка "Заявка отработана бухгалтером"
+    // Кнопка "Заявка отработана бухгалтером"
     completeByAccountant: (id) => request(`/requests/${id}/complete-by-accountant`, {
       method: 'POST',
     }),
 
-    // Новое: возврат заявки из архива (обновляет дату на сегодня)
+    // Возврат заявки из архива (обновляет дату на сегодня)
     restore: (id, targetStatus) => request(`/requests/${id}/restore`, {
       method: 'POST',
       body: JSON.stringify({ targetStatus }),
+    }),
+
+    // 🆕 ТЗ v2: Бухгалтер — финальное завершение работы (Активные → Завершённые)
+    markFullyCompleted: (id) => request(`/requests/${id}/mark-fully-completed`, {
+      method: 'POST',
+    }),
+
+    // 🆕 ТЗ v2: Аналитика — отметка оплаты
+    markPaid: (id, isPaid = true) => request(`/requests/${id}/mark-paid`, {
+      method: 'POST',
+      body: JSON.stringify({ isPaid }),
+    }),
+
+    // 🆕 ТЗ v2: Редактирование — нельзя менять компанию.
+    // Старая аннулируется, создаётся новая с новым номером и датой.
+    cancelAndClone: (id, newCompanyId) => request(`/requests/${id}/cancel-and-clone`, {
+      method: 'POST',
+      body: JSON.stringify({ newCompanyId }),
     }),
   },
   users: {
@@ -212,10 +280,25 @@ export const api = {
     delete: (id) => request(`/counterparties/${id}`, { method: 'DELETE' }),
   },
   expenses: {
-    list: (companyId) => request(`/expenses${companyId ? `?companyId=${companyId}` : ''}`),
+    /**
+     * Старая сигнатура: api.expenses.list('companyId') — работает.
+     * 🆕 Новая: api.expenses.list({ companyId, requestId, category, dateFrom, dateTo })
+     */
+    list: (paramsOrCompanyId) => {
+      let params = {};
+      if (typeof paramsOrCompanyId === 'string') {
+        params = { companyId: paramsOrCompanyId };
+      } else if (typeof paramsOrCompanyId === 'object' && paramsOrCompanyId !== null) {
+        params = paramsOrCompanyId;
+      }
+      return request(`/expenses${buildQuery(params)}`);
+    },
     create: (data) => request('/expenses', { method: 'POST', body: JSON.stringify(data) }),
     update: (id, data) => request(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id) => request(`/expenses/${id}`, { method: 'DELETE' }),
+
+    // 🆕 ТЗ v2: Аналитика — расчёт расходов (totalAmount, byCategory, byCompany)
+    summary: (params = {}) => request(`/expenses/summary${buildQuery(params)}`),
   },
   tariffs: {
     list: () => request('/tariffs'),

@@ -29,6 +29,7 @@
 // //   const [act, setAct] = useState(null);
 // //   const [loading, setLoading] = useState(true);
 // //   const [actionLoading, setActionLoading] = useState(false);
+// //   const [showQR, setShowQR] = useState(false);
 // //   const qrRef = useRef(null);
 
 // //   const downloadQRCode = () => {
@@ -42,22 +43,20 @@
 // //     }
 // //   };
 
-// //   // Определяем контекст (из какого списка пришли)
 // //   const isSMRPath = location.pathname.startsWith('/smr');
 // //   const isTTNPath = location.pathname.startsWith('/requests');
 // //   const isWarehousePath = location.pathname.startsWith('/warehouse');
 // //   const isDeferredPath = location.pathname.startsWith('/deferred');
 // //   const isSentPath = location.pathname.startsWith('/sent');
 // //   const isAccountantPath = location.pathname.startsWith('/accountant/acts');
-  
+
 // //   const basePath = isAccountantPath ? "/accountant/general" : (isSentPath ? "/sent" : (isAccountant && !isAdmin ? "/accountant/general" : (isDeferredPath ? "/deferred" : isSMRPath ? "/smr" : (isTTNPath ? "/requests" : (isWarehousePath ? "/warehouse" : "/acts")))));
 // //   const crumbLabel = isAccountantPath ? "Бухгалтерия" : (isSentPath ? "Отработанные" : (isAccountant && !isAdmin ? "Бухгалтерия" : (isDeferredPath ? "Отложенные" : isSMRPath ? "СМР" : (isTTNPath ? "ТТН" : (isWarehousePath ? "Склад" : "Заявки")))));
-  
+
 // //   const [services, setServices] = useState([]);
 // //   const [total, setTotal] = useState({ price: "" });
 
-// //   // Состояния для формирования доп. полей ТТН/CMR (Поля 2-18)
-// //   const [showDocForm, setShowDocForm] = useState(null); // 'ttn' | 'smr' | null
+// //   const [showDocForm, setShowDocForm] = useState(null);
 // //   const [showExportMenu, setShowExportMenu] = useState(false);
 // //   const [showActionMenu, setShowActionMenu] = useState(false);
 // //   const [exportLoading, setExportLoading] = useState(false);
@@ -74,13 +73,39 @@
 // //     flightNumber: "",
 // //   });
 
+// //   // ---- ХЕЛПЕРЫ ДЛЯ ТЗ ----
+// //   // Есть ли у заявки СФОРМИРОВАННЫЙ документ (СМР/ТТН/Склад)
+// //   // ВАЖНО: для склада недостаточно флага isWarehouse — там тоже надо чтобы был факт формирования
+// //   // (как минимум одна складская услуга или явный признак warehouseFormed).
+// //   const hasFormedDocument = () => {
+// //     if (!act) return false;
+
+// //     // СМР / ТТН — формирование явное (через "Сформировать ТТН/СМР")
+// //     const t = act.type || act.docType;
+// //     if (t === 'ttn' || t === 'smr' || t === 'TTN' || t === 'SMR') return true;
+
+// //     // Склад: считаем сформированным ТОЛЬКО если есть услуги или явный флаг
+// //     if (act.isWarehouse) {
+// //       if (act.warehouseFormed === true) return true;
+// //       if (Array.isArray(act.warehouseServices) && act.warehouseServices.length > 0) {
+// //         // Хотя бы одна услуга с заполненным наименованием
+// //         const hasRealService = act.warehouseServices.some(
+// //           s => s && (s.name || '').toString().trim().length > 0
+// //         );
+// //         return hasRealService;
+// //       }
+// //       return false;
+// //     }
+
+// //     return false;
+// //   };
+
 // //   const loadAct = async () => {
 // //     if (!id) return;
 // //     setLoading(true);
 // //     try {
 // //       const found = await api.requests.get(id);
 // //       if (found) {
-// //         // Парсим детали из JSON если нужно
 // //         let details = {};
 // //         if (found.details) {
 // //           try {
@@ -88,7 +113,6 @@
 // //           } catch (e) { console.error("Parse details error", e); }
 // //         }
 
-// //         // Объединяем объект заявки с распарсенными деталями
 // //         const mergedAct = { ...found, ...details };
 // //         setAct(mergedAct);
 
@@ -111,7 +135,6 @@
 // //     loadAct();
 // //   }, [id]);
 
-// //   // Auto-mark as viewed for accountants
 // //   useEffect(() => {
 // //     if (act && isAccountant && !act.isViewedByAccountant) {
 // //       const markAsViewed = async () => {
@@ -126,7 +149,6 @@
 // //     }
 // //   }, [act, isAccountant]);
 
-// //   // Auto-mark as viewed for managers (if updated by accountant)
 // //   useEffect(() => {
 // //     if (act && (!isAccountant || isAdmin) && act.updatedByAccountant && !act.isViewedByManager) {
 // //       const markAsViewedManager = async () => {
@@ -141,11 +163,9 @@
 // //     }
 // //   }, [act, isAccountant, isAdmin]);
 
-// //   /* ГИБРИДНОЕ ФОРМИРОВАНИЕ */
 // //   const chooseDocType = async (type) => {
 // //     if (!id) return;
-    
-// //     // Если это ТТН или СМР — сначала показываем форму
+
 // //     if (type === "ttn" || type === "smr") {
 // //        setShowDocForm(type);
 // //        return;
@@ -153,10 +173,10 @@
 
 // //     setActionLoading(true);
 // //     try {
-// //       await api.requests.update(id, { 
+// //       await api.requests.update(id, {
 // //         type: type,
 // //         docType: type,
-// //         status: "act" 
+// //         status: "act"
 // //       });
 // //       await loadAct();
 // //       alert("Документ успешно сформирован!");
@@ -173,7 +193,7 @@
 // //     if (!id || !showDocForm) return;
 // //     setActionLoading(true);
 // //     try {
-// //       await api.requests.update(id, { 
+// //       await api.requests.update(id, {
 // //         type: showDocForm,
 // //         docType: showDocForm,
 // //         docAttrs,
@@ -191,38 +211,40 @@
 // //       setActionLoading(false);
 // //     }
 // //   };
-  
+
 // //   const handleCancelFormation = async () => {
 // //     if (!id) return;
 // //     if (window.confirm("Отменить формирование документа? Заявка вернется в общий список.")) {
-// //       const updated = await api.requests.update(id, {
+// //       await api.requests.update(id, {
 // //         type: 'REQUEST',
 // //         docType: null,
-// //         status: "act" // Убеждаемся, что статус остается активным
+// //         status: "act"
 // //       });
 // //       await loadAct();
 // //       setActionLoading(false);
-// //       nav("/acts"); // Возвращаем в список заявок
+// //       nav("/acts");
 // //     }
 // //   };
 
 // //   const handleReturnToRequests = async () => {
 // //     if (!id || !act) return;
-// //     if (window.confirm("Вернуть документ из отработанных в список заявок?")) {
+// //     if (window.confirm("Вернуть документ из отработанных в список заявок? Дата будет обновлена на сегодняшнюю.")) {
 // //       setActionLoading(true);
 // //       try {
-// //         const updated = await api.requests.update(id, {
+// //         await api.requests.update(id, {
 // //           readyForAccountant: false,
-// //           isDeferredForAccountant: false
+// //           isDeferredForAccountant: false,
+// //           isProcessedByAccountant: false,
 // //         });
-// //         setAct(prev => ({ 
-// //           ...prev, 
-// //           ...updated, 
+// //         const updated = await api.requests.restore(id);
+// //         setAct(prev => ({
+// //           ...prev,
+// //           ...updated,
 // //           readyForAccountant: false,
-// //           isDeferredForAccountant: false
+// //           isDeferredForAccountant: false,
+// //           isProcessedByAccountant: false,
 // //         }));
-// //         alert("Документ возвращен в работу!");
-// //         // Редирект в соответствующий список
+// //         alert("Документ возвращен в работу! Дата обновлена на сегодняшнюю.");
 // //         if (act.isWarehouse) nav('/warehouse');
 // //         else if (act.type === 'smr' || act.docType === 'smr') nav('/smr');
 // //         else nav('/requests');
@@ -234,8 +256,15 @@
 // //     }
 // //   };
 
+// //   // ТЗ: Нельзя отправить бухгалтеру до формирования СМР/ТТН/Склад
 // //   const handleSendToAccountant = async () => {
 // //     if (!id || !act) return;
+
+// //     if (!hasFormedDocument()) {
+// //       alert("Сначала сформируйте документ: СМР, ТТН или Складскую заявку (добавьте хотя бы одну складскую услугу). Без сформированного документа отправить бухгалтеру нельзя.");
+// //       return;
+// //     }
+
 // //     if (window.confirm("Отправить документ бухгалтеру? После этого он появится в списке бухгалтерии.")) {
 // //       setActionLoading(true);
 // //       try {
@@ -243,9 +272,9 @@
 // //           readyForAccountant: true,
 // //           isDeferredForAccountant: false
 // //         });
-// //         setAct(prev => ({ 
-// //           ...prev, 
-// //           ...updated, 
+// //         setAct(prev => ({
+// //           ...prev,
+// //           ...updated,
 // //           readyForAccountant: true,
 // //           isDeferredForAccountant: false
 // //         }));
@@ -269,10 +298,8 @@
 // //           isDeferredForAccountant: !isNowDeferred
 // //         });
 // //         setAct(updated);
-// //         // Если только что отложили - уходим в список отложенных
 // //         if (!isNowDeferred) {
 // //            nav('/deferred');
-// //         // Если вернули из отложенных - возвращаемся в соответствующий список (используем act, так как updated не смерджен)
 // //         } else {
 // //            if (act.isWarehouse) nav('/warehouse');
 // //            else if (act.type === 'smr' || act.docType === 'smr') nav('/smr');
@@ -317,6 +344,22 @@
 // //     }
 // //   };
 
+// //   const handleCompleteByAccountant = async (val) => {
+// //     if (!id || !act) return;
+// //     setAct(prev => ({ ...prev, isProcessedByAccountant: val }));
+// //     try {
+// //       if (val) {
+// //         await api.requests.completeByAccountant(id);
+// //         await api.requests.update(id, { isProcessedByAccountant: true });
+// //       } else {
+// //         await api.requests.update(id, { isProcessedByAccountant: false });
+// //       }
+// //     } catch (err) {
+// //       alert(err.message);
+// //       setAct(prev => ({ ...prev, isProcessedByAccountant: !val }));
+// //     }
+// //   };
+
 // //   const addServiceRow = () => {
 // //     setServices((prev) => [...prev, { id: safeUuid(), name: "", qty: "1", sum: "0" }]);
 // //   };
@@ -344,25 +387,23 @@
 // //       alert("Не указана компания экспедитор");
 // //       return;
 // //     }
-    
+
 // //     setExportLoading(true);
 // //     try {
-// //       // Пытаемся загрузить актуальные данные компании с сервера (новый эндпоинт)
 // //       let comp = null;
 // //       try {
 // //         comp = await api.companies.get(act.companyId);
 // //       } catch (e) {
 // //         console.warn("New getCompany endpoint not found, falling back to list...", e);
-// //         // Fallback: если новый маршрут не найден (сервер не перезапущен), используем старый list()
 // //         const allComps = await api.companies.list();
 // //         comp = allComps.find(c => c.id === act.companyId);
 // //       }
-      
+
 // //       if (!comp) {
 // //         alert("Данные компании не найдены на сервере");
 // //         return;
 // //       }
-      
+
 // //       await exportToDocx({ ...act, company: comp }, docTypeOverride || act.docType);
 // //       setShowExportMenu(false);
 // //     } catch (err) {
@@ -389,6 +430,19 @@
 // //     );
 // //   }
 
+// //   const canSendToAccountant = hasFormedDocument();
+// //   const isActualAccountant = isAccountant;
+// //   const canCompleteByAccountant = isActualAccountant;
+
+// //   // Текст почему нельзя отправить бухгалтеру
+// //   const blockReasonText = (() => {
+// //     if (!act) return "";
+// //     if (act.isWarehouse) {
+// //       return "Отправка бухгалтеру доступна только после формирования Складской заявки (добавьте хотя бы одну складскую услугу).";
+// //     }
+// //     return "Отправка бухгалтеру доступна только после формирования СМР или ТТН.";
+// //   })();
+
 // //   return (
 // //     <>
 // //       <div className="topbar">
@@ -399,11 +453,11 @@
 
 // //         <div className="topbar_actions">
 // //           <button className="btn" onClick={() => nav(basePath)}>← Назад</button>
-          
+
 // //           {(!isAccountant || isAdmin) && !isSentPath && (
 // //             <>
-// //               <button 
-// //                 className="btn btn--accent" 
+// //               <button
+// //                 className="btn btn--accent"
 // //                 onClick={() => nav(`${basePath}/${act.id}/edit`)}
 // //                 disabled={act.status === 'canceled' || act.readyForAccountant || actionLoading}
 // //               >
@@ -422,10 +476,9 @@
 // //                 </button>
 // //               )}
 
-
 // //               {act.status !== 'canceled' && !act.readyForAccountant && (
-// //                 <button 
-// //                   className={`btn ${act.isDeferredForAccountant ? 'btn--primary' : 'btn--ghost'}`} 
+// //                 <button
+// //                   className={`btn ${act.isDeferredForAccountant ? 'btn--primary' : 'btn--ghost'}`}
 // //                   onClick={handleToggleDefer}
 // //                   disabled={actionLoading}
 // //                 >
@@ -448,8 +501,8 @@
 // //           )}
 
 // //           {act.status === 'canceled' && isAdmin && (
-// //             <button 
-// //               className="btn" 
+// //             <button
+// //               className="btn"
 // //               style={{ borderColor: "#108ee9", color: "#108ee9" }}
 // //               onClick={handleRestore}
 // //               disabled={actionLoading}
@@ -457,12 +510,12 @@
 // //               {actionLoading ? "..." : "Восстановить"}
 // //             </button>
 // //           )}
-          
+
 // //           {act.status !== 'canceled' ? (
 // //             <>
 // //               <div style={{ position: 'relative', display: 'inline-block' }}>
-// //                   <button 
-// //                     className="btn" 
+// //                   <button
+// //                     className="btn"
 // //                     style={{ background: '#2b5797', color: '#fff', borderColor: '#2b5797', opacity: exportLoading ? 0.7 : 1 }}
 // //                     onClick={() => {
 // //                       if (exportLoading) return;
@@ -490,15 +543,15 @@
 // //                     minWidth: 200,
 // //                     marginTop: 5
 // //                   }}>
-// //                     <div 
-// //                       className="menu_item" 
+// //                     <div
+// //                       className="menu_item"
 // //                       style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }}
 // //                       onClick={() => handleExport("Заявка")}
 // //                     >
 // //                       📄 Экспорт как Заявка
 // //                     </div>
-// //                     <div 
-// //                       className="menu_item" 
+// //                     <div
+// //                       className="menu_item"
 // //                       style={{ padding: '10px 15px', cursor: 'pointer' }}
 // //                       onClick={() => handleExport(act.docType)}
 // //                     >
@@ -521,8 +574,8 @@
 // //             <div className="form_grid">
 // //               <div className="field" style={{ gridColumn: 'span 2', marginBottom: 10 }}>
 // //                 <div className="label">Вид перевозки <span className="text_danger">*</span></div>
-// //                 <select 
-// //                   value={docAttrs.transportType} 
+// //                 <select
+// //                   value={docAttrs.transportType}
 // //                   onChange={e => setDocAttrs({...docAttrs, transportType: e.target.value})}
 // //                   style={{ fontWeight: 'bold', padding: '8px' }}
 // //                 >
@@ -549,10 +602,10 @@
 // //                   </div>
 // //                   <div className="field" style={{ gridColumn: 'span 1' }}>
 // //                     <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, cursor: 'pointer', marginTop: 32 }}>
-// //                       <input 
-// //                         type="checkbox" 
-// //                         checked={!!docAttrs.hasTrailer} 
-// //                         onChange={e => setDocAttrs({...docAttrs, hasTrailer: e.target.checked})} 
+// //                       <input
+// //                         type="checkbox"
+// //                         checked={!!docAttrs.hasTrailer}
+// //                         onChange={e => setDocAttrs({...docAttrs, hasTrailer: e.target.checked})}
 // //                       />
 // //                       Имеется прицеп
 // //                     </label>
@@ -591,10 +644,6 @@
 // //                   </div>
 // //                 </>
 // //               )}
-
-// //               {/* Удалены: Масса, Места, Прибытие/Окончание погрузки/разгрузки, Сведения о грузе по просьбе пользователя */}
-
-// //               {/* Расчет для авиа-отправки удален по просьбе пользователя */}
 // //             </div>
 // //             <div style={{ marginTop: 16, display: 'flex', gap: 12 }}>
 // //               <button className="btn btn--accent" onClick={confirmDocType} disabled={actionLoading}>
@@ -605,11 +654,17 @@
 // //           </div>
 // //         </div>
 // //       )}
+
+// //       {/* ТЗ: На этапе заявки нет возможности отправить Бухгалтеру, только после формирования СМР/ТТН/Склад */}
 // //       {(!isAccountant || isAdmin) && act.status !== 'canceled' && !isDeferredPath && (
 // //         <div className="action_banner" style={{
-// //            marginTop: 16, 
-// //            background: act.readyForAccountant ? 'rgba(82, 196, 26, 0.05)' : 'var(--card)', 
-// //            borderLeft: `4px solid ${act.readyForAccountant ? '#52c41a' : '#faad14'}`,
+// //            marginTop: 16,
+// //            background: act.readyForAccountant
+// //              ? 'rgba(82, 196, 26, 0.05)'
+// //              : (canSendToAccountant ? 'var(--card)' : '#fff5f5'),
+// //            borderLeft: `4px solid ${
+// //              act.readyForAccountant ? '#52c41a' : (canSendToAccountant ? '#faad14' : '#ff4d4f')
+// //            }`,
 // //            padding: '20px',
 // //            borderRadius: 8,
 // //            display: 'flex',
@@ -621,20 +676,37 @@
 // //         }}>
 // //            <div>
 // //               <div style={{fontWeight: 700, fontSize: '1.1rem', marginBottom: 4}}>
-// //                 {act.readyForAccountant ? "✅ Документ отправлен бухгалтеру" : "Документ готов к передаче?"}
+// //                 {act.readyForAccountant
+// //                   ? "✅ Документ отправлен бухгалтеру"
+// //                   : (canSendToAccountant
+// //                       ? "Документ готов к передаче?"
+// //                       : "⚠ Сначала сформируйте документ")
+// //                 }
 // //               </div>
 // //               <div className="muted" style={{fontSize: '0.9rem'}}>
-// //                 {act.readyForAccountant 
-// //                   ? "" 
-// //                   : "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СНО/АВР/ЭСФ"}
+// //                 {act.readyForAccountant
+// //                   ? ""
+// //                   : (canSendToAccountant
+// //                       ? "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СНО/АВР/ЭСФ"
+// //                       : blockReasonText)
+// //                 }
 // //               </div>
 // //            </div>
 // //            {!act.readyForAccountant ? (
-// //              <button 
-// //                 className="btn btn--primary" 
+// //              <button
+// //                 className="btn btn--primary"
 // //                 onClick={handleSendToAccountant}
-// //                 disabled={actionLoading}
-// //                 style={{ background: '#52c41a', borderColor: '#52c41a', color: '#fff', padding: '10px 24px', fontWeight: 700 }}
+// //                 disabled={actionLoading || !canSendToAccountant}
+// //                 title={!canSendToAccountant ? blockReasonText : ""}
+// //                 style={{
+// //                   background: canSendToAccountant ? '#52c41a' : '#d9d9d9',
+// //                   borderColor: canSendToAccountant ? '#52c41a' : '#d9d9d9',
+// //                   color: '#fff',
+// //                   padding: '10px 24px',
+// //                   fontWeight: 700,
+// //                   cursor: canSendToAccountant ? 'pointer' : 'not-allowed',
+// //                   opacity: canSendToAccountant ? 1 : 0.6
+// //                 }}
 // //               >
 // //                 {actionLoading ? "Отправка..." : "▶ Отправить бухгалтеру"}
 // //               </button>
@@ -644,8 +716,8 @@
 // //                    <span>✓ Отправлено</span>
 // //                 </div>
 // //                 {(!isAccountant || isAdmin) && (
-// //                   <button 
-// //                     className="btn btn--sm" 
+// //                   <button
+// //                     className="btn btn--sm"
 // //                     onClick={handleReturnToRequests}
 // //                     disabled={actionLoading}
 // //                     style={{ fontSize: '0.8rem', padding: '4px 12px' }}
@@ -658,21 +730,44 @@
 // //         </div>
 // //       )}
 
-// //       {act.status !== 'canceled' && !act.isWarehouse && (isSentPath || isAccountantPath) && (
-// //         <div style={{ marginTop: '10px', textAlign: 'right' }}>
-// //            <button 
-// //               className="btn" 
+// //       {/* ТЗ: QR доступен на ВСЕХ этапах (кроме аннулированных) */}
+// //       {act.status !== 'canceled' && (
+// //         <div style={{ marginTop: '10px', textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+// //             <button
+// //               className="btn"
+// //               style={{ background: showQR ? '#1890ff' : '#00a854', color: '#fff', borderColor: showQR ? '#1890ff' : '#00a854' }}
+// //               onClick={() => setShowQR(!showQR)}
+// //             >
+// //               {showQR ? "🔽 Скрыть QR" : "📱 Показать QR"}
+// //             </button>
+// //             <button
+// //               className="btn"
 // //               style={{ background: '#00a854', color: '#fff', borderColor: '#00a854' }}
 // //               onClick={downloadQRCode}
 // //             >
-// //               📱 Создать QR для курьера
+// //               ⬇ Скачать QR
 // //             </button>
 
-// //             <div ref={qrRef} style={{ display: 'none' }}>
-// //               <QRCodeCanvas 
-// //                 value={`${window.location.origin}/courier/acts/${id}`} 
+// //             <div
+// //               ref={qrRef}
+// //               style={{
+// //                 display: showQR ? 'block' : 'none',
+// //                 width: '100%',
+// //                 textAlign: 'center',
+// //                 marginTop: 12,
+// //                 padding: 20,
+// //                 background: '#fff',
+// //                 borderRadius: 8,
+// //                 border: '1px solid var(--line)',
+// //               }}
+// //             >
+// //               <QRCodeCanvas
+// //                 value={`${window.location.origin}/courier/acts/${id}`}
 // //                 size={256}
 // //               />
+// //               <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
+// //                 Отсканируйте для просмотра заявки курьером
+// //               </div>
 // //             </div>
 // //         </div>
 // //       )}
@@ -734,7 +829,6 @@
 // //       </div>
 
 // //       <div className="split_2" style={{ marginTop: 14 }}>
-// //         {/* SECTION: Бухгалтерия */}
 // //         {(isAccountant || isSentPath) && (
 // //           <div className="info_card" style={{ gridColumn: 'span 2', borderRadius: 8, padding: 20 }}>
 // //             <div className="info_title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 16 }}>
@@ -742,17 +836,16 @@
 // //             </div>
 // //             <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
 
-// //               {/* СНО Toggle / Status */}
 // //               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
 // //                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
 // //                     Счет на оплату (СНО) выставлен
 // //                  </div>
 // //                  {isAccountant ? (
 // //                    <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-// //                       <input 
-// //                         type="checkbox" 
+// //                       <input
+// //                         type="checkbox"
 // //                         style={{ display: 'none' }}
-// //                         checked={!!act.snoIssued} 
+// //                         checked={!!act.snoIssued}
 // //                         onChange={async (e) => {
 // //                           const val = e.target.checked;
 // //                           setAct(prev => ({ ...prev, snoIssued: val }));
@@ -761,7 +854,7 @@
 // //                         }}
 // //                       />
 // //                       <div className="toggle_slider" style={{
-// //                         width: 44, height: 24, background: act.snoIssued ? 'var(--success)' : 'var(--muted)', 
+// //                         width: 44, height: 24, background: act.snoIssued ? 'var(--success)' : 'var(--muted)',
 // //                         borderRadius: 24, position: 'relative', transition: 'background 0.3s'
 // //                       }}>
 // //                         <div className="toggle_knob" style={{
@@ -772,8 +865,8 @@
 // //                       </div>
 // //                    </label>
 // //                  ) : (
-// //                    <span className="badge" style={{ 
-// //                      background: act.snoIssued ? '#f6ffed' : '#fffbe6', 
+// //                    <span className="badge" style={{
+// //                      background: act.snoIssued ? '#f6ffed' : '#fffbe6',
 // //                      color: act.snoIssued ? '#52c41a' : '#faad14',
 // //                      padding: '4px 12px',
 // //                      borderColor: act.snoIssued ? '#b7eb8f' : '#ffe58f'
@@ -783,17 +876,16 @@
 // //                  )}
 // //               </div>
 
-// //                {/* АВР Toggle / Status */}
 // //               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
 // //                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
 // //                     Акт выполненных работ (АВР) отправлен
 // //                  </div>
 // //                  {isAccountant ? (
 // //                    <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-// //                       <input 
-// //                         type="checkbox" 
+// //                       <input
+// //                         type="checkbox"
 // //                         style={{ display: 'none' }}
-// //                         checked={!!act.avrSent} 
+// //                         checked={!!act.avrSent}
 // //                         onChange={async (e) => {
 // //                           const val = e.target.checked;
 // //                           setAct(prev => ({ ...prev, avrSent: val }));
@@ -802,7 +894,7 @@
 // //                         }}
 // //                       />
 // //                       <div className="toggle_slider" style={{
-// //                         width: 44, height: 24, background: act.avrSent ? 'var(--info)' : 'var(--muted)', 
+// //                         width: 44, height: 24, background: act.avrSent ? 'var(--info)' : 'var(--muted)',
 // //                         borderRadius: 24, position: 'relative', transition: 'background 0.3s'
 // //                       }}>
 // //                         <div className="toggle_knob" style={{
@@ -813,8 +905,8 @@
 // //                       </div>
 // //                    </label>
 // //                  ) : (
-// //                    <span className="badge" style={{ 
-// //                      background: act.avrSent ? '#e6f7ff' : '#fffbe6', 
+// //                    <span className="badge" style={{
+// //                      background: act.avrSent ? '#e6f7ff' : '#fffbe6',
 // //                      color: act.avrSent ? '#1890ff' : '#faad14',
 // //                      padding: '4px 12px',
 // //                      borderColor: act.avrSent ? '#91caff' : '#ffe58f'
@@ -824,17 +916,16 @@
 // //                  )}
 // //               </div>
 
-// //               {/* ЭСФ Toggle / Status */}
 // //               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
 // //                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
 // //                     Электронная счет-фактура (ЭСФ) выставлена
 // //                  </div>
 // //                  {isAccountant ? (
 // //                    <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-// //                       <input 
-// //                         type="checkbox" 
+// //                       <input
+// //                         type="checkbox"
 // //                         style={{ display: 'none' }}
-// //                         checked={!!act.esfIssued} 
+// //                         checked={!!act.esfIssued}
 // //                         onChange={async (e) => {
 // //                           const val = e.target.checked;
 // //                           setAct(prev => ({ ...prev, esfIssued: val }));
@@ -843,7 +934,7 @@
 // //                         }}
 // //                       />
 // //                       <div className="toggle_slider" style={{
-// //                         width: 44, height: 24, background: act.esfIssued ? '#722ed1' : 'var(--muted)', 
+// //                         width: 44, height: 24, background: act.esfIssued ? '#722ed1' : 'var(--muted)',
 // //                         borderRadius: 24, position: 'relative', transition: 'background 0.3s'
 // //                       }}>
 // //                         <div className="toggle_knob" style={{
@@ -854,8 +945,8 @@
 // //                       </div>
 // //                    </label>
 // //                  ) : (
-// //                    <span className="badge" style={{ 
-// //                      background: act.esfIssued ? '#f9f0ff' : '#fffbe6', 
+// //                    <span className="badge" style={{
+// //                      background: act.esfIssued ? '#f9f0ff' : '#fffbe6',
 // //                      color: act.esfIssued ? '#722ed1' : '#faad14',
 // //                      padding: '4px 12px',
 // //                      borderColor: act.esfIssued ? '#d3adf7' : '#ffe58f'
@@ -865,20 +956,18 @@
 // //                  )}
 // //               </div>
 
-// //                {/* Processed Toggle / Status */}
-// //                <div className={`processed_card ${act.isProcessedByAccountant ? 'processed_card--active' : ''}`}>
+// //               <div className={`processed_card ${act.isProcessedByAccountant ? 'processed_card--active' : ''}`}>
 // //                   <div className={`processed_text ${act.isProcessedByAccountant ? 'processed_text--active' : ''}`}>
 // //                      ✅ Заявка полностью обработана (Отработано)
 // //                   </div>
 
-// //                   {/* Notify Manager Button (for accountants) */}
 // //                   {isAccountant && (
 // //                     <div style={{ marginTop: 12 }}>
-// //                       <button 
-// //                         className="btn btn--sm" 
-// //                         style={{ 
-// //                           width: '100%', 
-// //                           background: act.updatedByAccountant && !act.isViewedByManager ? 'var(--bg)' : 'var(--info)', 
+// //                       <button
+// //                         className="btn btn--sm"
+// //                         style={{
+// //                           width: '100%',
+// //                           background: act.updatedByAccountant && !act.isViewedByManager ? 'var(--bg)' : 'var(--info)',
 // //                           color: act.updatedByAccountant && !act.isViewedByManager ? 'var(--text-muted)' : '#fff',
 // //                           borderColor: 'var(--line)',
 // //                           fontWeight: 700,
@@ -888,9 +977,9 @@
 // //                            if (notifyingManager) return;
 // //                            setNotifyingManager(true);
 // //                            try {
-// //                              await api.requests.update(act.id, { 
-// //                                updatedByAccountant: true, 
-// //                                isViewedByManager: false 
+// //                              await api.requests.update(act.id, {
+// //                                updatedByAccountant: true,
+// //                                isViewedByManager: false
 // //                              });
 // //                              setAct(prev => ({ ...prev, updatedByAccountant: true, isViewedByManager: false }));
 // //                            } catch (e) {
@@ -905,18 +994,14 @@
 // //                       </button>
 // //                     </div>
 // //                   )}
-// //                   {(isAccountant || isAdmin) ? (
+
+// //                   {canCompleteByAccountant ? (
 // //                     <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
 // //                        <input
 // //                          type="checkbox"
 // //                          style={{ display: 'none' }}
 // //                          checked={!!act.isProcessedByAccountant}
-// //                          onChange={async (e) => {
-// //                            const val = e.target.checked;
-// //                            setAct(prev => ({ ...prev, isProcessedByAccountant: val }));
-// //                            try { await api.requests.update(act.id, { isProcessedByAccountant: val }); }
-// //                            catch (err) { alert(err.message); setAct(prev => ({ ...prev, isProcessedByAccountant: !val })); }
-// //                          }}
+// //                          onChange={(e) => handleCompleteByAccountant(e.target.checked)}
 // //                        />
 // //                        <div className="toggle_slider" style={{
 // //                          width: 44, height: 24, background: act.isProcessedByAccountant ? 'var(--success)' : 'var(--muted)',
@@ -940,7 +1025,6 @@
 // //           </div>
 // //         )}
 
-// //         {/* Заказчик */}
 // //         <div className="info_card">
 // //           <div className="info_title">Заказчик</div>
 // //           <div className="kv">
@@ -950,18 +1034,17 @@
 // //             <div className="v">{act.customer?.phone || "—"}</div>
 // //             <div className="k">Компания</div>
 // //             <div className="v">{act.customer?.companyName || "—"}</div>
-// //                         <div className="k">БИН</div>
+// //             <div className="k">БИН</div>
 // //             <div className="v">{act.customer?.bin || "—"}</div>
 // //             <div className="k">Адрес (Юр)</div>
 // //             <div className="v">{act.customer?.jurAddress || "—"}</div>
-// //              <div className="k">Банк</div>
+// //             <div className="k">Банк</div>
 // //             <div className="v">{act.customer?.bank || "—"}</div>
-// //              <div className="k">Счет</div>
+// //             <div className="k">Счет</div>
 // //             <div className="v">{act.customer?.account || "—"}</div>
 // //           </div>
 // //         </div>
-        
-// //         {/* Отправитель */}
+
 // //         <div className="info_card">
 // //           <div className="info_title">Грузоотправитель</div>
 // //           {act.isSenderSameAsCustomer ? (
@@ -986,7 +1069,7 @@
 // //           )}
 // //         </div>
 
-// //                 <div className="info_card">
+// //         <div className="info_card">
 // //           <div className="info_title">Получатель</div>
 // //            <div className="kv">
 // //             <div className="k">ФИО / Название</div>
@@ -995,20 +1078,19 @@
 // //             <div className="v">{act.receiver?.phone || "—"}</div>
 // //             <div className="k">Компания</div>
 // //             <div className="v">{act.receiver?.companyName || "—"}</div>
-// //                         <div className="k">БИН</div>
+// //             <div className="k">БИН</div>
 // //             <div className="v">{act.receiver?.bin || "—"}</div>
 // //             <div className="k">Адрес (Юр)</div>
 // //             <div className="v">{act.receiver?.jurAddress || "—"}</div>
-// //              <div className="k">Банк</div>
+// //             <div className="k">Банк</div>
 // //             <div className="v">{act.receiver?.bank || "—"}</div>
-// //              <div className="k">Счет</div>
+// //             <div className="k">Счет</div>
 // //             <div className="v">{act.receiver?.account || "—"}</div>
 // //           </div>
 // //         </div>
-        
+
 // //       </div>
-      
-// //        {/* Маршрут */}
+
 // //        <div className="info_card" style={{ marginTop: 14 }}>
 // //             <div className="info_title">Маршрут и сроки</div>
 // //             <div className="kv">
@@ -1041,8 +1123,6 @@
 // //                    act.docAttrs?.transportType === "train" ? "Поезд рейс" : "—"}
 // //                 </div>
 // //               </div>
-
-               
 
 // //               {act.docAttrs?.flightNumber && (
 // //                 <div className="field">
@@ -1096,40 +1176,27 @@
 // //                   )}
 // //                 </>
 // //               )}
-// //  {act.docAttrs?.driver && (
+// //               {act.docAttrs?.driver && (
 // //                 <div className="field">
 // //                   <div className="label">{(act.docAttrs.transportType === 'train' || act.docAttrs.transportType === 'plane') ? 'Ответственный' : 'Водитель'}</div>
 // //                   <div className="v">{act.docAttrs.driver}</div>
 // //                 </div>
 // //               )}
-// //  {/* Удалена Масса брутто по просьбе пользователя */}
-
-// //               <div className="field">
-// //               {/* Удалены: Масса, Места, Прибытие/Выгрузка по просьбе пользователя */}
-// //               </div>
-
-// //               {/* Удален Оплачиваемый вес (Авиа) по просьбе пользователя */}
-
-// //               {/* Удалены сведения о грузе по просьбе пользователя */}
-
 // //             </div>
 // //           </div>
 // //         </div>
 // //       )}
 
-// //       {/* Груз */}
 // //       <div className="info_card" style={{ marginTop: 14 }}>
 // //         <div className="info_title">Груз</div>
 // //         <div className="text_block text_block--mb10">{act.cargoText || "—"}</div>
-        
+
 // //          <div className="kv kv--cargo">
 // //            <div>
 // //              <div className="k">Вид упаковки</div>
 // //              <div className="v">{act.packaging || "—"}</div>
 // //            </div>
 // //          </div>
-        
-
 
 // //         {Array.isArray(act.cargoRows) && (
 // //             <div className="table_wrap">
@@ -1222,7 +1289,8 @@
 // //       )}
 // //     </>
 // //   );
-// // }
+// // }  
+
 
 
 // import React, { useEffect, useState, useRef } from "react";
@@ -1270,7 +1338,6 @@
 //     }
 //   };
 
-//   // Определяем контекст (из какого списка пришли)
 //   const isSMRPath = location.pathname.startsWith('/smr');
 //   const isTTNPath = location.pathname.startsWith('/requests');
 //   const isWarehousePath = location.pathname.startsWith('/warehouse');
@@ -1302,12 +1369,21 @@
 //   });
 
 //   // ---- ХЕЛПЕРЫ ДЛЯ ТЗ ----
-//   // Есть ли у заявки сформированный документ (СМР/ТТН/Склад)
 //   const hasFormedDocument = () => {
 //     if (!act) return false;
-//     if (act.isWarehouse) return true;
 //     const t = act.type || act.docType;
-//     return t === 'ttn' || t === 'smr' || t === 'TTN' || t === 'SMR' || t === 'SKLAD';
+//     if (t === 'ttn' || t === 'smr' || t === 'TTN' || t === 'SMR') return true;
+//     if (act.isWarehouse) {
+//       if (act.warehouseFormed === true) return true;
+//       if (Array.isArray(act.warehouseServices) && act.warehouseServices.length > 0) {
+//         const hasRealService = act.warehouseServices.some(
+//           s => s && (s.name || '').toString().trim().length > 0
+//         );
+//         return hasRealService;
+//       }
+//       return false;
+//     }
+//     return false;
 //   };
 
 //   const loadAct = async () => {
@@ -1436,21 +1512,16 @@
 //     }
 //   };
 
-//   // ТЗ: при переносе из отработанных дата должна быть актуальной.
-//   // Используем новый endpoint /requests/:id/restore, который на бэке
-//   // обновляет date на сегодня и обнуляет completedAt.
 //   const handleReturnToRequests = async () => {
 //     if (!id || !act) return;
 //     if (window.confirm("Вернуть документ из отработанных в список заявок? Дата будет обновлена на сегодняшнюю.")) {
 //       setActionLoading(true);
 //       try {
-//         // 1) Сбрасываем флаги бухгалтерии
 //         await api.requests.update(id, {
 //           readyForAccountant: false,
 //           isDeferredForAccountant: false,
 //           isProcessedByAccountant: false,
 //         });
-//         // 2) Восстанавливаем через специальный endpoint — он проставит актуальную дату
 //         const updated = await api.requests.restore(id);
 //         setAct(prev => ({
 //           ...prev,
@@ -1471,13 +1542,11 @@
 //     }
 //   };
 
-//   // ТЗ: Нельзя отправить бухгалтеру до формирования СМР/ТТН/Склад
 //   const handleSendToAccountant = async () => {
 //     if (!id || !act) return;
 
-//     // Фронт-проверка (бэк тоже проверяет)
 //     if (!hasFormedDocument()) {
-//       alert("Сначала сформируйте документ: СМР, ТТН или Складскую заявку. Без документа отправить бухгалтеру нельзя.");
+//       alert("Сначала сформируйте документ: СМР, ТТН или Складскую заявку (добавьте хотя бы одну складскую услугу). Без сформированного документа отправить бухгалтеру нельзя.");
 //       return;
 //     }
 
@@ -1533,7 +1602,7 @@
 //   const handleAnnul = async () => {
 //     if (!id || !act) return;
 //     const num = act.docNumber || act.number;
-//     if (window.confirm(`Аннулировать складскую заявку №${num}?`)) {
+//     if (window.confirm(`Аннулировать документ №${num}?`)) {
 //       setActionLoading(true);
 //       try {
 //         const updated = await api.requests.update(id, { status: "canceled" });
@@ -1543,6 +1612,31 @@
 //       } finally {
 //         setActionLoading(false);
 //       }
+//     }
+//   };
+
+//   // 🆕 ТЗ v2: Аннулировать и создать новую (клон с новым номером)
+//   const handleAnnulAndClone = async () => {
+//     if (!id || !act) return;
+//     if (!window.confirm("Аннулировать текущий документ и создать новый со всеми теми же данными?")) return;
+
+//     setActionLoading(true);
+//     try {
+//       const result = await api.requests.cancelAndClone(id);
+//       const newId = result?.created?.id || result?.id;
+//       if (newId) {
+//         alert("Документ аннулирован, создан новый. Открываю редактирование...");
+//         if (act.isWarehouse) nav(`/warehouse/${newId}/edit`);
+//         else if (act.type === 'smr' || act.docType === 'smr') nav(`/smr/${newId}/edit`);
+//         else if (act.type === 'ttn' || act.docType === 'ttn') nav(`/requests/${newId}/edit`);
+//         else nav(`/acts/${newId}/edit`);
+//       } else {
+//         alert("Документ создан, но не получилось определить ID. Обновите страницу.");
+//       }
+//     } catch (err) {
+//       alert("Ошибка: " + (err.message || err));
+//     } finally {
+//       setActionLoading(false);
 //     }
 //   };
 
@@ -1560,18 +1654,14 @@
 //     }
 //   };
 
-//   // ТЗ: Кнопка "Заявка отработана бухгалтером" есть только у бухгалтера.
-//   // Использует новый endpoint /requests/:id/complete-by-accountant.
 //   const handleCompleteByAccountant = async (val) => {
 //     if (!id || !act) return;
 //     setAct(prev => ({ ...prev, isProcessedByAccountant: val }));
 //     try {
 //       if (val) {
-//         // Используем специальный endpoint — он обновит completedAt
 //         await api.requests.completeByAccountant(id);
 //         await api.requests.update(id, { isProcessedByAccountant: true });
 //       } else {
-//         // Снятие отметки — обычный update
 //         await api.requests.update(id, { isProcessedByAccountant: false });
 //       }
 //     } catch (err) {
@@ -1650,10 +1740,17 @@
 //     );
 //   }
 
-//   // Флаги для ТЗ
-//   const canSendToAccountant = hasFormedDocument(); // только после формирования документа
-//   const isActualAccountant = isAccountant; // бухгалтер (может быть ACCOUNTANT/ACCOUNTANT2)
-//   const canCompleteByAccountant = isActualAccountant; // кнопка "Заявка отработана бухгалтером" — только бухгалтеру
+//   const canSendToAccountant = hasFormedDocument();
+//   const isActualAccountant = isAccountant;
+//   const canCompleteByAccountant = isActualAccountant;
+
+//   const blockReasonText = (() => {
+//     if (!act) return "";
+//     if (act.isWarehouse) {
+//       return "Отправка бухгалтеру доступна только после формирования Складской заявки (добавьте хотя бы одну складскую услугу).";
+//     }
+//     return "Отправка бухгалтеру доступна только после формирования СМР или ТТН.";
+//   })();
 
 //   return (
 //     <>
@@ -1688,7 +1785,6 @@
 //                 </button>
 //               )}
 
-
 //               {act.status !== 'canceled' && !act.readyForAccountant && (
 //                 <button
 //                   className={`btn ${act.isDeferredForAccountant ? 'btn--primary' : 'btn--ghost'}`}
@@ -1702,6 +1798,19 @@
 //               {act.status !== 'canceled' && (
 //                 <button className="btn btn--danger" onClick={handleAnnul} disabled={actionLoading}>
 //                    {actionLoading ? "..." : "Аннулировать"}
+//                 </button>
+//               )}
+
+//               {/* 🆕 ТЗ v2: Аннулировать и создать новую */}
+//               {act.status !== 'canceled' && (
+//                 <button
+//                   className="btn"
+//                   onClick={handleAnnulAndClone}
+//                   disabled={actionLoading}
+//                   title="Аннулировать текущий документ и создать новый с теми же данными"
+//                   style={{ background: '#fa8c16', borderColor: '#fa8c16', color: '#fff' }}
+//                 >
+//                   {actionLoading ? "..." : "↻ Аннулировать и создать новую"}
 //                 </button>
 //               )}
 
@@ -1868,8 +1977,6 @@
 //         </div>
 //       )}
 
-//       {/* ТЗ: На этапе заявки нет возможности отправить Бухгалтеру, только после формирования СМР/ТТН/Склад.
-//           Баннер теперь учитывает canSendToAccountant. */}
 //       {(!isAccountant || isAdmin) && act.status !== 'canceled' && !isDeferredPath && (
 //         <div className="action_banner" style={{
 //            marginTop: 16,
@@ -1902,7 +2009,7 @@
 //                   ? ""
 //                   : (canSendToAccountant
 //                       ? "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СНО/АВР/ЭСФ"
-//                       : "Отправка бухгалтеру доступна только после формирования СМР, ТТН или Складской заявки")
+//                       : blockReasonText)
 //                 }
 //               </div>
 //            </div>
@@ -1911,14 +2018,15 @@
 //                 className="btn btn--primary"
 //                 onClick={handleSendToAccountant}
 //                 disabled={actionLoading || !canSendToAccountant}
-//                 title={!canSendToAccountant ? "Сначала сформируйте СМР/ТТН/Склад" : ""}
+//                 title={!canSendToAccountant ? blockReasonText : ""}
 //                 style={{
 //                   background: canSendToAccountant ? '#52c41a' : '#d9d9d9',
 //                   borderColor: canSendToAccountant ? '#52c41a' : '#d9d9d9',
 //                   color: '#fff',
 //                   padding: '10px 24px',
 //                   fontWeight: 700,
-//                   cursor: canSendToAccountant ? 'pointer' : 'not-allowed'
+//                   cursor: canSendToAccountant ? 'pointer' : 'not-allowed',
+//                   opacity: canSendToAccountant ? 1 : 0.6
 //                 }}
 //               >
 //                 {actionLoading ? "Отправка..." : "▶ Отправить бухгалтеру"}
@@ -1943,7 +2051,6 @@
 //         </div>
 //       )}
 
-//       {/* ТЗ: QR доступен на ВСЕХ этапах (кроме аннулированных) */}
 //       {act.status !== 'canceled' && (
 //         <div style={{ marginTop: '10px', textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
 //             <button
@@ -1961,7 +2068,6 @@
 //               ⬇ Скачать QR
 //             </button>
 
-//             {/* QR-контейнер: всегда рендерим (для скачивания), но скрываем если showQR=false */}
 //             <div
 //               ref={qrRef}
 //               style={{
@@ -2043,7 +2149,6 @@
 //       </div>
 
 //       <div className="split_2" style={{ marginTop: 14 }}>
-//         {/* SECTION: Бухгалтерия */}
 //         {(isAccountant || isSentPath) && (
 //           <div className="info_card" style={{ gridColumn: 'span 2', borderRadius: 8, padding: 20 }}>
 //             <div className="info_title" style={{ display: 'flex', alignItems: 'center', gap: 8, margin: 0, borderBottom: '1px solid var(--line)', paddingBottom: 12, marginBottom: 16 }}>
@@ -2051,7 +2156,6 @@
 //             </div>
 //             <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap' }}>
 
-//               {/* СНО */}
 //               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
 //                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
 //                     Счет на оплату (СНО) выставлен
@@ -2092,7 +2196,6 @@
 //                  )}
 //               </div>
 
-//               {/* АВР */}
 //               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
 //                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
 //                     Акт выполненных работ (АВР) отправлен
@@ -2133,7 +2236,6 @@
 //                  )}
 //               </div>
 
-//               {/* ЭСФ */}
 //               <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: 'var(--card)', padding: '12px 16px', borderRadius: 6, border: '1px solid var(--line)', flex: '1 1 min-content' }}>
 //                  <div style={{ flex: 1, fontWeight: 500, fontSize: '0.95rem', color: 'var(--text)' }}>
 //                     Электронная счет-фактура (ЭСФ) выставлена
@@ -2174,14 +2276,11 @@
 //                  )}
 //               </div>
 
-//               {/* ТЗ: Кнопка "Заявка отработана бухгалтером" видна ТОЛЬКО бухгалтеру.
-//                   Менеджер и админ видят только статус (read-only). */}
 //               <div className={`processed_card ${act.isProcessedByAccountant ? 'processed_card--active' : ''}`}>
 //                   <div className={`processed_text ${act.isProcessedByAccountant ? 'processed_text--active' : ''}`}>
 //                      ✅ Заявка полностью обработана (Отработано)
 //                   </div>
 
-//                   {/* Notify Manager Button (for accountants) */}
 //                   {isAccountant && (
 //                     <div style={{ marginTop: 12 }}>
 //                       <button
@@ -2216,7 +2315,6 @@
 //                     </div>
 //                   )}
 
-//                   {/* Toggle — только для бухгалтера. Не для админа, не для менеджера. */}
 //                   {canCompleteByAccountant ? (
 //                     <label className="toggle_switch" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
 //                        <input
@@ -2247,7 +2345,6 @@
 //           </div>
 //         )}
 
-//         {/* Заказчик */}
 //         <div className="info_card">
 //           <div className="info_title">Заказчик</div>
 //           <div className="kv">
@@ -2268,7 +2365,6 @@
 //           </div>
 //         </div>
 
-//         {/* Отправитель */}
 //         <div className="info_card">
 //           <div className="info_title">Грузоотправитель</div>
 //           {act.isSenderSameAsCustomer ? (
@@ -2315,7 +2411,6 @@
 
 //       </div>
 
-//        {/* Маршрут */}
 //        <div className="info_card" style={{ marginTop: 14 }}>
 //             <div className="info_title">Маршрут и сроки</div>
 //             <div className="kv">
@@ -2412,7 +2507,6 @@
 //         </div>
 //       )}
 
-//       {/* Груз */}
 //       <div className="info_card" style={{ marginTop: 14 }}>
 //         <div className="info_title">Груз</div>
 //         <div className="text_block text_block--mb10">{act.cargoText || "—"}</div>
@@ -2517,8 +2611,6 @@
 //   );
 // }
 
-
-
 import React, { useEffect, useState, useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
@@ -2595,21 +2687,13 @@ export default function ActDetailsPage() {
   });
 
   // ---- ХЕЛПЕРЫ ДЛЯ ТЗ ----
-  // Есть ли у заявки СФОРМИРОВАННЫЙ документ (СМР/ТТН/Склад)
-  // ВАЖНО: для склада недостаточно флага isWarehouse — там тоже надо чтобы был факт формирования
-  // (как минимум одна складская услуга или явный признак warehouseFormed).
   const hasFormedDocument = () => {
     if (!act) return false;
-
-    // СМР / ТТН — формирование явное (через "Сформировать ТТН/СМР")
     const t = act.type || act.docType;
     if (t === 'ttn' || t === 'smr' || t === 'TTN' || t === 'SMR') return true;
-
-    // Склад: считаем сформированным ТОЛЬКО если есть услуги или явный флаг
     if (act.isWarehouse) {
       if (act.warehouseFormed === true) return true;
       if (Array.isArray(act.warehouseServices) && act.warehouseServices.length > 0) {
-        // Хотя бы одна услуга с заполненным наименованием
         const hasRealService = act.warehouseServices.some(
           s => s && (s.name || '').toString().trim().length > 0
         );
@@ -2617,7 +2701,6 @@ export default function ActDetailsPage() {
       }
       return false;
     }
-
     return false;
   };
 
@@ -2777,7 +2860,6 @@ export default function ActDetailsPage() {
     }
   };
 
-  // ТЗ: Нельзя отправить бухгалтеру до формирования СМР/ТТН/Склад
   const handleSendToAccountant = async () => {
     if (!id || !act) return;
 
@@ -2838,7 +2920,7 @@ export default function ActDetailsPage() {
   const handleAnnul = async () => {
     if (!id || !act) return;
     const num = act.docNumber || act.number;
-    if (window.confirm(`Аннулировать складскую заявку №${num}?`)) {
+    if (window.confirm(`Аннулировать документ №${num}?`)) {
       setActionLoading(true);
       try {
         const updated = await api.requests.update(id, { status: "canceled" });
@@ -2848,6 +2930,32 @@ export default function ActDetailsPage() {
       } finally {
         setActionLoading(false);
       }
+    }
+  };
+
+  // 🆕 ТЗ v2: Аннулировать и создать новую (клон с новым номером)
+  const handleAnnulAndClone = async () => {
+    if (!id || !act) return;
+    if (!window.confirm("Аннулировать текущий документ и создать новый со всеми теми же данными?")) return;
+
+    setActionLoading(true);
+    try {
+      const result = await api.requests.cancelAndClone(id);
+      const newId = result?.id;
+      const newNumber = result?.docNumber || "";
+      if (newId) {
+        alert(`Документ аннулирован.\nСоздана новая заявка №${newNumber}.\nОткрываю...`);
+        if (act.isWarehouse) nav(`/warehouse/${newId}`);
+        else if (act.type === 'smr' || act.docType === 'smr') nav(`/smr/${newId}`);
+        else if (act.type === 'ttn' || act.docType === 'ttn') nav(`/requests/${newId}`);
+        else nav(`/acts/${newId}`);
+      } else {
+        alert("Документ создан, но не получилось определить ID. Обновите страницу.");
+      }
+    } catch (err) {
+      alert("Ошибка: " + (err.message || err));
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -2955,7 +3063,6 @@ export default function ActDetailsPage() {
   const isActualAccountant = isAccountant;
   const canCompleteByAccountant = isActualAccountant;
 
-  // Текст почему нельзя отправить бухгалтеру
   const blockReasonText = (() => {
     if (!act) return "";
     if (act.isWarehouse) {
@@ -2975,29 +3082,41 @@ export default function ActDetailsPage() {
         <div className="topbar_actions">
           <button className="btn" onClick={() => nav(basePath)}>← Назад</button>
 
-          {(!isAccountant || isAdmin) && !isSentPath && (
+          {(!isAccountant || isAdmin) && (
             <>
+              {/* 🆕 ТЗ v2: менеджер может редактировать ВСЕГДА (даже отправленные бухгалтеру и завершённые).
+                  Бэк автоматом сбросит флаги завершения и вернёт в активные у бухгалтера с пометкой "правка". */}
               <button
                 className="btn btn--accent"
-                onClick={() => nav(`${basePath}/${act.id}/edit`)}
-                disabled={act.status === 'canceled' || act.readyForAccountant || actionLoading}
+                onClick={() => {
+  // Правильный путь редактирования зависит от типа документа, а не от того где он отображается
+  let editBase = '/acts';
+  if (act.isWarehouse) editBase = '/warehouse';
+  else if (act.type === 'smr' || act.docType === 'smr') editBase = '/smr';
+  else if (act.type === 'ttn' || act.docType === 'ttn') editBase = '/requests';
+  nav(`${editBase}/${act.id}/edit`);
+}}
+                disabled={act.status === 'canceled' || actionLoading}
+                title={act.readyForAccountant
+                  ? "Внимание: при сохранении заявка вернётся в активные у бухгалтера с пометкой 'правка'"
+                  : ""}
               >
-                Редактировать
+                {act.readyForAccountant ? "✏ Редактировать (вернётся к бухгалтеру)" : "Редактировать"}
               </button>
 
-              {act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "ttn" && act.docType !== "ttn" && (
+              {!isSentPath && act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "ttn" && act.docType !== "ttn" && (
                 <button className="btn btn--ghost" onClick={() => chooseDocType("ttn")} disabled={actionLoading}>
                   {actionLoading ? "Формирование..." : "Сформировать ТТН"}
                 </button>
               )}
 
-              {act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "smr" && act.docType !== "smr" && (
+              {!isSentPath && act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "smr" && act.docType !== "smr" && (
                 <button className="btn btn--ghost" onClick={() => chooseDocType("smr")} disabled={actionLoading}>
                   {actionLoading ? "Формирование..." : "Сформировать СМР"}
                 </button>
               )}
 
-              {act.status !== 'canceled' && !act.readyForAccountant && (
+              {!isSentPath && act.status !== 'canceled' && !act.readyForAccountant && (
                 <button
                   className={`btn ${act.isDeferredForAccountant ? 'btn--primary' : 'btn--ghost'}`}
                   onClick={handleToggleDefer}
@@ -3007,13 +3126,26 @@ export default function ActDetailsPage() {
                 </button>
               )}
 
-              {act.status !== 'canceled' && (
+              {!isSentPath && act.status !== 'canceled' && (
                 <button className="btn btn--danger" onClick={handleAnnul} disabled={actionLoading}>
                    {actionLoading ? "..." : "Аннулировать"}
                 </button>
               )}
 
-              {act.status !== 'canceled' && act.docType && (
+              {/* 🆕 ТЗ v2: Аннулировать и создать новую */}
+              {!isSentPath && act.status !== 'canceled' && (
+                <button
+                  className="btn"
+                  onClick={handleAnnulAndClone}
+                  disabled={actionLoading}
+                  title="Аннулировать текущий документ и создать новый с теми же данными"
+                  style={{ background: '#fa8c16', borderColor: '#fa8c16', color: '#fff' }}
+                >
+                  {actionLoading ? "..." : "↻ Аннулировать и создать новую"}
+                </button>
+              )}
+
+              {!isSentPath && act.status !== 'canceled' && act.docType && (
                 <button className="btn btn--danger" onClick={handleCancelFormation}>
                   Отменить формирование
                 </button>
@@ -3176,7 +3308,6 @@ export default function ActDetailsPage() {
         </div>
       )}
 
-      {/* ТЗ: На этапе заявки нет возможности отправить Бухгалтеру, только после формирования СМР/ТТН/Склад */}
       {(!isAccountant || isAdmin) && act.status !== 'canceled' && !isDeferredPath && (
         <div className="action_banner" style={{
            marginTop: 16,
@@ -3206,7 +3337,7 @@ export default function ActDetailsPage() {
               </div>
               <div className="muted" style={{fontSize: '0.9rem'}}>
                 {act.readyForAccountant
-                  ? ""
+                  ? "Можно редактировать заявку — после сохранения она автоматически вернётся к бухгалтеру в Активные с пометкой 'правка'"
                   : (canSendToAccountant
                       ? "После отправки бухгалтер сможет увидеть заявку и приступить к оформлению СНО/АВР/ЭСФ"
                       : blockReasonText)
@@ -3236,22 +3367,11 @@ export default function ActDetailsPage() {
                 <div style={{ color: '#52c41a', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
                    <span>✓ Отправлено</span>
                 </div>
-                {(!isAccountant || isAdmin) && (
-                  <button
-                    className="btn btn--sm"
-                    onClick={handleReturnToRequests}
-                    disabled={actionLoading}
-                    style={{ fontSize: '0.8rem', padding: '4px 12px' }}
-                  >
-                    ↩ Вернуть в работу
-                  </button>
-                )}
              </div>
            )}
         </div>
       )}
 
-      {/* ТЗ: QR доступен на ВСЕХ этапах (кроме аннулированных) */}
       {act.status !== 'canceled' && (
         <div style={{ marginTop: '10px', textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button
@@ -3810,4 +3930,4 @@ export default function ActDetailsPage() {
       )}
     </>
   );
-}  
+}

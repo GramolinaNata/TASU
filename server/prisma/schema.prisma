@@ -8,15 +8,18 @@ datasource db {
 }
 
 model User {
-  id            Int       @id @default(autoincrement())
-  email         String    @unique
-  password      String
-  plainPassword String?
-  name          String
-  role          String    @default("MANAGER")
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  requests      Request[]
+  id                Int       @id @default(autoincrement())
+  email             String    @unique
+  password          String
+  plainPassword     String?
+  name              String
+  role              String    @default("MANAGER")
+  // ТЗ: Частное лицо — отдельная роль, привязка к компании
+  assignedCompanyId String?
+  contactPhone      String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  requests          Request[]
 }
 
 model Company {
@@ -34,6 +37,10 @@ model Company {
   kbe            String    @default("")
   bankDetails    String    @default("")
   managerDetails String    @default("")
+  // ТЗ: Компании — поле для PNG с печатью и подписью
+  stamp          String?
+  // ТЗ: Организации — нельзя удалять, только аннулировать
+  status         String    @default("active")
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   logo           String?
@@ -41,26 +48,36 @@ model Company {
 }
 
 model Request {
-  id          String   @id @default(uuid())
-  status      String   @default("Заявка")
+  id          String    @id @default(uuid())
+  status      String    @default("Заявка")
   date        String
   companyId   String
   managerId   Int
-  type        String   @default("REQUEST")
+  type        String    @default("REQUEST")
   route       String?
   cargo       String?
-  docNumber   String?  @unique
-  totalSum    String?  @default("")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  docNumber   String?   @unique
+  totalSum    String?   @default("")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   completedAt DateTime?
   details     String?
+  // ТЗ: Аналитика — фильтр по оплачено/неоплачено
+  isPaid                  Boolean   @default(false)
+  paidAt                  DateTime?
+  // ТЗ: Бухгалтер — финальное завершение работы
+  isFullyCompleted        Boolean   @default(false)
+  fullyCompletedAt        DateTime?
+  // ТЗ: Бухгалтер — если отредактировали после завершения, должна попасть в сток как новая
+  reEditedAfterCompletion Boolean   @default(false)
   company     Company  @relation(fields: [companyId], references: [id])
   manager     User     @relation(fields: [managerId], references: [id])
 
   @@index([status])
   @@index([companyId])
   @@index([type])
+  @@index([isPaid])
+  @@index([isFullyCompleted])
 }
 
 model Contract {
@@ -82,21 +99,23 @@ model Contract {
 }
 
 model Counterparty {
-  id          String   @id @default(uuid())
-  name        String
-  phone       String   @default("")
-  email       String   @default("")
-  companyName String   @default("")
-  bin         String   @default("")
-  address     String   @default("")
-  bank        String   @default("")
-  bik         String   @default("")
-  account     String   @default("")
-  kbe         String   @default("")
-  director    String   @default("")
-  companyId   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid())
+  name         String
+  phone        String   @default("")
+  email        String   @default("")
+  companyName  String   @default("")
+  bin          String   @default("")
+  address      String   @default("")
+  bank         String   @default("")
+  bik          String   @default("")
+  account      String   @default("")
+  kbe          String   @default("")
+  director     String   @default("")
+  // ТЗ: Контрагенты — добавить контактный номер
+  contactPhone String?  @default("")
+  companyId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
 model Expense {
@@ -106,10 +125,14 @@ model Expense {
   description String   @default("")
   amount      Float
   docNumber   String   @default("")
+  // ТЗ: Расход на существующую накладную (по умолчанию категория "Перевозка")
+  requestId   String?
   companyId   String?
   userId      Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([requestId])
 }
 
 model Tariff {
@@ -117,22 +140,37 @@ model Tariff {
   city          String   @unique
   pricePerKg    Float    @default(0)
   deliveryPrice Float    @default(0)
+  // ТЗ: Тарифы частных лиц — диапазоны (до 10, до 20, до 30, до 80, до 150, до 300, до 600 кг)
+  weightRanges  Json?
+  // ТЗ: Возможность добавить доп. сумму к тарифу частного лица
+  extraSum      Float    @default(0)
+  // Пометка что тариф для частных лиц
+  isPrivate     Boolean  @default(false)
   companyId     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
 
 model Batch {
-  id           String   @id @default(uuid())
-  number       String   @unique
+  id           String    @id @default(uuid())
+  number       String    @unique
   city         String
-  driverName   String   @default("")
-  driverPhone  String   @default("")
-  carNumber    String   @default("")
-  deliveryCost String   @default("")
+  driverName   String    @default("")
+  driverPhone  String    @default("")
+  carNumber    String    @default("")
+  deliveryCost String    @default("")
   requestIds   String
   companyId    String?
-  status       String   @default("created")
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-}
+  status       String    @default("created")
+  // ТЗ: Партии — Активные / Сформированные
+  isFormed     Boolean   @default(false)
+  formedAt     DateTime?
+  // Сохранённая ведомость (HTML/JSON для печати)
+  vedomostData String?
+  totalSeats   Int       @default(0)
+  totalWeight  Float     @default(0)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([isFormed])
+} 
