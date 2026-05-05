@@ -550,7 +550,7 @@ export default function AdminStatsPage() {
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
       .slice(0, 8);
 
-    const sortedMonths = Object.keys(monthlyData).sort();
+    const sortedMonths = [...Object.keys(monthlyData)].sort();
     const chartData = sortedMonths.map(m => ({
       name: new Date(`${m}-01`).toLocaleDateString('ru-RU', { month: 'short' }),
       revenue: monthlyData[m].turnover,
@@ -558,7 +558,7 @@ export default function AdminStatsPage() {
     }));
 
     const statusData = Object.entries(statusGroups).map(([name, value]) => ({ name, value }));
-    const topClients = Object.values(clientGroups).sort((a, b) => b.value - a.value).slice(0, 5);
+    const topClients = [...Object.values(clientGroups)].sort((a, b) => b.value - a.value).slice(0, 5);
 
     const managerMatrix = users.map(u => {
       const months = sortedMonths.slice(-6).map(m => ({
@@ -906,9 +906,9 @@ export default function AdminStatsPage() {
           {expensesSummary.byCategory && expensesSummary.byCategory.length > 0 && (
             <div style={{ marginTop: 16 }}>
               <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: 8 }}>Топ категории</div>
-              {expensesSummary.byCategory
-                .sort((a, b) => b.amount - a.amount)
-                .slice(0, 5)
+              {[...expensesSummary.byCategory]
+  .sort((a, b) => b.amount - a.amount)
+  .slice(0, 5)
                 .map((c, idx) => (
                   <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', fontSize: 13 }}>
                     <span>{c.category}</span>
