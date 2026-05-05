@@ -7,7 +7,7 @@
     "dev": "ts-node --transpile-only src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "migrate": "prisma migrate deploy",
+    "migrate": "prisma migrate resolve --rolled-back 20260101000000_baseline || true && prisma migrate resolve --applied 20260101000000_baseline || true && prisma migrate resolve --applied 20260310225022_add_contracts_v2 || true && prisma migrate resolve --applied 20260319032208_add_counterparty || true && prisma migrate deploy",
     "db:push": "prisma db push",
     "seed": "ts-node --transpile-only prisma/seed.ts"
   },
