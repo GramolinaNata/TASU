@@ -27,3 +27,6 @@ dist-ssr
 *.sql
 *OLD.docx
 schema.NEW_TZ.prisma
+
+# Allow migration files even though *.sql is ignored
+!server/prisma/migrations/**/*.sql

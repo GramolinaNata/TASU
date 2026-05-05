@@ -627,7 +627,7 @@ export default function SimpleActPage() {
                 </div>
                 <input type="number" value={form.totalSum} onChange={e => { setForm({...form, totalSum: e.target.value}); setAutoCalc(false); }} placeholder="0" />
                 <div style={{ marginTop: 4, fontSize: "0.75rem", color: "#888" }}>
-                  Сумма сохраняется в системе, но не печатается на наклейке (ТЗ: частные лица)
+                
                 </div>
               </div>
             </div>
