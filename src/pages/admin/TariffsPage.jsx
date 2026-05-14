@@ -215,8 +215,7 @@ const EMPTY_FORM = {
   // 🆕 ТЗ v2
   isPrivate: false,
   extraSum: 0,
-  weightRanges: WEIGHT_RANGES.reduce((acc, r) => ({ ...acc, [r.key]: '' }), {}),
-};
+weightRanges: WEIGHT_RANGES.reduce((acc, r) => ({ ...acc, [r.key]: '', [r.key + '_delivery']: '' }), {}),};
 
 export default function TariffsPage() {
   const [tariffs, setTariffs] = useState([]);
@@ -293,9 +292,10 @@ export default function TariffsPage() {
     setEditingTariff(t);
     // Раскладываем weightRanges из БД (JSONB) в плоскую форму
     const wr = t.weightRanges && typeof t.weightRanges === 'object' ? t.weightRanges : {};
-    const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
+const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
       ...acc,
       [r.key]: wr[r.key] ?? '',
+      [r.key + '_delivery']: wr[r.key + '_delivery'] ?? '',
     }), {});
     setForm({
       city: t.city,
@@ -510,26 +510,34 @@ export default function TariffsPage() {
               {/* 🆕 ТЗ v2: Частное лицо — диапазоны весов + доп. сумма */}
               {form.isPrivate && (
                 <>
-                  <div style={{ marginBottom: 16 }}>
+                 <div style={{ marginBottom: 16 }}>
                     <div className="label" style={{ marginBottom: 8 }}>Диапазоны весов (тг за диапазон)</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                      {WEIGHT_RANGES.map(r => (
-                        <div key={r.key} className="field">
-                          <div className="label" style={{ fontSize: '0.75rem' }}>{r.label}</div>
-                          <input
-                            type="number"
-                            value={form.weightRanges[r.key] || ''}
-                            onChange={e => updateWeightRange(r.key, e.target.value)}
-                            placeholder="0"
-                          />
-                        </div>
-                      ))}
+                    <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 10, alignItems: 'center', marginBottom: 6 }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.75rem', color: '#666' }}>Вес</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.75rem', color: '#666' }}>Тариф (тг)</div>
+                      <div style={{ fontWeight: 700, fontSize: '0.75rem', color: '#666' }}>Доставка (тг)</div>
                     </div>
+                    {WEIGHT_RANGES.map(r => (
+                      <div key={r.key} style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 10, alignItems: 'center', marginBottom: 8 }}>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 500 }}>{r.label}</div>
+                        <input
+                          type="number"
+                          value={form.weightRanges[r.key] || ''}
+                          onChange={e => updateWeightRange(r.key, e.target.value)}
+                          placeholder="0"
+                        />
+                        <input
+                          type="number"
+                          value={form.weightRanges[r.key + '_delivery'] || ''}
+                          onChange={e => updateWeightRange(r.key + '_delivery', e.target.value)}
+                          placeholder="0"
+                        />
+                      </div>
+                    ))}
                     <div className="muted" style={{ fontSize: '0.7rem', marginTop: 8 }}>
                       Заполните только нужные диапазоны. Пустые поля не сохранятся.
                     </div>
                   </div>
-
                   <div className="field" style={{ marginBottom: 24, padding: 12, background: '#fff7ed', borderRadius: 8, border: '1px dashed #fdba74' }}>
                     <div className="label">
                       Доп. сумма к тарифу (тг)

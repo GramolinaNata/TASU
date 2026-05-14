@@ -315,6 +315,7 @@ function getSortValue(a, field) {
 }
 
 export default function DeferredPage() {
+  const { isManager } = useAuth();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -507,8 +508,7 @@ export default function DeferredPage() {
                 <SortableTh field="route">Маршрут</SortableTh>
                 <SortableTh field="seats" style={{ width: 60, textAlign: 'center' }}>Мест</SortableTh>
                 <SortableTh field="weight" style={{ width: 70, textAlign: 'center' }}>Вес (кг)</SortableTh>
-                <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>
-                <SortableTh field="status">Статус</SortableTh>
+{!isManager && <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>}                <SortableTh field="status">Статус</SortableTh>
                 <th style={{ width: 120, textAlign: "right" }}>Действия</th>
               </tr>
             </thead>
@@ -540,9 +540,11 @@ export default function DeferredPage() {
                     </td>
                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.seats || "—"}</td>
                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.weight || "—"}</td>
-                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                    </td>
+                    {!isManager && (
+                      <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                        {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                      </td>
+                    )}
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                       {a.status === 'draft' ? (
                         <span className="badge" style={{ background: '#f5f5f5', color: '#595959', padding: '2px 6px', fontSize: '0.75rem' }}>Черновик</span>

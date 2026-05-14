@@ -2638,7 +2638,7 @@ export default function ActDetailsPage() {
   const nav = useNavigate();
   const { id } = useParams();
   const location = useLocation();
-  const { isAdmin, isAccountant } = useAuth();
+const { isAdmin, isAccountant, isManager } = useAuth();
   const [act, setAct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -3457,10 +3457,12 @@ export default function ActDetailsPage() {
                 </div>
               )}
           </div>
-          <div className="summary_item">
-              <div className="label">Сумма (заявленная)</div>
-              <div className="v">{act.totalSum || "—"}</div>
-          </div>
+         {!isManager && (
+            <div className="summary_item">
+                <div className="label">Сумма (заявленная)</div>
+                <div className="v">{act.totalSum || "—"}</div>
+            </div>
+          )}
           {act.isWarehouse && (
             <div className="summary_item">
                 <div className="label">Тип</div>

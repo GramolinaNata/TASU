@@ -116,17 +116,40 @@ export default function ContractCreatePage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.number) return alert("Введите номер договора");
-    if (formData.type === 'warehouse' && !formData.actId) return alert("Выберите заявку");
+    // if (formData.type === 'warehouse' && !formData.actId) return alert("Выберите заявку");
     if (existingContract) return alert("Для этого контрагента уже существует договор!");
+
+    // setLoading(true);
+    // try {
+    //   const selectedAct = availableActs.find(a => a.id === formData.actId);
+    //   const contractData = {
+    //     ...formData,
+    //     companyId: company.id,
+    //     customerName: selectedCp?.name || selectedAct?.customer?.companyName || selectedAct?.customer?.fio || "",
+    //     actData: selectedAct,
+    //   };
 
     setLoading(true);
     try {
       const selectedAct = availableActs.find(a => a.id === formData.actId);
+      const cpData = {
+        customer: {
+          fio: selectedCp?.name || "",
+          companyName: selectedCp?.companyName || "",
+          bin: selectedCp?.bin || "",
+          jurAddress: selectedCp?.address || "",
+          bank: selectedCp?.bank || "",
+          bik: selectedCp?.bik || "",
+          account: selectedCp?.account || "",
+          phone: selectedCp?.phone || selectedCp?.contactPhone || "",
+          director: selectedCp?.director || "",
+        }
+      };
       const contractData = {
         ...formData,
         companyId: company.id,
-        customerName: selectedCp?.name || selectedAct?.customer?.companyName || selectedAct?.customer?.fio || "",
-        actData: selectedAct,
+        customerName: selectedCp?.name || selectedAct?.customer?.companyName || selectedCp?.companyName || "",
+        actData: selectedAct || cpData,
       };
       await api.contracts.create(contractData);
       nav("/contracts");
@@ -214,7 +237,7 @@ export default function ContractCreatePage() {
               </div>
 
               <div className="field field--full">
-                <div className="label">{formData.type === 'warehouse' ? "Выберите складскую заявку" : "Выберите заявку"}</div>
+<div className="label">Привязать к заявке (необязательно)</div>
                 <select value={formData.actId} onChange={e => setFormData({ ...formData, actId: e.target.value })} style={{ fontWeight: 'bold' }}>
                   <option value="">-- Выберите заявку --</option>
                   {availableActs.map(a => {

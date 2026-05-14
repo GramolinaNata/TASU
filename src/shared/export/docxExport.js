@@ -425,7 +425,47 @@ function makeWatermark(base64Logo, opacity = 0.15) {
     }
   });
 }
+// 🆕 ТЗ v2: Водяной знак текстом (ТТН / СМР в круге)
+function makeTextWatermark(text) {
+  return new Promise((resolve) => {
+    try {
+      const size = 600;
+      const canvas = document.createElement("canvas");
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
 
+      // Прозрачный фон
+      ctx.clearRect(0, 0, size, size);
+
+      // Красный круг (полупрозрачный)
+      ctx.strokeStyle = "rgba(220, 38, 38, 0.25)";
+      ctx.lineWidth = 12;
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 30, 0, 2 * Math.PI);
+      ctx.stroke();
+
+      // Внутренний круг
+      ctx.strokeStyle = "rgba(220, 38, 38, 0.18)";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 60, 0, 2 * Math.PI);
+      ctx.stroke();
+
+      // Текст в центре
+      ctx.fillStyle = "rgba(220, 38, 38, 0.22)";
+      ctx.font = "bold 180px Arial, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(text, size / 2, size / 2);
+
+      resolve(canvas.toDataURL("image/png"));
+    } catch (e) {
+      console.warn("[TextWatermark] Ошибка:", e);
+      resolve(null);
+    }
+  });
+}
 function formatRussianDate(isoString) {
   if (!isoString) return "";
   const date = new Date(isoString);
@@ -489,8 +529,14 @@ export async function exportToDocx(act, templateOverride = null) {
     const companyLogo = act.company?.logo || "";
     // 🆕 ТЗ v2: Печать компании
     const companyStamp = act.company?.stamp || "";
-    const watermarkImage = await makeWatermark(companyLogo, 0.2);
-    console.log("🔵 [Export] watermark:", watermarkImage ? "ok" : "null", "stamp:", companyStamp ? "ok" : "null");
+// 🆕 ТЗ v2: водяной знак — текст ТТН/СМР в круге, не логотип
+    const docType = (act.docType || act.type || '').toString().toUpperCase();
+    let watermarkText = '';
+    if (docType === 'TTN') watermarkText = 'ТТН';
+    else if (docType === 'SMR' || docType === 'CMR') watermarkText = 'СМР';
+    const watermarkImage = watermarkText
+      ? await makeTextWatermark(watermarkText)
+      : await makeWatermark(companyLogo, 0.2);    console.log("🔵 [Export] watermark:", watermarkImage ? "ok" : "null", "stamp:", companyStamp ? "ok" : "null");
 
     const imageOptions = {
       centered: false,

@@ -362,7 +362,7 @@ function getSortValue(a, field) {
 }
 
 export default function ActsListPage() {
-  const { user, isAccountant, isAdmin } = useAuth();
+  const { user, isAccountant, isAdmin, isManager } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -579,7 +579,7 @@ export default function ActsListPage() {
                 <SortableTh field="transport">Вид транспорта</SortableTh>
                 <SortableTh field="seats" style={{ width: 80 }}>Мест</SortableTh>
                 <SortableTh field="weight" style={{ width: 80 }}>Вес (кг)</SortableTh>
-                <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>
+                {!isManager && <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>}
                 {(!isAccountant || isAdmin) && <th style={{ width: 120, textAlign: "right" }}>Действия</th>}
               </tr>
             </thead>
@@ -626,9 +626,11 @@ export default function ActsListPage() {
                     </td>
                     <td style={{ textAlign: 'center' }}>{a.totals?.seats || "—"}</td>
                     <td style={{ textAlign: 'center' }}>{a.totals?.weight || "—"}</td>
-                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                    </td>
+                    {!isManager && (
+                      <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                        {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                      </td>
+                    )}
                     {(!isAccountant || isAdmin) && (
                       <td style={{ textAlign: "right" }}>
                         <details className="actions-dropdown">

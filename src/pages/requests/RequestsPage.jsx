@@ -335,7 +335,7 @@ function getSortValue(a, field) {
 }
 
 export default function RequestsPage() {
-  const { isAdmin, isAccountant } = useAuth();
+const { isAdmin, isAccountant, isManager } = useAuth();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -513,8 +513,7 @@ export default function RequestsPage() {
                 <SortableTh field="toCity">Страна, город (куда)</SortableTh>
                 <SortableTh field="customer">Заказчик</SortableTh>
                 <SortableTh field="transport" style={{ width: 140 }}>Вид транспорта</SortableTh>
-                <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>
-                <th style={{ width: 120, textAlign: "right" }}>Действия</th>
+{!isManager && <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>}                <th style={{ width: 120, textAlign: "right" }}>Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -550,9 +549,11 @@ export default function RequestsPage() {
                         a.docAttrs?.transportType === 'plane' ? "Самолет" :
                           a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
                     </td>
-                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                    </td>
+                    {!isManager && (
+  <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+    {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+  </td>
+)}
                     <td style={{ textAlign: "right" }}>
                       <details className="actions-dropdown">
                         <summary className="btn-actions">
