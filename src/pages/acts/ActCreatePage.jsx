@@ -616,6 +616,34 @@ setShowTransportCard(true);
                 <input 
                   value={customer.phone} 
                   onChange={e => setCustomer({...customer, phone: e.target.value})} 
+                  onBlur={async (e) => {
+                    const phone = e.target.value.trim();
+                    if (!phone || phone.length < 5) return;
+                    try {
+                      const allCps = await api.counterparties.list();
+                      const found = (allCps || []).find(cp => 
+                        (cp.phone || '').replace(/\D/g, '') === phone.replace(/\D/g, '') ||
+                        (cp.contactPhone || '').replace(/\D/g, '') === phone.replace(/\D/g, '')
+                      );
+                      if (found && window.confirm(`Найден контрагент: ${found.name}\nПодставить его данные?`)) {
+                        setCustomer(prev => ({
+                          ...prev,
+                          fio: found.name || prev.fio,
+                          companyName: found.companyName || prev.companyName,
+                          email: found.email || prev.email,
+                          bin: found.bin || prev.bin,
+                          jurAddress: found.address || prev.jurAddress,
+                          bank: found.bank || prev.bank,
+                          bik: found.bik || prev.bik,
+                          account: found.account || prev.account,
+                          kbe: found.kbe || prev.kbe,
+                        }));
+                        setSelectedCpObjCustomer(found);
+                      }
+                    } catch (err) {
+                      console.warn('Поиск контрагента по телефону:', err);
+                    }
+                  }}
                   placeholder="+7..."
                 />
               </div>

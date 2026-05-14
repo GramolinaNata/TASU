@@ -2644,7 +2644,43 @@ const { isAdmin, isAccountant, isManager } = useAuth();
   const [actionLoading, setActionLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
-
+const printLabel = () => {
+    const num = act?.docNumber || act?.number || '';
+    const fromCity = act?.route?.fromCity || '—';
+    const toCity = act?.route?.toCity || '—';
+    const customer = act?.customer?.fio || act?.customer?.companyName || '—';
+    const receiver = act?.receiver?.fio || act?.receiver?.companyName || '—';
+    const seats = act?.totals?.seats || '—';
+    const weight = act?.totals?.weight || '—';
+    const phone = act?.receiver?.phone || '';
+    const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>Наклейка ${num}</title>
+<style>
+@page { size: 100mm 150mm; margin: 5mm; }
+body { font-family: Arial, sans-serif; margin: 0; padding: 10px; }
+.label { border: 2px solid #000; padding: 12px; }
+.num { font-size: 28px; font-weight: bold; text-align: center; padding: 8px; border-bottom: 2px solid #000; }
+.row { display: flex; padding: 6px 0; border-bottom: 1px solid #ccc; font-size: 14px; }
+.lbl { width: 90px; font-weight: bold; }
+.val { flex: 1; }
+.route { font-size: 22px; font-weight: bold; text-align: center; margin: 8px 0; padding: 6px; background: #f0f0f0; }
+@media print { body { padding: 0; } }
+</style></head><body>
+<div class="label">
+<div class="num">№ ${num}</div>
+<div class="route">${fromCity} → ${toCity}</div>
+<div class="row"><div class="lbl">Отправитель:</div><div class="val">${customer}</div></div>
+<div class="row"><div class="lbl">Получатель:</div><div class="val">${receiver}</div></div>
+${phone ? `<div class="row"><div class="lbl">Телефон:</div><div class="val">${phone}</div></div>` : ''}
+<div class="row"><div class="lbl">Мест:</div><div class="val"><strong>${seats}</strong></div></div>
+<div class="row"><div class="lbl">Вес:</div><div class="val"><strong>${weight} кг</strong></div></div>
+</div>
+<script>window.onload = () => { window.print(); }</script>
+</body></html>`;
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  };
   const downloadQRCode = () => {
     const canvas = qrRef.current?.querySelector("canvas");
     if (canvas) {
@@ -3372,44 +3408,15 @@ const { isAdmin, isAccountant, isManager } = useAuth();
         </div>
       )}
 
-      {act.status !== 'canceled' && (
+     {act.status !== 'canceled' && (
         <div style={{ marginTop: '10px', textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
             <button
               className="btn"
-              style={{ background: showQR ? '#1890ff' : '#00a854', color: '#fff', borderColor: showQR ? '#1890ff' : '#00a854' }}
-              onClick={() => setShowQR(!showQR)}
-            >
-              {showQR ? "🔽 Скрыть QR" : "📱 Показать QR"}
-            </button>
-            <button
-              className="btn"
               style={{ background: '#00a854', color: '#fff', borderColor: '#00a854' }}
-              onClick={downloadQRCode}
+              onClick={printLabel}
             >
-              ⬇ Скачать QR
+              🏷️ Печать наклейки
             </button>
-
-            <div
-              ref={qrRef}
-              style={{
-                display: showQR ? 'block' : 'none',
-                width: '100%',
-                textAlign: 'center',
-                marginTop: 12,
-                padding: 20,
-                background: '#fff',
-                borderRadius: 8,
-                border: '1px solid var(--line)',
-              }}
-            >
-              <QRCodeCanvas
-                value={`${window.location.origin}/courier/acts/${id}`}
-                size={256}
-              />
-              <div style={{ marginTop: 8, fontSize: 12, color: 'var(--muted)' }}>
-                Отсканируйте для просмотра заявки курьером
-              </div>
-            </div>
         </div>
       )}
 
