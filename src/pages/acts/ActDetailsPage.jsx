@@ -3037,7 +3037,7 @@ ${phone ? `<div class="row"><div class="lbl">Телефон:</div><div class="va
     setServices((prev) => prev.map((x) => (x.id === rowId ? { ...x, ...patch } : x)));
   };
 
-  const saveExtra = async () => {
+ const saveExtra = async () => {
     if (!id) return;
     const updated = await api.requests.update(id, {
       services,

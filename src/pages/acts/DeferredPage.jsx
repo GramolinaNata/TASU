@@ -274,7 +274,7 @@
 
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
@@ -378,9 +378,10 @@ export default function DeferredPage() {
     }
   };
 
+  const location = useLocation();
   useEffect(() => {
     loadActs();
-  }, []);
+  }, [location.key]);
 
   const filtered = useMemo(() => {
     let list = acts.filter(a => !!a.isDeferredForAccountant && !a.readyForAccountant);

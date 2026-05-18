@@ -318,7 +318,7 @@
 
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext, Navigate } from "react-router-dom";
+import { Link, useOutletContext, Navigate, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
@@ -475,6 +475,7 @@ export default function ActsListPage() {
     return unsubscribe;
   }, []);
 
+  const location = useLocation();
   useEffect(() => {
     if (company) {
       loadActs();
@@ -482,7 +483,7 @@ export default function ActsListPage() {
       setActs([]);
       setLoading(false);
     }
-  }, [company]);
+  }, [company, location.key]);
 
   const handleAnnul = async (id, number) => {
     if (window.confirm(`Аннулировать заявку №${number}?`)) {

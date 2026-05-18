@@ -180,7 +180,7 @@ export default function ActCreatePage() {
 
   const [isDataLoading, setIsDataLoading] = useState(false);
 
-  // Автозаполнение totalSum из услуг (Складских или обычных)
+// ТЗ v2.2: totalSum всегда = сумма услуг. Ручной ввод запрещён, поле readOnly.
   useEffect(() => {
     const sum = warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0);
     setTotalSum(sum > 0 ? sum.toString() : "");
@@ -1265,10 +1265,11 @@ setShowTransportCard(true);
 
             <div className="field" style={{marginTop: 10}}>
                <div className="label">Сумма (тг)</div>
-               <input 
+             <input 
                  value={totalSum}
-                 onChange={e => setTotalSum(e.target.value)}
-                 placeholder="Введите сумму"
+                 readOnly
+                 style={{ background: '#f5f5f5', cursor: 'not-allowed' }}
+                 placeholder="Рассчитывается автоматически из услуг"
                />
             </div>
             

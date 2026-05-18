@@ -293,7 +293,7 @@
 
 
 import React, { useEffect, useState, useMemo } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { Link, useOutletContext, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
@@ -427,10 +427,11 @@ const { isAdmin, isAccountant, isManager } = useAuth();
     return unsubscribe;
   }, []);
 
+  const location = useLocation();
   useEffect(() => {
     if (company) loadData();
     else { setAllActs([]); setLoading(false); }
-  }, [company]);
+  }, [company, location.key]);
 
   const filtered = useMemo(() => {
     let list = allActs.filter(a => (a.type === "ttn" || a.docType === "ttn") && !a.isDeferredForAccountant);
