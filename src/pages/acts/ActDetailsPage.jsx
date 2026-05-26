@@ -2644,7 +2644,8 @@ const { isAdmin, isAccountant, isManager } = useAuth();
   const [actionLoading, setActionLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
-const printLabel = () => {
+const printLabel = async () => {
+    if (!act) return;
     const num = act?.docNumber || act?.number || '';
     const fromCity = act?.route?.fromCity || '—';
     const toCity = act?.route?.toCity || '—';
@@ -2653,30 +2654,86 @@ const printLabel = () => {
     const seats = act?.totals?.seats || '—';
     const weight = act?.totals?.weight || '—';
     const phone = act?.receiver?.phone || '';
-    const html = `<!DOCTYPE html>
-<html><head><meta charset="utf-8"><title>Наклейка ${num}</title>
+
+    // QR-код
+    let qrUrl = '';
+    try {
+      const { toDataURL } = await import("qrcode");
+      const qrData = `TASU-${num}-${toCity}-${receiver}`;
+      qrUrl = await toDataURL(qrData, { width: 120, margin: 1 });
+    } catch (e) {
+      console.warn("QR generation failed", e);
+    }
+
+    const esc = (s) => String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+    const routeFull = fromCity && toCity ? `${fromCity} → ${toCity}` : toCity;
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Наклейка ${esc(num)}</title>
 <style>
-@page { size: 100mm 150mm; margin: 5mm; }
-body { font-family: Arial, sans-serif; margin: 0; padding: 10px; }
-.label { border: 2px solid #000; padding: 12px; }
-.num { font-size: 28px; font-weight: bold; text-align: center; padding: 8px; border-bottom: 2px solid #000; }
-.row { display: flex; padding: 6px 0; border-bottom: 1px solid #ccc; font-size: 14px; }
-.lbl { width: 90px; font-weight: bold; }
-.val { flex: 1; }
-.route { font-size: 22px; font-weight: bold; text-align: center; margin: 8px 0; padding: 6px; background: #f0f0f0; }
-@media print { body { padding: 0; } }
+  @page { size: 100mm 150mm; margin: 5mm; }
+  @media print { body { margin: 0; } }
+  body { font-family: Arial, sans-serif; margin: 0; padding: 8px; background: white; }
+  .label { border: 2px solid #222; width: 340px; font-size: 12px; border-radius: 4px; overflow: hidden; }
+  .header { padding: 8px 10px; border-bottom: 2px solid #222; text-align: center; background: #222; color: #fff; }
+  .header .brand { font-weight: 900; font-size: 16px; letter-spacing: 2px; }
+  .cities { display: flex; border-bottom: 1px solid #222; }
+  .city-from { flex: 1; padding: 6px 8px; border-right: 1px solid #222; background: #f9f9f9; }
+  .city-to { flex: 2; padding: 6px 8px; background: #fff3cd; text-align: center; }
+  .city-label { font-size: 9px; color: #888; margin-bottom: 2px; text-transform: uppercase; }
+  .city-val { font-size: 11px; font-weight: 700; }
+  .city-big { font-size: 24px; font-weight: 900; color: #333; }
+  .direction-row { padding: 6px 10px; border-bottom: 1px solid #222; background: #f0f7ff; text-align: center; }
+  .direction-label { font-size: 9px; color: #666; text-transform: uppercase; margin-bottom: 2px; }
+  .direction-val { font-size: 12px; font-weight: 700; color: #0050b3; }
+  .info-row { display: flex; border-bottom: 1px solid #222; }
+  .info-cell { flex: 1; padding: 5px 8px; border-right: 1px solid #ddd; }
+  .info-cell:last-child { border-right: none; }
+  .info-label { font-size: 9px; color: #888; margin-bottom: 2px; text-transform: uppercase; }
+  .info-val { font-weight: 700; font-size: 13px; }
+  .num-row { padding: 8px 10px; border-bottom: 1px solid #222; background: #222; color: #fff; font-size: 15px; font-weight: 900; text-align: center; letter-spacing: 3px; }
+  .party-block { padding: 8px 10px; border-bottom: 1px solid #222; }
+  .party-label { font-size: 9px; color: #888; text-transform: uppercase; margin-bottom: 2px; }
+  .party-name { font-size: 13px; font-weight: 700; color: #111; }
+  .party-phone { font-size: 11px; color: #0050b3; font-weight: 600; margin-top: 2px; }
+  .qr-block { padding: 10px; text-align: center; }
 </style></head><body>
 <div class="label">
-<div class="num">№ ${num}</div>
-<div class="route">${fromCity} → ${toCity}</div>
-<div class="row"><div class="lbl">Отправитель:</div><div class="val">${customer}</div></div>
-<div class="row"><div class="lbl">Получатель:</div><div class="val">${receiver}</div></div>
-${phone ? `<div class="row"><div class="lbl">Телефон:</div><div class="val">${phone}</div></div>` : ''}
-<div class="row"><div class="lbl">Мест:</div><div class="val"><strong>${seats}</strong></div></div>
-<div class="row"><div class="lbl">Вес:</div><div class="val"><strong>${weight} кг</strong></div></div>
+  <div class="header"><div class="brand">TASU</div></div>
+  <div class="cities">
+    <div class="city-from">
+      <div class="city-label">город отправителя</div>
+      <div class="city-val">${esc(fromCity)}</div>
+    </div>
+    <div class="city-to">
+      <div class="city-label">город получателя</div>
+      <div class="city-big">${esc(toCity)}</div>
+    </div>
+  </div>
+  <div class="direction-row">
+    <div class="direction-label">Направление</div>
+    <div class="direction-val">${esc(routeFull)}</div>
+  </div>
+  <div class="num-row">№ ${esc(num)}</div>
+  <div class="info-row">
+    <div class="info-cell"><div class="info-label">мест</div><div class="info-val">${esc(seats)}</div></div>
+    <div class="info-cell"><div class="info-label">вес</div><div class="info-val">${esc(weight)} кг</div></div>
+  </div>
+  <div class="party-block">
+    <div class="party-label">отправитель</div>
+    <div class="party-name">${esc(customer)}</div>
+  </div>
+  <div class="party-block">
+    <div class="party-label">получатель</div>
+    <div class="party-name">${esc(receiver)}</div>
+    ${phone ? `<div class="party-phone">тел.: ${esc(phone)}</div>` : ''}
+  </div>
+  ${qrUrl ? `<div class="qr-block"><img src="${qrUrl}" alt="QR" style="width:100px;height:100px;"/></div>` : ''}
 </div>
 <script>window.onload = () => { window.print(); }</script>
 </body></html>`;
+
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
