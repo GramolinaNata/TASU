@@ -1,189 +1,4 @@
-// import React, { useEffect, useState, useMemo } from "react";
-// import { api } from "../../shared/api/api.js";
-
-// // ---- СОРТИРОВКА ----
-// function getSortValue(t, field) {
-//   switch (field) {
-//     case 'city':          return (t.city || '').toString().toLowerCase();
-//     case 'pricePerKg':    return Number(t.pricePerKg) || 0;
-//     case 'deliveryPrice': return Number(t.deliveryPrice) || 0;
-//     default:              return '';
-//   }
-// }
-
-// export default function TariffsPage() {
-//   const [tariffs, setTariffs] = useState([]);
-//   const [loading, setLoading] = useState(true);
-//   const [isModalOpen, setIsModalOpen] = useState(false);
-//   const [editingTariff, setEditingTariff] = useState(null);
-//   const [form, setForm] = useState({ city: "", pricePerKg: "", deliveryPrice: "" });
-
-//   // Сортировка
-//   const [sortBy, setSortBy] = useState('city');
-//   const [sortOrder, setSortOrder] = useState('asc');
-
-//   const handleSort = (field) => {
-//     if (sortBy === field) setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
-//     else { setSortBy(field); setSortOrder('asc'); }
-//   };
-
-//   const sortArrow = (field) => {
-//     if (sortBy !== field) return <span style={{ color: '#bbb', marginLeft: 4 }}>⇅</span>;
-//     return <span style={{ color: '#1890ff', marginLeft: 4, fontWeight: 700 }}>{sortOrder === 'asc' ? '↑' : '↓'}</span>;
-//   };
-
-//   const SortableTh = ({ field, children, style }) => (
-//     <th
-//       style={{ cursor: 'pointer', userSelect: 'none', ...style }}
-//       onClick={() => handleSort(field)}
-//       title="Клик для сортировки"
-//     >
-//       {children}{sortArrow(field)}
-//     </th>
-//   );
-
-//   const sortedTariffs = useMemo(() => {
-//     return [...tariffs].sort((a, b) => {
-//       const av = getSortValue(a, sortBy);
-//       const bv = getSortValue(b, sortBy);
-//       if (av < bv) return sortOrder === 'asc' ? -1 : 1;
-//       if (av > bv) return sortOrder === 'asc' ? 1 : -1;
-//       return 0;
-//     });
-//   }, [tariffs, sortBy, sortOrder]);
-
-//   const load = async () => {
-//     setLoading(true);
-//     try {
-//       const data = await api.tariffs.list();
-//       setTariffs(Array.isArray(data) ? data : []);
-//     } catch (e) {
-//       console.error(e);
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   useEffect(() => { load(); }, []);
-
-//   const openCreate = () => {
-//     setEditingTariff(null);
-//     setForm({ city: "", pricePerKg: "", deliveryPrice: "" });
-//     setIsModalOpen(true);
-//   };
-
-//   const openEdit = (t) => {
-//     setEditingTariff(t);
-//     setForm({ city: t.city, pricePerKg: t.pricePerKg, deliveryPrice: t.deliveryPrice });
-//     setIsModalOpen(true);
-//   };
-
-//   const handleSave = async (e) => {
-//     e.preventDefault();
-//     try {
-//       if (editingTariff) {
-//         await api.tariffs.update(editingTariff.id, form);
-//       } else {
-//         await api.tariffs.create(form);
-//       }
-//       setIsModalOpen(false);
-//       load();
-//     } catch (err) {
-//       alert(err.message);
-//     }
-//   };
-
-//   const handleDelete = async (id) => {
-//     if (!window.confirm("Удалить тариф?")) return;
-//     try {
-//       await api.tariffs.delete(id);
-//       load();
-//     } catch (err) {
-//       alert(err.message);
-//     }
-//   };
-
-//   return (
-//     <div>
-//       <div className="navbar">
-//         <h1>Тарифные сетки</h1>
-//         <button className="btn btn--accent" onClick={openCreate}>+ Добавить город</button>
-//       </div>
-
-//       <div className="card" style={{ marginTop: 20 }}>
-//         {loading ? <div style={{ padding: 16 }}>Загрузка...</div> : (
-//           <table className="table">
-//             <thead>
-//               <tr>
-//                 <SortableTh field="city">Город</SortableTh>
-//                 <SortableTh field="pricePerKg" style={{ width: 180 }}>Тариф за кг (тг)</SortableTh>
-//                 <SortableTh field="deliveryPrice" style={{ width: 180 }}>Доставка (тг)</SortableTh>
-//                 <th style={{ width: 140, textAlign: "right" }}>Действия</th>
-//               </tr>
-//             </thead>
-//             <tbody>
-//               {sortedTariffs.length === 0 ? (
-//                 <tr><td colSpan={4} className="muted" style={{ padding: 16 }}>Тарифы не добавлены</td></tr>
-//               ) : (
-//                 sortedTariffs.map(t => (
-//                   <tr key={t.id}>
-//                     <td style={{ fontWeight: 600 }}>{t.city}</td>
-//                     <td>{Number(t.pricePerKg).toLocaleString()} тг/кг</td>
-//                     <td>{Number(t.deliveryPrice).toLocaleString()} тг</td>
-//                     <td style={{ textAlign: "right" }}>
-//                       <button className="btn btn-sm" onClick={() => openEdit(t)} style={{ marginRight: 8 }}>Изменить</button>
-//                       <button className="btn btn-sm btn-danger" onClick={() => handleDelete(t.id)}>Удалить</button>
-//                     </td>
-//                   </tr>
-//                 ))
-//               )}
-//             </tbody>
-//           </table>
-//         )}
-//       </div>
-
-//       {isModalOpen && (
-//         <div className="modal_overlay animate_fade">
-//           <div className="modal_content card animate_slide_up" style={{ width: 400, padding: 32 }}>
-//             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-//               <h2 style={{ margin: 0 }}>{editingTariff ? "Изменить тариф" : "Новый тариф"}</h2>
-//               <button className="modal_close_btn" onClick={() => setIsModalOpen(false)}>✕</button>
-//             </div>
-//             <form onSubmit={handleSave}>
-//               <div className="field" style={{ marginBottom: 16 }}>
-//                 <div className="label">Город *</div>
-//                 <input value={form.city} onChange={e => setForm({...form, city: e.target.value})} placeholder="Алматы" required />
-//               </div>
-//               <div className="field" style={{ marginBottom: 16 }}>
-//                 <div className="label">Тариф за кг (тг)</div>
-//                 <input type="number" value={form.pricePerKg} onChange={e => setForm({...form, pricePerKg: e.target.value})} placeholder="500" />
-//               </div>
-//               <div className="field" style={{ marginBottom: 24 }}>
-//                 <div className="label">Стоимость доставки (тг)</div>
-//                 <input type="number" value={form.deliveryPrice} onChange={e => setForm({...form, deliveryPrice: e.target.value})} placeholder="3000" />
-//               </div>
-//               <div style={{ display: "flex", gap: 12 }}>
-//                 <button type="button" className="btn btn--ghost" style={{ flex: 1 }} onClick={() => setIsModalOpen(false)}>Отмена</button>
-//                 <button type="submit" className="btn btn--accent" style={{ flex: 1 }}>Сохранить</button>
-//               </div>
-//             </form>
-//           </div>
-//         </div>
-//       )}
-
-//       <style>{`
-//         .modal_overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.4); backdrop-filter: blur(4px); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-//         .modal_close_btn { background: none; border: none; font-size: 18px; cursor: pointer; padding: 4px; }
-//         .animate_fade { animation: fadeIn 0.2s ease; }
-//         .animate_slide_up { animation: slideUp 0.3s ease-out; }
-//         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-//         @keyframes slideUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
-//       `}</style>
-//     </div>
-//   );
-// }
-
-import React, { useEffect, useState, useMemo } from "react";
+﻿import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../shared/api/api.js";
 
 // 🆕 ТЗ v2: Стандартные диапазоны весов для частных лиц
@@ -197,7 +12,6 @@ const WEIGHT_RANGES = [
   { key: 'r600', label: 'до 600 кг' },
 ];
 
-// ---- СОРТИРОВКА ----
 function getSortValue(t, field) {
   switch (field) {
     case 'city':          return (t.city || '').toString().toLowerCase();
@@ -212,10 +26,14 @@ const EMPTY_FORM = {
   city: "",
   pricePerKg: "",
   deliveryPrice: "",
-  // 🆕 ТЗ v2
   isPrivate: false,
   extraSum: 0,
-weightRanges: WEIGHT_RANGES.reduce((acc, r) => ({ ...acc, [r.key]: '', [r.key + '_delivery']: '' }), {}),};
+  deliveryDays: "",
+  pricePerKgOver20: "",
+  pricePerCubic: "",
+  regionalDeliveries: [],
+  weightRanges: WEIGHT_RANGES.reduce((acc, r) => ({ ...acc, [r.key]: '', [r.key + '_delivery']: '' }), {}),
+};
 
 export default function TariffsPage() {
   const [tariffs, setTariffs] = useState([]);
@@ -223,11 +41,7 @@ export default function TariffsPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTariff, setEditingTariff] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
-
-  // 🆕 ТЗ v2: Табы Юр. лица / Частные лица
-  const [tab, setTab] = useState('legal'); // 'legal' | 'private'
-
-  // Сортировка
+  const [tab, setTab] = useState('legal');
   const [sortBy, setSortBy] = useState('city');
   const [sortOrder, setSortOrder] = useState('asc');
 
@@ -251,7 +65,6 @@ export default function TariffsPage() {
     </th>
   );
 
-  // 🆕 ТЗ v2: Фильтр по табу + сортировка
   const filteredTariffs = useMemo(() => {
     const filtered = tariffs.filter(t => tab === 'private' ? !!t.isPrivate : !t.isPrivate);
     return [...filtered].sort((a, b) => {
@@ -290,9 +103,8 @@ export default function TariffsPage() {
 
   const openEdit = (t) => {
     setEditingTariff(t);
-    // Раскладываем weightRanges из БД (JSONB) в плоскую форму
     const wr = t.weightRanges && typeof t.weightRanges === 'object' ? t.weightRanges : {};
-const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
+    const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
       ...acc,
       [r.key]: wr[r.key] ?? '',
       [r.key + '_delivery']: wr[r.key + '_delivery'] ?? '',
@@ -303,6 +115,10 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
       deliveryPrice: t.deliveryPrice,
       isPrivate: !!t.isPrivate,
       extraSum: t.extraSum || 0,
+      deliveryDays: wr._deliveryDays || "",
+      pricePerKgOver20: wr._pricePerKgOver20 || "",
+      pricePerCubic: wr._pricePerCubic || "",
+      regionalDeliveries: Array.isArray(wr._regionalDeliveries) ? wr._regionalDeliveries : [],
       weightRanges: weightRangesForm,
     });
     setIsModalOpen(true);
@@ -311,12 +127,19 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
   const handleSave = async (e) => {
     e.preventDefault();
     try {
-      // Подготавливаем weightRanges — оставляем только заполненные
       const wrCleaned = {};
       Object.entries(form.weightRanges).forEach(([k, v]) => {
         const num = parseFloat(v);
         if (!isNaN(num) && num > 0) wrCleaned[k] = num;
       });
+
+      const wrWithExtras = {
+        ...wrCleaned,
+        _deliveryDays: form.deliveryDays || "",
+        _pricePerKgOver20: parseFloat(form.pricePerKgOver20) || 0,
+        _pricePerCubic: parseFloat(form.pricePerCubic) || 0,
+        _regionalDeliveries: (form.regionalDeliveries || []).filter(r => r.region && r.region.trim()),
+      };
 
       const payload = {
         city: form.city,
@@ -324,7 +147,7 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
         deliveryPrice: parseFloat(form.deliveryPrice) || 0,
         isPrivate: !!form.isPrivate,
         extraSum: parseFloat(form.extraSum) || 0,
-        weightRanges: form.isPrivate && Object.keys(wrCleaned).length > 0 ? wrCleaned : null,
+        weightRanges: wrWithExtras,
       };
 
       if (editingTariff) {
@@ -363,7 +186,6 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
         <button className="btn btn--accent" onClick={openCreate}>+ Добавить тариф</button>
       </div>
 
-      {/* 🆕 ТЗ v2: Табы Юр. лица / Частные лица */}
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
         <button
           className={`btn ${tab === 'legal' ? 'btn--accent' : ''}`}
@@ -384,11 +206,14 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
           <table className="table">
             <thead>
               <tr>
-                <SortableTh field="city">Город</SortableTh>
+                <SortableTh field="city">Направление</SortableTh>
+                <th style={{ width: 100 }}>Сроки</th>
                 {tab === 'legal' ? (
                   <>
-                    <SortableTh field="pricePerKg" style={{ width: 180 }}>Тариф за кг (тг)</SortableTh>
-                    <SortableTh field="deliveryPrice" style={{ width: 180 }}>Доставка (тг)</SortableTh>
+                    <th style={{ width: 100 }}>До 10 кг</th>
+                    <th style={{ width: 100 }}>До 20 кг</th>
+                    <th style={{ width: 100 }}>За кг</th>
+                    <th style={{ width: 120 }}>КУБ (тг)</th>
                   </>
                 ) : (
                   <>
@@ -402,7 +227,7 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
             <tbody>
               {filteredTariffs.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={7} className="muted" style={{ padding: 16 }}>
                     {tab === 'legal' ? 'Тарифы для юр. лиц не добавлены' : 'Тарифы для частных лиц не добавлены'}
                   </td>
                 </tr>
@@ -412,10 +237,13 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
                   return (
                     <tr key={t.id}>
                       <td style={{ fontWeight: 600 }}>{t.city}</td>
+                      <td>{wr._deliveryDays || '—'}</td>
                       {tab === 'legal' ? (
                         <>
-                          <td>{Number(t.pricePerKg).toLocaleString()} тг/кг</td>
-                          <td>{Number(t.deliveryPrice).toLocaleString()} тг</td>
+                          <td>{wr.r10 ? Number(wr.r10).toLocaleString() : '—'}</td>
+                          <td>{wr.r20 ? Number(wr.r20).toLocaleString() : '—'}</td>
+                          <td>{wr._pricePerKgOver20 ? Number(wr._pricePerKgOver20).toLocaleString() : '—'}</td>
+                          <td>{wr._pricePerCubic ? Number(wr._pricePerCubic).toLocaleString() : '—'}</td>
                         </>
                       ) : (
                         <>
@@ -466,14 +294,12 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
 
       {isModalOpen && (
         <div className="modal_overlay animate_fade">
-          <div className="modal_content card animate_slide_up" style={{ width: 520, padding: 32, maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+<div className="modal_content card animate_slide_up" style={{ width: 580, maxWidth: '95vw', padding: 32, maxHeight: '90vh', overflowY: 'auto' }}>            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
               <h2 style={{ margin: 0 }}>{editingTariff ? "Изменить тариф" : "Новый тариф"}</h2>
               <button className="modal_close_btn" onClick={() => setIsModalOpen(false)}>✕</button>
             </div>
 
             <form onSubmit={handleSave}>
-              {/* 🆕 ТЗ v2: Тоггл частное лицо */}
               <div className="field" style={{ marginBottom: 16 }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, background: form.isPrivate ? '#fef3c7' : '#f3f4f6', border: `1px solid ${form.isPrivate ? '#fbbf24' : '#e5e7eb'}` }}>
                   <input
@@ -493,24 +319,38 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
                 <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Алматы" required />
               </div>
 
-              {/* Юр. лицо — стандартные поля */}
+              <div className="field" style={{ marginBottom: 16 }}>
+                <div className="label">Сроки доставки (раб. дни)</div>
+                <input value={form.deliveryDays} onChange={e => setForm({ ...form, deliveryDays: e.target.value })} placeholder="5-6" />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                <div className="field">
+                  <div className="label">За кг (сверх 20 кг)</div>
+                  <input type="number" value={form.pricePerKgOver20} onChange={e => setForm({ ...form, pricePerKgOver20: e.target.value })} placeholder="160" />
+                </div>
+                <div className="field">
+                  <div className="label">МГ_Тарифы КУБ (тг)</div>
+                  <input type="number" value={form.pricePerCubic} onChange={e => setForm({ ...form, pricePerCubic: e.target.value })} placeholder="24000" />
+                </div>
+              </div>
+
               {!form.isPrivate && (
-                <>
-                  <div className="field" style={{ marginBottom: 16 }}>
-                    <div className="label">Тариф за кг (тг)</div>
-                    <input type="number" value={form.pricePerKg} onChange={e => setForm({ ...form, pricePerKg: e.target.value })} placeholder="500" />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div className="field">
+                    <div className="label">До 10 кг (тг)</div>
+                    <input type="number" value={form.weightRanges.r10 || ''} onChange={e => updateWeightRange('r10', e.target.value)} placeholder="2500" />
                   </div>
-                  <div className="field" style={{ marginBottom: 24 }}>
-                    <div className="label">Стоимость доставки (тг)</div>
-                    <input type="number" value={form.deliveryPrice} onChange={e => setForm({ ...form, deliveryPrice: e.target.value })} placeholder="3000" />
+                  <div className="field">
+                    <div className="label">До 20 кг (тг)</div>
+                    <input type="number" value={form.weightRanges.r20 || ''} onChange={e => updateWeightRange('r20', e.target.value)} placeholder="3500" />
                   </div>
-                </>
+                </div>
               )}
 
-              {/* 🆕 ТЗ v2: Частное лицо — диапазоны весов + доп. сумма */}
               {form.isPrivate && (
                 <>
-                 <div style={{ marginBottom: 16 }}>
+                  <div style={{ marginBottom: 16 }}>
                     <div className="label" style={{ marginBottom: 8 }}>Диапазоны весов (тг за диапазон)</div>
                     <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr 1fr', gap: 10, alignItems: 'center', marginBottom: 6 }}>
                       <div style={{ fontWeight: 700, fontSize: '0.75rem', color: '#666' }}>Вес</div>
@@ -554,6 +394,103 @@ const weightRangesForm = WEIGHT_RANGES.reduce((acc, r) => ({
                   </div>
                 </>
               )}
+
+              <div className="field" style={{ marginBottom: 24, padding: 12, background: '#fef9ff', borderRadius: 8, border: '1px dashed #c084fc' }}>
+                <div className="label" style={{ marginBottom: 8 }}>
+                  🌍 Региональные доплаты
+                  <span style={{ marginLeft: 6, fontSize: '0.7rem', color: '#7c2d92' }}>
+                    (доставка из {form.city || 'этого города'} в подрегион)
+                  </span>
+                </div>
+
+                {(form.regionalDeliveries || []).map((region, idx) => (
+                  <div key={idx} style={{ marginBottom: 12, padding: 8, background: '#fff', borderRadius: 6, border: '1px solid #e9d5ff' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <input
+                        type="text"
+                        value={region.region}
+                        onChange={e => {
+                          const next = [...form.regionalDeliveries];
+                          next[idx] = { ...next[idx], region: e.target.value };
+                          setForm({ ...form, regionalDeliveries: next });
+                        }}
+                        placeholder="Жанаозен"
+                        style={{ flex: 1, fontWeight: 700 }}
+                      />
+                      <button
+                        type="button"
+                        className="btn btn-sm btn-danger"
+                        onClick={() => {
+                          const next = form.regionalDeliveries.filter((_, i) => i !== idx);
+                          setForm({ ...form, regionalDeliveries: next });
+                        }}
+                      >✕</button>
+                    </div>
+
+                    {(region.ranges || []).map((r, ri) => (
+                      <div key={ri} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 40px', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+                        <input
+                          type="number"
+                          value={r.maxWeight}
+                          onChange={e => {
+                            const next = [...form.regionalDeliveries];
+                            next[idx].ranges[ri] = { ...next[idx].ranges[ri], maxWeight: parseFloat(e.target.value) || 0 };
+                            setForm({ ...form, regionalDeliveries: next });
+                          }}
+                          placeholder="До (кг)"
+                        />
+                        <input
+                          type="number"
+                          value={r.extra}
+                          onChange={e => {
+                            const next = [...form.regionalDeliveries];
+                            next[idx].ranges[ri] = { ...next[idx].ranges[ri], extra: parseFloat(e.target.value) || 0 };
+                            setForm({ ...form, regionalDeliveries: next });
+                          }}
+                          placeholder="Доплата (тг)"
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-sm btn-danger"
+                          onClick={() => {
+                            const next = [...form.regionalDeliveries];
+                            next[idx].ranges = next[idx].ranges.filter((_, i) => i !== ri);
+                            setForm({ ...form, regionalDeliveries: next });
+                          }}
+                        >−</button>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      className="btn btn-sm"
+                      style={{ marginTop: 6 }}
+                      onClick={() => {
+                        const next = [...form.regionalDeliveries];
+                        next[idx].ranges = [...(next[idx].ranges || []), { maxWeight: 0, extra: 0 }];
+                        setForm({ ...form, regionalDeliveries: next });
+                      }}
+                    >+ Диапазон веса</button>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  className="btn"
+                  style={{ width: '100%', marginTop: 8 }}
+                  onClick={() => {
+                    setForm({
+                      ...form,
+                      regionalDeliveries: [...(form.regionalDeliveries || []), { region: "", ranges: [{ maxWeight: 30, extra: 0 }] }]
+                    });
+                  }}
+                >+ Добавить регион</button>
+
+                <div className="muted" style={{ fontSize: '0.7rem', marginTop: 8 }}>
+                  Пример: для города Актау добавь регион «Жанаозен» с доплатами 2000тг (до 30кг), 3000тг (до 80кг).
+                  Когда заказчик создаёт заявку в Жанаозен — система найдёт этот тариф, посчитает основной до Актау + доплату.
+                </div>
+              </div>
 
               <div style={{ display: "flex", gap: 12 }}>
                 <button type="button" className="btn btn--ghost" style={{ flex: 1 }} onClick={() => setIsModalOpen(false)}>Отмена</button>

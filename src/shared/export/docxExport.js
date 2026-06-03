@@ -572,9 +572,11 @@ export async function exportToDocx(act, templateOverride = null) {
       company_stamp: companyStamp,
       has_stamp: !!companyStamp,
 
-      watermark: watermarkImage,
+watermark: watermarkImage,
       watermark_corner: watermarkImage,
       watermark_8910: watermarkImage,
+      // ТЗ: маленький круг в шаблоне СМР — подставляем ТТН или СМР по типу документа
+      watermark_label: docType === 'TTN' ? 'ТТН' : (docType === 'SMR' || docType === 'CMR' ? 'СМР' : ''),
 
       contractNumber: act.contractNumber || "",
       contractNumberOnly: (act.contractNumber || "").split("-")[0],

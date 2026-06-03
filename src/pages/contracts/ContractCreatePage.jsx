@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+﻿import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
@@ -234,23 +234,6 @@ export default function ContractCreatePage() {
               <div className="field">
                 <div className="label">ФИО директора</div>
                 <input value={formData.directorName} onChange={e => setFormData({ ...formData, directorName: e.target.value })} placeholder="Иванов Иван Иванович" />
-              </div>
-
-              <div className="field field--full">
-<div className="label">Привязать к заявке (необязательно)</div>
-                <select value={formData.actId} onChange={e => setFormData({ ...formData, actId: e.target.value })} style={{ fontWeight: 'bold' }}>
-                  <option value="">-- Выберите заявку --</option>
-                  {availableActs.map(a => {
-                    const details = typeof a.details === 'string' ? JSON.parse(a.details || '{}') : (a.details || {});
-                    const actualDocType = a.docType || details.docType;
-                    const customerInfo = a.customer?.companyName || a.customer?.fio || "";
-                    return (
-                      <option key={a.id} value={a.id}>
-                        №{a.docNumber || a.number} от {formatDisplayDate(a.date)} {actualDocType ? `(${actualDocType.toUpperCase()})` : ""} {customerInfo ? `— ${customerInfo}` : ""}
-                      </option>
-                    );
-                  })}
-                </select>
               </div>
 
             </div>
