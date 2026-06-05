@@ -951,7 +951,10 @@ export const getRequests = async (req: AuthRequest, res: Response) => {
       });
       if (!me?.assignedCompanyId) return res.json([]);
       where.companyId = me.assignedCompanyId;
-      where.managerId = req.user.id;
+      // Если фронт явно запрашивает все накладные компании (для нумерации) — не фильтруем по managerId
+      if (req.query.allCompany !== 'true') {
+        where.managerId = req.user.id;
+      }
     } else {
       if (companyId) where.companyId = companyId as string;
     }

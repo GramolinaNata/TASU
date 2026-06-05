@@ -23,23 +23,31 @@ function escapeHtml(str) {
 
 /**
  * 🆕 Генератор последовательных номеров для частных накладных: А000001, А000002...
- * Берёт все накладные с сервера, находит максимальный номер с префиксом А, добавляет +1.
- * Если что-то пошло не так — fallback на timestamp.
+ * Берёт ВСЕ накладные компании (allCompany=true) — для PRIVATE это важно,
+ * чтобы новые номера не пересекались с уже существующими в БД.
  */
 async function genNextSimpleNumber() {
   try {
-    const allActs = await api.requests.list();
+    const allActs = await api.requests.list({ allCompany: true });
     const pattern = /^А(\d+)$/;
     let maxNum = 0;
     (allActs || []).forEach(a => {
-      const num = a.docNumber || a.number;
-      if (num) {
-        const m = String(num).match(pattern);
-        if (m) {
-          const n = parseInt(m[1], 10);
-          if (n > maxNum) maxNum = n;
+      // Проверяем корневой docNumber
+      const candidates = [a.docNumber, a.number];
+      // И docNumber внутри JSON details (старые накладные так хранят)
+      try {
+        const det = typeof a.details === 'string' ? JSON.parse(a.details) : (a.details || {});
+        if (det && det.docNumber) candidates.push(det.docNumber);
+      } catch (e) {}
+      candidates.forEach(num => {
+        if (num) {
+          const m = String(num).match(pattern);
+          if (m) {
+            const n = parseInt(m[1], 10);
+            if (n > maxNum) maxNum = n;
+          }
         }
-      }
+      });
     });
     return "А" + String(maxNum + 1).padStart(6, "0");
   } catch (e) {
