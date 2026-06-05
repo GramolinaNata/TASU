@@ -1002,7 +1002,9 @@ export const getRequest = async (req: AuthRequest, res: Response) => {
         where: { id: req.user.id },
         select: { assignedCompanyId: true },
       });
-      if (request.companyId !== me?.assignedCompanyId || request.managerId !== req.user.id) {
+      // PRIVATE может читать любые накладные своей компании
+      // (нужно для просмотра содержимого партии)
+      if (request.companyId !== me?.assignedCompanyId) {
         return res.status(403).json({ message: 'Доступ запрещён' });
       }
     }
