@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import Loader from "../../shared/components/Loader";
@@ -59,6 +60,7 @@ const EMPTY_FORM = {
 };
 
 export default function BatchesPage() {
+  const navigate = useNavigate();
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState(getSelectedCompany());
@@ -372,6 +374,10 @@ export default function BatchesPage() {
         </div>
       )}
 
+      <div style={{ marginTop: 12, padding: '8px 12px', background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6, fontSize: '0.85rem', color: '#854d0e' }}>
+        💡 Кликни по строке партии, чтобы открыть её детали и список накладных
+      </div>
+
       <div className="table_wrap" style={{ marginTop: 16 }}>
         {loading ? <Loader /> : (
           <table className="table_fixed">
@@ -385,7 +391,7 @@ export default function BatchesPage() {
                 <SortableTh field="totalSeats" style={{ width: 80, textAlign: 'center' }}>Мест</SortableTh>
                 <SortableTh field="totalWeight" style={{ width: 100, textAlign: 'center' }}>Вес</SortableTh>
                 <SortableTh field="deliveryCost" style={{ width: 130 }}>Стоимость</SortableTh>
-                <th style={{ width: 200 }}>Действия</th>
+                <th style={{ width: 280 }}>Действия</th>
               </tr>
             </thead>
             <tbody>
@@ -396,9 +402,21 @@ export default function BatchesPage() {
                 </td></tr>
               ) : (
                 filteredBatches.map(b => (
-                  <tr key={b.id} style={{
-                    borderLeft: b.isFormed ? '4px solid #22c55e' : '4px solid transparent'
-                  }}>
+                  <tr
+                    key={b.id}
+                    onClick={(e) => {
+                      // Игнорируем клик если кликнули по кнопке внутри столбца действий
+                      if (e.target.closest('button') || e.target.closest('.actions-cell')) return;
+                      navigate(`/simple/batches/${b.id}`);
+                    }}
+                    style={{
+                      borderLeft: b.isFormed ? '4px solid #22c55e' : '4px solid transparent',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = ''}
+                  >
                     <td style={{ fontWeight: 700 }}>
                       {b.number}
                       {b.isFormed && (
@@ -426,8 +444,24 @@ export default function BatchesPage() {
                     <td style={{ textAlign: 'center', fontWeight: 600 }}>{b.totalSeats || "—"}</td>
                     <td style={{ textAlign: 'center', fontWeight: 600 }}>{b.totalWeight ? `${Number(b.totalWeight).toLocaleString()} кг` : "—"}</td>
                     <td>{b.deliveryCost ? `${Number(b.deliveryCost).toLocaleString()} тг` : "—"}</td>
-                    <td>
+                    <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: "flex", gap: 6, flexWrap: 'wrap' }}>
+                        <button
+                          className="btn btn--sm"
+                          onClick={() => navigate(`/simple/batches/${b.id}`)}
+                          title="Открыть детали партии"
+                          style={{ background: '#2563eb', color: '#fff', border: 'none', fontSize: 11, fontWeight: 700 }}
+                        >
+                          👁 Открыть
+                        </button>
+                        <button
+                          className="btn btn--sm"
+                          onClick={() => printVedomost(b)}
+                          title="Распечатать ведомость"
+                          style={{ fontSize: 11 }}
+                        >
+                          🖨 Печать
+                        </button>
                         {b.isFormed ? (
                           <button
                             className="btn btn--sm"
@@ -447,9 +481,6 @@ export default function BatchesPage() {
                             ✓ Сформировать
                           </button>
                         )}
-                        <button className="btn btn--sm" onClick={() => printVedomost(b)} title="Печать ведомости">
-                          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                        </button>
                         <button className="btn btn--sm" onClick={() => openEdit(b)} title="Редактировать">
                           <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
                         </button>

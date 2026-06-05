@@ -103,7 +103,6 @@
 // }
 
 
-
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./Layout.jsx";
@@ -124,6 +123,7 @@ import SimpleActPage from "../pages/simple/SimpleActPage.jsx";
 import TariffsPage from "../pages/admin/TariffsPage.jsx";
 import SimpleActDetailPage from "../pages/simple/SimpleActDetailPage.jsx";
 import BatchesPage from "../pages/simple/BatchesPage.jsx";
+import BatchDetailPage from "../pages/simple/BatchDetailPage.jsx";
 import { useEffect } from "react";
 import { loadCompanies } from "../shared/storage/companyStorage.js";
 import { loadActs } from "../shared/storage/actsStorage.js";
@@ -162,7 +162,6 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route path="/" element={
-          // 🆕 ТЗ v2: PRIVATE → сразу в личный кабинет (Мои заявки)
           user?.role === 'PRIVATE'
             ? <Navigate to="/simple" replace />
             : user?.role === 'ACCOUNTANT' || user?.role === 'ACCOUNTANT2'
@@ -206,6 +205,8 @@ export default function App() {
         <Route path="/simple/new" element={<SimpleActPage />} />
         <Route path="/simple/:id" element={<SimpleActDetailPage />} />
         <Route path="/simple/batches" element={<BatchesPage />} />
+        {/* Детальная страница партии — для просмотра накладных внутри партии */}
+        <Route path="/simple/batches/:id" element={<BatchDetailPage />} />
       </Route>
       <Route path="/courier/acts/:id" element={<CourierActViewPage />} />
     </Routes>
