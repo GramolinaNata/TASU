@@ -20,6 +20,8 @@ import representativeRoutes from './routes/representative.routes';
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
+// Railway/прокси: доверяем X-Forwarded-For, чтобы rate-limit корректно определял IP
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 3001;
 
 app.use(helmet());
