@@ -117,7 +117,6 @@ export default function ActDetailsPage() {
 <div class="label">
   <div class="header">
     <div class="logo">${logoSrc ? `<img src="${esc(logoSrc)}" alt="Logo"/>` : `<div class="logo-text">${esc(logoFallbackInitials)}</div>`}</div>
-    <div class="company-name">${esc(companyName)}</div>
   </div>
   <div class="cities">
     <div class="city-from">
