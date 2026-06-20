@@ -45,12 +45,15 @@ export const createBatch = async (req: AuthRequest, res: Response) => {
         deliveryCost: s(b.deliveryCost),
         requestIds: typeof b.requestIds === 'string' ? b.requestIds : JSON.stringify(b.requestIds || []),
         status: 'created',
-        // 🆕 ТЗ v2
         isFormed: !!b.isFormed,
         formedAt: b.formedAt ? new Date(b.formedAt) : null,
         vedomostData: b.vedomostData || null,
         totalSeats: b.totalSeats ? Number(b.totalSeats) : 0,
         totalWeight: b.totalWeight ? Number(b.totalWeight) : 0,
+        // Перевозчик / представитель / грузчики
+        carrierId: b.carrierId || null,
+        representativeId: b.representativeId || null,
+        loadersCount: b.loadersCount ? Number(b.loadersCount) : 0,
       }
     });
     res.status(201).json(batch);
@@ -64,7 +67,6 @@ export const updateBatch = async (req: AuthRequest, res: Response) => {
   try {
     const b = req.body;
 
-    // Собираем только переданные поля (partial update)
     const data: any = {};
     if (b.number !== undefined) data.number = s(b.number);
     if (b.city !== undefined) data.city = s(b.city);
@@ -79,7 +81,6 @@ export const updateBatch = async (req: AuthRequest, res: Response) => {
         : JSON.stringify(b.requestIds || []);
     }
 
-    // 🆕 ТЗ v2: Сформированная партия
     if (b.isFormed !== undefined) data.isFormed = !!b.isFormed;
     if (b.formedAt !== undefined) {
       data.formedAt = b.formedAt ? new Date(b.formedAt) : null;
@@ -87,6 +88,11 @@ export const updateBatch = async (req: AuthRequest, res: Response) => {
     if (b.vedomostData !== undefined) data.vedomostData = b.vedomostData;
     if (b.totalSeats !== undefined) data.totalSeats = Number(b.totalSeats) || 0;
     if (b.totalWeight !== undefined) data.totalWeight = Number(b.totalWeight) || 0;
+
+    // Перевозчик / представитель / грузчики
+    if (b.carrierId !== undefined) data.carrierId = b.carrierId || null;
+    if (b.representativeId !== undefined) data.representativeId = b.representativeId || null;
+    if (b.loadersCount !== undefined) data.loadersCount = Number(b.loadersCount) || 0;
 
     const batch = await prisma.batch.update({ where: { id: req.params.id }, data });
     res.json(batch);

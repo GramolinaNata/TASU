@@ -60,6 +60,9 @@ import Loader from "../../shared/components/Loader";
 
 const CATS = [
   "Перевозка",
+  "Грузчики",
+  "Представитель",
+  "Налоги",
   "Ремонт машины",
   "Заправка",
   "Зарплата сотрудников",
@@ -67,7 +70,6 @@ const CATS = [
   "Аренда",
   "Прочее",
 ];
-
 const EMPTY_FORM = {
   date: new Date().toISOString().split("T")[0],
   category: CATS[0],
@@ -184,8 +186,33 @@ export default function AccountantExpensesPage() {
     setRequestSearch('');
   };
 
-  const total = expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
+const total = expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
 
+  // ТЗ: налог = ставка компании (%) от суммы накладной
+  const getCompanyTaxRate = (companyId) => {
+    const c = companies.find(co => co.id === companyId);
+    return c ? (parseFloat(c.taxRate) || 0) : 0;
+  };
+
+  const getRequestSum = (requestId) => {
+    const r = requests.find(rr => rr.id === requestId);
+    if (!r) return 0;
+    const d = parseDetails(r.details);
+    return Number(r.totalSum || d.totalSum || 0) || 0;
+  };
+
+  // Автосчёт суммы налога при выборе категории Налоги + накладной
+  useEffect(() => {
+    if (form.category === 'Налоги' && form.requestId && form.companyId) {
+      const rate = getCompanyTaxRate(form.companyId);
+      if (rate > 0) {
+        const base = getRequestSum(form.requestId);
+        const tax = Math.round(base * rate / 100);
+        setForm(prev => ({ ...prev, amount: String(tax) }));
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.category, form.requestId, form.companyId]);
   const save = async (e) => {
     e.preventDefault();
     setSaving(true);
@@ -394,7 +421,14 @@ export default function AccountantExpensesPage() {
                 </select>
               </div>
               <div className="field">
-                <div className="label">Сумма (тг)</div>
+                <div className="label">
+                  Сумма (тг)
+                  {form.category === 'Налоги' && form.requestId && getCompanyTaxRate(form.companyId) > 0 && (
+                    <span style={{ marginLeft: 8, fontSize: '0.75rem', color: '#0369a1' }}>
+                      ⚡ {getCompanyTaxRate(form.companyId)}% от суммы накладной ({getRequestSum(form.requestId).toLocaleString()} тг)
+                    </span>
+                  )}
+                </div>
                 <input type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })} required placeholder="0" />
               </div>
 

@@ -14,6 +14,7 @@ function formatDisplayDate(val) {
   return `${day}.${month}.${year}`;
 }
 import { exportToDocx } from "../../shared/export/docxExport.js";
+import { exportTtnToXlsx } from "../../shared/export/xlsxExport.js";
 import { getCompanies } from "../../shared/storage/companyStorage.js";
 
 function safeUuid() {
@@ -514,7 +515,13 @@ export default function ActDetailsPage() {
         alert("Данные компании не найдены на сервере");
         return;
       }
-      await exportToDocx({ ...act, company: comp }, docTypeOverride || act.docType);
+      const exportType = docTypeOverride || act.docType;
+      // ТТН — отдельная официальная форма в Excel; остальное — docx
+      if (exportType === "ttn") {
+        await exportTtnToXlsx({ ...act, company: comp });
+      } else {
+        await exportToDocx({ ...act, company: comp }, exportType);
+      }
       setShowExportMenu(false);
     } catch (err) {
       console.error("Export error:", err);

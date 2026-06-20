@@ -951,10 +951,7 @@ export const getRequests = async (req: AuthRequest, res: Response) => {
       });
       if (!me?.assignedCompanyId) return res.json([]);
       where.companyId = me.assignedCompanyId;
-      // Если фронт явно запрашивает все накладные компании (для нумерации) — не фильтруем по managerId
-      if (req.query.allCompany !== 'true') {
-        where.managerId = req.user.id;
-      }
+      // PRIVATE менеджеры видят все накладные своей компании (друг друга)
     } else {
       if (companyId) where.companyId = companyId as string;
     }
@@ -1000,17 +997,15 @@ export const getRequest = async (req: AuthRequest, res: Response) => {
     });
     if (!request) return res.status(404).json({ message: 'Заявка не найдена' });
 
-    if (req.user?.role === 'PRIVATE') {
-      const me = await prisma.user.findUnique({
-        where: { id: req.user.id },
-        select: { assignedCompanyId: true },
-      });
-      // PRIVATE может читать любые накладные своей компании
-      // (нужно для просмотра содержимого партии)
-      if (request.companyId !== me?.assignedCompanyId) {
-        return res.status(403).json({ message: 'Доступ запрещён' });
+   if (req.user?.role === 'PRIVATE') {
+        const me = await prisma.user.findUnique({
+          where: { id: req.user.id },
+          select: { assignedCompanyId: true },
+        });
+        if (request.companyId !== me?.assignedCompanyId) {
+          return res.status(403).json({ message: 'Доступ запрещён' });
+        }
       }
-    }
 
     res.json(request);
   } catch (error: any) {
@@ -1087,7 +1082,7 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
           where: { id: req.user.id },
           select: { assignedCompanyId: true },
         });
-        if (existing.companyId !== me?.assignedCompanyId || existing.managerId !== req.user.id) {
+       if (existing.companyId !== me?.assignedCompanyId) {
           throw new Error('FORBIDDEN');
         }
       }

@@ -21,8 +21,8 @@ function getSortValue(c, field) {
 }
 
 const EMPTY_FORM = {
-  name: "", bin: "", address: "", factAddress: "", phone: "", director: "",
-  email: "", bank: "", bik: "", account: "", kbe: "", bankDetails: "",
+name: "", bin: "", address: "", factAddress: "", phone: "", director: "",
+  email: "", bank: "", bik: "", account: "", kbe: "", bankDetails: "", taxRate: 0,
   managerDetails: "", logo: "",
   // 🆕 ТЗ v2: PNG с печатью и подписью
   stamp: "",
@@ -117,7 +117,7 @@ export default function CompaniesPage() {
       factAddress: c.factAddress || "", phone: c.phone || "",
       director: c.director || "", email: c.email || "",
       bank: c.bank || "", bik: c.bik || "", account: c.account || "",
-      kbe: c.kbe || "", bankDetails: c.bankDetails || "",
+      kbe: c.kbe || "", bankDetails: c.bankDetails || "", taxRate: c.taxRate || 0,
       managerDetails: c.managerDetails || "",
       logo: c.logo || "",
       stamp: c.stamp || "",
@@ -184,10 +184,11 @@ export default function CompaniesPage() {
 
   const onSave = async () => {
     try {
+      const payload = { ...form, taxRate: parseFloat(form.taxRate) || 0 };
       if (editId) {
-        await api.companies.update(editId, form);
+        await api.companies.update(editId, payload);
       } else {
-        await api.companies.create(form);
+        await api.companies.create(payload);
       }
       loadCompanies();
       reloadGlobalCompanies();
@@ -468,9 +469,13 @@ export default function CompaniesPage() {
                 <div className="label">Расчетный счет (KZ...)</div>
                 <input value={form.account} onChange={(e) => setForm({ ...form, account: e.target.value })} placeholder="KZ..." />
               </div>
-              <div className="field">
+             <div className="field">
                 <div className="label">КБЕ</div>
                 <input value={form.kbe} onChange={(e) => setForm({ ...form, kbe: e.target.value })} placeholder="17" />
+              </div>
+              <div className="field">
+                <div className="label">Ставка налога, %</div>
+                <input type="number" step="0.1" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: e.target.value })} placeholder="3" />
               </div>
             </div>
 

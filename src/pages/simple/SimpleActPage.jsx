@@ -211,7 +211,6 @@ export default function SimpleActPage() {
 <div class="label">
   <div class="header">
     <div class="logo">${logoSrc ? `<img src="${escapeHtml(logoSrc)}" alt="Logo"/>` : `<div class="logo-text">${escapeHtml(logoFallbackInitials)}</div>`}</div>
-    ${companyName ? `<div class="company-name">${escapeHtml(companyName)}</div>` : ""}
   </div>
   <div class="cities">
     <div class="city-from">
@@ -256,7 +255,8 @@ export default function SimpleActPage() {
         setSaved(true);
         await resetForm();
       } else {
-        navigate("/simple");
+        // 🆕 Передаём флаг refresh чтобы список перезагрузился (избегаем кэша)
+        navigate("/simple", { state: { refresh: Date.now() } });
       }
     } catch (err) {
       alert("Ошибка: " + err.message);
@@ -331,7 +331,15 @@ export default function SimpleActPage() {
                 <div className="label">Город назначения *</div>
                 <input value={form.toCity} onChange={e => setForm({...form, toCity: e.target.value})} placeholder="Астана" required list="cities-list" />
                 <datalist id="cities-list">
-                  {tariffs.map(t => <option key={t.id} value={t.city} />)}
+                  {[...new Set(
+                    tariffs
+                      .map(t => (t.city || "")
+                        .replace(/__LOADERS$/, "")
+                        .replace(/__CARRIERS$/, "")
+                        .replace(/__PRIVATE$/, "")
+                        .trim())
+                      .filter(Boolean)
+                  )].map((city, i) => <option key={i} value={city} />)}
                 </datalist>
                 {matchedTariff && (
                   <div style={{ marginTop: 4, fontSize: "0.8rem", color: "#389e0d" }}>

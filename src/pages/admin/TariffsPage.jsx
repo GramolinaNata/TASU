@@ -12,8 +12,28 @@ const WEIGHT_RANGES = [
   { key: 'r600', label: 'до 600 кг' },
 ];
 
-function getSortValue(t, field) {
-  switch (field) {
+// Категория тарифа: из weightRanges._category, fallback по isPrivate
+function getCategory(t) {
+  const wr = t.weightRanges && typeof t.weightRanges === 'object' ? t.weightRanges : {};
+  if (wr._category) return wr._category;
+  return t.isPrivate ? 'private' : 'legal';
+}
+
+// Суффиксы городов по категориям — чтобы city оставался уникальным в БД без миграции
+const CITY_SUFFIX = { loaders: '__LOADERS', carriers: '__CARRIERS' };
+
+// Чистый город для показа (без служебного суффикса)
+function cleanCity(city) {
+  return (city || '').replace(/__LOADERS$/, '').replace(/__CARRIERS$/, '');
+}
+
+// Город с суффиксом для сохранения по категории
+function cityWithSuffix(city, category) {
+  const base = cleanCity(city).trim();
+  const suf = CITY_SUFFIX[category] || '';
+  return base + suf;
+}
+function getSortValue(t, field) {  switch (field) {
     case 'city':          return (t.city || '').toString().toLowerCase();
     case 'pricePerKg':    return Number(t.pricePerKg) || 0;
     case 'deliveryPrice': return Number(t.deliveryPrice) || 0;
@@ -27,6 +47,7 @@ const EMPTY_FORM = {
   pricePerKg: "",
   deliveryPrice: "",
   isPrivate: false,
+  category: "legal",
   extraSum: 0,
   deliveryDays: "",
   pricePerKgOver20: "",
@@ -65,8 +86,8 @@ export default function TariffsPage() {
     </th>
   );
 
-  const filteredTariffs = useMemo(() => {
-    const filtered = tariffs.filter(t => tab === 'private' ? !!t.isPrivate : !t.isPrivate);
+const filteredTariffs = useMemo(() => {
+    const filtered = tariffs.filter(t => getCategory(t) === tab);
     return [...filtered].sort((a, b) => {
       const av = getSortValue(a, sortBy);
       const bv = getSortValue(b, sortBy);
@@ -76,9 +97,11 @@ export default function TariffsPage() {
     });
   }, [tariffs, sortBy, sortOrder, tab]);
 
-  const tabCounts = useMemo(() => ({
-    legal: tariffs.filter(t => !t.isPrivate).length,
-    private: tariffs.filter(t => !!t.isPrivate).length,
+const tabCounts = useMemo(() => ({
+    legal: tariffs.filter(t => getCategory(t) === 'legal').length,
+    private: tariffs.filter(t => getCategory(t) === 'private').length,
+    loaders: tariffs.filter(t => getCategory(t) === 'loaders').length,
+    carriers: tariffs.filter(t => getCategory(t) === 'carriers').length,
   }), [tariffs]);
 
   const load = async () => {
@@ -95,9 +118,9 @@ export default function TariffsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const openCreate = () => {
+ const openCreate = () => {
     setEditingTariff(null);
-    setForm({ ...EMPTY_FORM, isPrivate: tab === 'private' });
+    setForm({ ...EMPTY_FORM, isPrivate: tab === 'private', category: tab });
     setIsModalOpen(true);
   };
 
@@ -109,11 +132,12 @@ export default function TariffsPage() {
       [r.key]: wr[r.key] ?? '',
       [r.key + '_delivery']: wr[r.key + '_delivery'] ?? '',
     }), {});
-    setForm({
-      city: t.city,
+   setForm({
+      city: cleanCity(t.city),
       pricePerKg: t.pricePerKg,
       deliveryPrice: t.deliveryPrice,
       isPrivate: !!t.isPrivate,
+      category: getCategory(t),
       extraSum: t.extraSum || 0,
       deliveryDays: wr._deliveryDays || "",
       pricePerKgOver20: wr._pricePerKgOver20 || "",
@@ -133,8 +157,9 @@ export default function TariffsPage() {
         if (!isNaN(num) && num > 0) wrCleaned[k] = num;
       });
 
-      const wrWithExtras = {
+     const wrWithExtras = {
         ...wrCleaned,
+        _category: form.category || (form.isPrivate ? 'private' : 'legal'),
         _deliveryDays: form.deliveryDays || "",
         _pricePerKgOver20: parseFloat(form.pricePerKgOver20) || 0,
         _pricePerCubic: parseFloat(form.pricePerCubic) || 0,
@@ -142,7 +167,7 @@ export default function TariffsPage() {
       };
 
       const payload = {
-        city: form.city,
+        city: cityWithSuffix(form.city, form.category),
         pricePerKg: parseFloat(form.pricePerKg) || 0,
         deliveryPrice: parseFloat(form.deliveryPrice) || 0,
         isPrivate: !!form.isPrivate,
@@ -199,8 +224,19 @@ export default function TariffsPage() {
         >
           👤 Частные лица <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.private})</span>
         </button>
+        <button
+          className={`btn ${tab === 'loaders' ? 'btn--accent' : ''}`}
+          onClick={() => setTab('loaders')}
+        >
+          💪 Грузчики <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.loaders})</span>
+        </button>
+        <button
+          className={`btn ${tab === 'carriers' ? 'btn--accent' : ''}`}
+          onClick={() => setTab('carriers')}
+        >
+          🚚 Перевозчики <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.carriers})</span>
+        </button>
       </div>
-
       <div className="card" style={{ marginTop: 16 }}>
         {loading ? <div style={{ padding: 16 }}>Загрузка...</div> : (
           <table className="table">
@@ -208,7 +244,7 @@ export default function TariffsPage() {
               <tr>
                 <SortableTh field="city">Направление</SortableTh>
                 <th style={{ width: 100 }}>Сроки</th>
-                {tab === 'legal' ? (
+              {tab === 'legal' ? (
                   <>
                     <th style={{ width: 100 }}>До 10 кг</th>
                     <th style={{ width: 100 }}>До 20 кг</th>
@@ -236,7 +272,7 @@ export default function TariffsPage() {
                   const wr = t.weightRanges && typeof t.weightRanges === 'object' ? t.weightRanges : {};
                   return (
                     <tr key={t.id}>
-                      <td style={{ fontWeight: 600 }}>{t.city}</td>
+                      <td style={{ fontWeight: 600 }}>{cleanCity(t.city)}</td>
                       <td>{wr._deliveryDays || '—'}</td>
                       {tab === 'legal' ? (
                         <>
@@ -301,17 +337,23 @@ export default function TariffsPage() {
 
             <form onSubmit={handleSave}>
               <div className="field" style={{ marginBottom: 16 }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, background: form.isPrivate ? '#fef3c7' : '#f3f4f6', border: `1px solid ${form.isPrivate ? '#fbbf24' : '#e5e7eb'}` }}>
-                  <input
-                    type="checkbox"
-                    checked={form.isPrivate}
-                    onChange={e => setForm({ ...form, isPrivate: e.target.checked })}
-                    style={{ cursor: 'pointer' }}
-                  />
-                  <span style={{ fontWeight: 700 }}>
-                    {form.isPrivate ? '👤 Тариф для частных лиц' : '🏢 Тариф для юр. лиц'}
-                  </span>
-                </label>
+                {(form.category === 'legal' || form.category === 'private') ? (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, background: form.isPrivate ? '#fef3c7' : '#f3f4f6', border: `1px solid ${form.isPrivate ? '#fbbf24' : '#e5e7eb'}` }}>
+                    <input
+                      type="checkbox"
+                      checked={form.isPrivate}
+                      onChange={e => setForm({ ...form, isPrivate: e.target.checked, category: e.target.checked ? 'private' : 'legal' })}
+                      style={{ cursor: 'pointer' }}
+                    />
+                    <span style={{ fontWeight: 700 }}>
+                      {form.isPrivate ? '👤 Тариф для частных лиц' : '🏢 Тариф для юр. лиц'}
+                    </span>
+                  </label>
+                ) : (
+                  <div style={{ padding: '10px 12px', borderRadius: 8, background: '#eef2ff', border: '1px solid #c7d2fe', fontWeight: 700 }}>
+                    {form.category === 'loaders' ? '💪 Тариф для грузчиков' : '🚚 Тариф для перевозчиков'}
+                  </div>
+                )}
               </div>
 
               <div className="field" style={{ marginBottom: 16 }}>
@@ -319,23 +361,27 @@ export default function TariffsPage() {
                 <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder="Алматы" required />
               </div>
 
-              <div className="field" style={{ marginBottom: 16 }}>
-                <div className="label">Сроки доставки (раб. дни)</div>
-                <input value={form.deliveryDays} onChange={e => setForm({ ...form, deliveryDays: e.target.value })} placeholder="5-6" />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
-                <div className="field">
-                  <div className="label">За кг (сверх 20 кг)</div>
-                  <input type="number" value={form.pricePerKgOver20} onChange={e => setForm({ ...form, pricePerKgOver20: e.target.value })} placeholder="160" />
+              {(form.category === 'legal' || form.category === 'private') && (
+                <div className="field" style={{ marginBottom: 16 }}>
+                  <div className="label">Сроки доставки (раб. дни)</div>
+                  <input value={form.deliveryDays} onChange={e => setForm({ ...form, deliveryDays: e.target.value })} placeholder="5-6" />
                 </div>
-                <div className="field">
-                  <div className="label">МГ_Тарифы КУБ (тг)</div>
-                  <input type="number" value={form.pricePerCubic} onChange={e => setForm({ ...form, pricePerCubic: e.target.value })} placeholder="24000" />
-                </div>
-              </div>
+              )}
 
-              {!form.isPrivate && (
+              {(form.category === 'legal' || form.category === 'private') && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
+                  <div className="field">
+                    <div className="label">За кг (сверх 20 кг)</div>
+                    <input type="number" value={form.pricePerKgOver20} onChange={e => setForm({ ...form, pricePerKgOver20: e.target.value })} placeholder="160" />
+                  </div>
+                  <div className="field">
+                    <div className="label">МГ_Тарифы КУБ (тг)</div>
+                    <input type="number" value={form.pricePerCubic} onChange={e => setForm({ ...form, pricePerCubic: e.target.value })} placeholder="24000" />
+                  </div>
+                </div>
+              )}
+
+              {form.category === 'legal' && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 16 }}>
                   <div className="field">
                     <div className="label">До 10 кг (тг)</div>
@@ -348,7 +394,7 @@ export default function TariffsPage() {
                 </div>
               )}
 
-              {form.isPrivate && (
+             {(form.isPrivate || form.category === 'loaders' || form.category === 'carriers') && (
                 <>
                   <div style={{ marginBottom: 16 }}>
                     <div className="label" style={{ marginBottom: 8 }}>Диапазоны весов (тг за диапазон)</div>
@@ -378,23 +424,26 @@ export default function TariffsPage() {
                       Заполните только нужные диапазоны. Пустые поля не сохранятся.
                     </div>
                   </div>
-                  <div className="field" style={{ marginBottom: 24, padding: 12, background: '#fff7ed', borderRadius: 8, border: '1px dashed #fdba74' }}>
-                    <div className="label">
-                      Доп. сумма к тарифу (тг)
-                      <span style={{ marginLeft: 6, fontSize: '0.7rem', color: '#9a3412' }}>
-                        (вручную +NNNN тг к выбранному диапазону)
-                      </span>
+                  {form.category === 'private' && (
+                    <div className="field" style={{ marginBottom: 24, padding: 12, background: '#fff7ed', borderRadius: 8, border: '1px dashed #fdba74' }}>
+                      <div className="label">
+                        Доп. сумма к тарифу (тг)
+                        <span style={{ marginLeft: 6, fontSize: '0.7rem', color: '#9a3412' }}>
+                          (вручную +NNNN тг к выбранному диапазону)
+                        </span>
+                      </div>
+                      <input
+                        type="number"
+                        value={form.extraSum}
+                        onChange={e => setForm({ ...form, extraSum: e.target.value })}
+                        placeholder="0"
+                      />
                     </div>
-                    <input
-                      type="number"
-                      value={form.extraSum}
-                      onChange={e => setForm({ ...form, extraSum: e.target.value })}
-                      placeholder="0"
-                    />
-                  </div>
+                  )}
                 </>
               )}
 
+              {(form.category === 'legal' || form.category === 'private') && (
               <div className="field" style={{ marginBottom: 24, padding: 12, background: '#fef9ff', borderRadius: 8, border: '1px dashed #c084fc' }}>
                 <div className="label" style={{ marginBottom: 8 }}>
                   🌍 Региональные доплаты
@@ -491,6 +540,7 @@ export default function TariffsPage() {
                   Когда заказчик создаёт заявку в Жанаозен — система найдёт этот тариф, посчитает основной до Актау + доплату.
                 </div>
               </div>
+              )}
 
               <div style={{ display: "flex", gap: 12 }}>
                 <button type="button" className="btn btn--ghost" style={{ flex: 1 }} onClick={() => setIsModalOpen(false)}>Отмена</button>

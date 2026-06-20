@@ -316,9 +316,10 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       kbe: restData.kbe || "",
       bankDetails: restData.bankDetails || "",
       managerDetails: restData.managerDetails || "",
-      logo: restData.logo || "",
+     logo: restData.logo || "",
       stamp: restData.stamp || null,
       status: restData.status || 'active',
+      taxRate: parseFloat(restData.taxRate) || 0,
     };
 
     if (id && typeof id === 'string') dataToSave.id = id;
@@ -345,7 +346,7 @@ export const updateCompany = async (req: AuthRequest, res: Response) => {
       'name', 'bin', 'address', 'factAddress', 'phone',
       'director', 'email', 'bank', 'bik', 'account', 'kbe',
       'bankDetails', 'managerDetails', 'logo',
-      'stamp', 'status',
+      'stamp', 'status', 'taxRate',
     ];
 
     fields.forEach(f => {

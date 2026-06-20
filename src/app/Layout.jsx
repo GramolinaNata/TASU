@@ -562,6 +562,12 @@ export default function Layout() {
                         <span className="menu_text">Расходы</span>
                       </NavLink>
                     )}
+                    {isAccountant && (
+                      <NavLink to="/accountant/report" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Отчёт">
+                        <span className="menu_icon">📊</span>
+                        <span className="menu_text">Отчёт</span>
+                      </NavLink>
+                    )}
                   </div>
                 )}
 
@@ -585,6 +591,14 @@ export default function Layout() {
                     <NavLink to="/admin/tariffs" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Тарифы">
                       <span className="menu_icon">💰</span>
                       <span className="menu_text">Тарифы</span>
+                    </NavLink>
+                    <NavLink to="/admin/carriers" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Перевозчики">
+                      <span className="menu_icon">🚚</span>
+                      <span className="menu_text">Перевозчики</span>
+                    </NavLink>
+                    <NavLink to="/admin/representatives" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Представители">
+                      <span className="menu_icon">🧑‍💼</span>
+                      <span className="menu_text">Представители</span>
                     </NavLink>
                   </div>
                 )}

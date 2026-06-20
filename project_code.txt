@@ -27439,14 +27439,17 @@ export default function SimpleActsListPage() {
   }, []);
 
   useEffect(() => {
-    if (!company) { setActs([]); setLoading(false); return; }
+    // Админ видит частные накладные всех компаний (не зависит от переключателя).
+    // Менеджер/PRIVATE — только свою выбранную компанию.
+    if (!isAdmin && !company) { setActs([]); setLoading(false); return; }
     load();
-  }, [company]);
-
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [company, location.state?.refresh, isAdmin]);
   const load = async () => {
     setLoading(true);
     try {
-      const list = await api.requests.list(company?.id);
+      // Админ — без companyId (все компании); остальные — по своей компании
+      const list = await api.requests.list(isAdmin ? undefined : company?.id);
       if (Array.isArray(list)) {
         const simple = list
           .filter(a => {

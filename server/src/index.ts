@@ -14,6 +14,8 @@ import counterpartyRoutes from './routes/counterparty.routes';
 import expenseRoutes from './routes/expense.route';
 import tariffRoutes from './routes/tariff.route';
 import batchRoutes from './routes/batch.route';
+import carrierRoutes from './routes/carrier.routes';
+import representativeRoutes from './routes/representative.routes';
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
@@ -50,6 +52,8 @@ app.use('/api/counterparties', counterpartyRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/tariffs', tariffRoutes);
 app.use('/api/batches', batchRoutes);
+app.use('/api/carriers', carrierRoutes);
+app.use('/api/representatives', representativeRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -61,19 +65,19 @@ app.get('/api/ping', (req, res) => {
 
 app.use((req, res) => {
   console.log(`!!! 404 NOT FOUND !!! - ${req.method} ${req.url}`);
-  res.status(404).json({ 
+  res.status(404).json({
     message: `Маршрут ${req.method} ${req.url} не найден на этом сервере.`,
-    availableRoutes: ['/api/auth', '/api/users', '/api/companies', '/api/requests', '/api/contracts', '/api/counterparties', '/api/expenses', '/api/health']
+    availableRoutes: ['/api/auth', '/api/users', '/api/companies', '/api/requests', '/api/contracts', '/api/counterparties', '/api/expenses', '/api/carriers', '/api/representatives', '/api/health'],
   });
 });
 
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error('!!! GLOBAL SERVER ERROR !!!');
   console.error(err);
-  res.status(500).json({ 
+  res.status(500).json({
     message: 'Внутренняя ошибка сервера',
     error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
-    stack: process.env.NODE_ENV === 'production' ? undefined : err.stack 
+    stack: process.env.NODE_ENV === 'production' ? undefined : err.stack,
   });
 });
 

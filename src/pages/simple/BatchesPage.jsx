@@ -11,7 +11,6 @@ function formatDate(val) {
   return d.toLocaleDateString("ru");
 }
 
-// ---- СОРТИРОВКА ----
 function getSortValue(b, field) {
   switch (field) {
     case 'number':       return (b.number || '').toString().toLowerCase();
@@ -26,14 +25,17 @@ function getSortValue(b, field) {
   }
 }
 
-/**
- * 🆕 Генератор последовательных номеров партий: П000001, П000002...
- * Берёт все партии с сервера, находит max номер с префиксом П, добавляет +1.
- * Fallback на timestamp если что-то пошло не так.
- */
 async function genNextBatchNumber(companyId) {
   try {
-    const allBatches = await api.batches.list(companyId);
+    // Грузим ВСЕ партии (без фильтра по компании — у партий companyId пустой,
+    // нумерация сквозная по всем)
+    let allBatches = [];
+    try {
+      allBatches = await api.batches.list();
+    } catch (e1) {
+      // на случай если list требует аргумент
+      allBatches = await api.batches.list(companyId);
+    }
     const pattern = /^П(\d+)$/;
     let maxNum = 0;
     (allBatches || []).forEach(b => {
@@ -42,14 +44,16 @@ async function genNextBatchNumber(companyId) {
         const m = String(num).match(pattern);
         if (m) {
           const n = parseInt(m[1], 10);
-          if (n > maxNum) maxNum = n;
+          // игнорируем аномально большие номера (мусор от старых timestamp-fallback)
+          if (n > maxNum && n < 900000) maxNum = n;
         }
       }
     });
     return "П" + String(maxNum + 1).padStart(6, "0");
   } catch (e) {
-    console.warn("Не удалось получить max номер партии, fallback на timestamp:", e);
-    return "П" + String(Date.now()).slice(-6);
+    console.warn("Не удалось получить max номер партии, fallback:", e);
+    // Безопасный fallback — не timestamp, а первый номер
+    return "П000001";
   }
 }
 
@@ -57,6 +61,10 @@ const EMPTY_FORM = {
   number: "", city: "", driverName: "", driverPhone: "",
   carNumber: "", deliveryCost: "",
   totalSeats: "", totalWeight: "",
+  // Перевозчик / представитель / грузчики
+  needCarrier: false, carrierId: "",
+  needRepresentative: false, representativeId: "",
+  needLoaders: false, loadersCount: "",
 };
 
 export default function BatchesPage() {
@@ -68,10 +76,12 @@ export default function BatchesPage() {
   const [editBatch, setEditBatch] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
 
-  // Табы Активные / Сформированные
+  // Справочники
+  const [carriers, setCarriers] = useState([]);
+  const [representatives, setRepresentatives] = useState([]);
+
   const [tab, setTab] = useState('active');
 
-  // Сортировка
   const [sortBy, setSortBy] = useState('date');
   const [sortOrder, setSortOrder] = useState('desc');
 
@@ -120,6 +130,22 @@ export default function BatchesPage() {
     load();
   }, [company]);
 
+  // Загрузка справочников один раз
+  useEffect(() => {
+    (async () => {
+      try {
+        const [c, r] = await Promise.all([
+          api.carriers.list(),
+          api.representatives.list(),
+        ]);
+        setCarriers(Array.isArray(c) ? c : []);
+        setRepresentatives(Array.isArray(r) ? r : []);
+      } catch (e) {
+        console.error("Не удалось загрузить справочники", e);
+      }
+    })();
+  }, []);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -132,7 +158,6 @@ export default function BatchesPage() {
     }
   };
 
-  // 🆕 Последовательная нумерация вместо рандомного timestamp
   const openCreate = async () => {
     setEditBatch(null);
     const nextNum = await genNextBatchNumber(company?.id);
@@ -151,6 +176,12 @@ export default function BatchesPage() {
       deliveryCost: batch.deliveryCost,
       totalSeats: batch.totalSeats || "",
       totalWeight: batch.totalWeight || "",
+      needCarrier: !!batch.carrierId,
+      carrierId: batch.carrierId || "",
+      needRepresentative: !!batch.representativeId,
+      representativeId: batch.representativeId || "",
+      needLoaders: (batch.loadersCount || 0) > 0,
+      loadersCount: batch.loadersCount || "",
     });
     setShowForm(true);
   };
@@ -162,7 +193,16 @@ export default function BatchesPage() {
         ...form,
         totalSeats: parseInt(form.totalSeats) || 0,
         totalWeight: parseFloat(form.totalWeight) || 0,
+        // Если галочка снята — поле обнуляем
+        carrierId: form.needCarrier ? (form.carrierId || null) : null,
+        representativeId: form.needRepresentative ? (form.representativeId || null) : null,
+        loadersCount: form.needLoaders ? (parseInt(form.loadersCount) || 0) : 0,
       };
+      // Чистим вспомогательные флаги перед отправкой
+      delete payload.needCarrier;
+      delete payload.needRepresentative;
+      delete payload.needLoaders;
+
       if (editBatch) {
         await api.batches.update(editBatch.id, payload);
       } else {
@@ -234,66 +274,74 @@ export default function BatchesPage() {
 
   const printVedomost = async (batch) => {
     let requestIds = [];
-    try { requestIds = JSON.parse(batch.requestIds); } catch(e) {}
+    try { requestIds = JSON.parse(batch.requestIds || "[]"); } catch(e) {}
+
+    let reqs = [];
+    if (requestIds.length > 0) {
+      reqs = await Promise.all(
+        requestIds.map(rid => api.requests.get(rid).catch(() => null))
+      );
+      reqs = reqs.filter(Boolean);
+    }
 
     const { toDataURL } = await import("qrcode");
     const qrUrl = await toDataURL(`TASU-BATCH-${batch.number}`, { width: 100, margin: 1 });
 
-    const totalSeats = batch.totalSeats || 0;
-    const totalWeight = batch.totalWeight || 0;
+    const rows = reqs.map((r, i) => {
+      let details = {};
+      try { details = JSON.parse(r.details || "{}"); } catch (e) {}
+      const recv = details.receiver || {};
+      const route = details.route || {};
+      const totals = details.totals || {};
+      return `<tr>
+        <td style="text-align:center">${i + 1}</td>
+        <td>${r.docNumber || details.docNumber || r.id || "—"}</td>
+        <td>${recv.fio || "—"}</td>
+        <td>${recv.phone || "—"}</td>
+        <td style="text-align:center">${totals.seats || "—"}</td>
+        <td style="text-align:center">${totals.weight ? totals.weight + " кг" : "—"}</td>
+        <td>${route.toCity || batch.city || "—"}</td>
+      </tr>`;
+    }).join("");
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Партия ${batch.number}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Грузовая ведомость ${batch.number}</title>
     <style>
       body { font-family: Arial, sans-serif; font-size: 12px; padding: 20px; }
-      h2 { margin: 0 0 4px 0; font-size: 20px; font-weight: 900; text-transform: uppercase; }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #000; }
-      .formed-badge { display: inline-block; padding: 4px 12px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 11px; font-weight: 700; margin-top: 4px; }
-      .info { display: flex; gap: 0; border: 1px solid #aaa; margin-bottom: 16px; flex-wrap: wrap; }
-      .info-cell { flex: 1; min-width: 140px; padding: 8px 12px; border-right: 1px solid #aaa; font-size: 11px; }
-      .info-cell:last-child { border-right: none; }
-      .info-label { color: #666; font-size: 10px; margin-bottom: 2px; }
-      .info-val { font-weight: 700; font-size: 13px; }
-      .totals { display: flex; gap: 12px; margin: 16px 0; }
-      .total-card { flex: 1; padding: 12px; background: #f3f4f6; border-radius: 6px; text-align: center; }
-      .total-card .num { font-size: 22px; font-weight: 900; color: #1f2937; }
-      .total-card .lbl { font-size: 11px; color: #6b7280; margin-top: 4px; }
-      .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 30px; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #000; }
+      h2 { margin: 0; font-size: 20px; font-weight: 900; text-transform: uppercase; }
+      .sub { color: #333; font-size: 11px; margin-top: 4px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
+      th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
+      th { background: #f3f4f6; font-weight: 700; text-align: center; }
+      .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 40px; }
       .sig { flex: 1; }
       .sig-line { border-bottom: 1px solid #000; margin-bottom: 5px; height: 28px; }
       .sig-label { font-size: 10px; color: #333; text-align: center; }
     </style></head><body>
     <div class="header">
       <div>
-        <h2>Партия № ${batch.number}</h2>
-        <div style="color:#333;font-size:11px;margin-top:4px;">${company?.name || ""} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")} &nbsp;&nbsp; Город: ${batch.city}</div>
-        ${batch.isFormed ? '<div class="formed-badge">✓ СФОРМИРОВАНА ' + (batch.formedAt ? new Date(batch.formedAt).toLocaleDateString("ru") : '') + '</div>' : ''}
+        <h2>Грузовая ведомость</h2>
+        <div class="sub">${company?.name || ""} &nbsp;&nbsp; Партия № ${batch.number} &nbsp;&nbsp; Город: ${batch.city || "—"} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")}</div>
       </div>
-      <img src="${qrUrl}" width="90" height="90" style="border:1px solid #ccc;padding:3px;"/>
+      <img src="${qrUrl}" width="80" height="80" style="border:1px solid #ccc;padding:3px;"/>
     </div>
-    <div class="info">
-      <div class="info-cell"><div class="info-label">Водитель</div><div class="info-val">${batch.driverName || "—"}</div></div>
-      <div class="info-cell"><div class="info-label">Телефон водителя</div><div class="info-val">${batch.driverPhone || "—"}</div></div>
-      <div class="info-cell"><div class="info-label">Номер авто</div><div class="info-val">${batch.carNumber || "—"}</div></div>
-      <div class="info-cell"><div class="info-label">Стоимость перевозки</div><div class="info-val">${batch.deliveryCost ? Number(batch.deliveryCost).toLocaleString() + " тг" : "—"}</div></div>
-    </div>
-    <div class="totals">
-      <div class="total-card">
-        <div class="num">${requestIds.length}</div>
-        <div class="lbl">Накладных</div>
-      </div>
-      <div class="total-card">
-        <div class="num">${totalSeats}</div>
-        <div class="lbl">Мест всего</div>
-      </div>
-      <div class="total-card">
-        <div class="num">${Number(totalWeight).toLocaleString()} кг</div>
-        <div class="lbl">Общий вес</div>
-      </div>
-    </div>
+    ${rows ? `<table>
+      <thead>
+        <tr>
+          <th style="width:30px">№</th>
+          <th>Номер накладной</th>
+          <th>Получатель</th>
+          <th style="width:130px">Номер телефона</th>
+          <th style="width:50px">Мест</th>
+          <th style="width:60px">Вес</th>
+          <th style="width:90px">Город</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>` : '<div style="color:#888;font-style:italic;margin-top:16px;">В партии нет накладных</div>'}
     <div class="signatures">
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Перевозчик (подпись, М.П.)</div></div>
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Отправитель (подпись, М.П.)</div></div>
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Получатель (подпись, М.П.)</div></div>
+      <div class="sig"><div class="sig-line"></div><div class="sig-label">Выдал (ФИО, подпись)</div></div>
+      <div class="sig"><div class="sig-line"></div><div class="sig-label">Принял (ФИО, подпись)</div></div>
     </div>
     <script>window.onload=function(){window.print();}</script>
     </body></html>`;
@@ -366,6 +414,67 @@ export default function BatchesPage() {
                 <input type="number" value={form.totalWeight} onChange={e => setForm({ ...form, totalWeight: e.target.value })} placeholder="0" />
               </div>
             </div>
+
+            {/* Перевозчик / представитель / грузчики */}
+            <div style={{ marginTop: 16, padding: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
+              <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase' }}>Доп. участники партии</div>
+
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={form.needCarrier} onChange={e => setForm({ ...form, needCarrier: e.target.checked })} />
+                  🚚 Нужен перевозчик
+                </label>
+                {form.needCarrier && (
+                  <select
+                    value={form.carrierId}
+                    onChange={e => setForm({ ...form, carrierId: e.target.value })}
+                    style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                  >
+                    <option value="">— выберите перевозчика —</option>
+                    {carriers.map(c => (
+                      <option key={c.id} value={c.id}>{c.name}{c.city ? ` (${c.city})` : ''}{c.phone ? ` · ${c.phone}` : ''}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={form.needRepresentative} onChange={e => setForm({ ...form, needRepresentative: e.target.checked })} />
+                  🧑‍💼 Нужен представитель
+                </label>
+                {form.needRepresentative && (
+                  <select
+                    value={form.representativeId}
+                    onChange={e => setForm({ ...form, representativeId: e.target.value })}
+                    style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                  >
+                    <option value="">— выберите представителя —</option>
+                    {representatives.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}{r.city ? ` (${r.city})` : ''}{r.phone ? ` · ${r.phone}` : ''}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+
+              <div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontWeight: 600 }}>
+                  <input type="checkbox" checked={form.needLoaders} onChange={e => setForm({ ...form, needLoaders: e.target.checked })} />
+                  💪 Нужны грузчики
+                </label>
+                {form.needLoaders && (
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.loadersCount}
+                    onChange={e => setForm({ ...form, loadersCount: e.target.value })}
+                    placeholder="Количество грузчиков"
+                    style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
+                  />
+                )}
+              </div>
+            </div>
+
             <div style={{ display: "flex", gap: 10, marginTop: 20 }}>
               <button className="btn btn--accent" onClick={handleSave}>Сохранить</button>
               <button className="btn" onClick={() => setShowForm(false)}>Отмена</button>
@@ -405,7 +514,6 @@ export default function BatchesPage() {
                   <tr
                     key={b.id}
                     onClick={(e) => {
-                      // Игнорируем клик если кликнули по кнопке внутри столбца действий
                       if (e.target.closest('button') || e.target.closest('.actions-cell')) return;
                       navigate(`/simple/batches/${b.id}`);
                     }}

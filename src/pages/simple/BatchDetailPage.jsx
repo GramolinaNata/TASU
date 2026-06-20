@@ -28,15 +28,12 @@ export default function BatchDetailPage() {
   const load = async () => {
     setLoading(true);
     try {
-      // 1. Загружаем партию
       const b = await api.batches.get(id);
       setBatch(b);
 
-      // 2. Парсим список ID накладных
       let requestIds = [];
       try { requestIds = JSON.parse(b.requestIds || "[]"); } catch (e) {}
 
-      // 3. Загружаем каждую накладную (параллельно)
       if (requestIds.length > 0) {
         const reqs = await Promise.all(
           requestIds.map(reqId => api.requests.get(reqId).catch(() => null))
@@ -53,84 +50,69 @@ export default function BatchDetailPage() {
     }
   };
 
+  // Грузовая ведомость (без суммы) — по образцу бумажной формы.
+  // Колонки: № | Номер накладной | Получатель | Номер телефона | Мест | Вес | Город
   const printVedomost = async () => {
     if (!batch) return;
-    let requestIds = [];
-    try { requestIds = JSON.parse(batch.requestIds); } catch (e) {}
 
     const { toDataURL } = await import("qrcode");
     const qrUrl = await toDataURL(`TASU-BATCH-${batch.number}`, { width: 100, margin: 1 });
 
-    const totalSeats = batch.totalSeats || 0;
-    const totalWeight = batch.totalWeight || 0;
-
-    // Список накладных для печати
-    const requestsRows = requests.map((r, i) => {
+    const rows = requests.map((r, i) => {
       let details = {};
       try { details = JSON.parse(r.details || "{}"); } catch (e) {}
       const recv = details.receiver || {};
       const route = details.route || {};
       const totals = details.totals || {};
       return `<tr>
-        <td>${i + 1}</td>
+        <td style="text-align:center">${i + 1}</td>
         <td>${r.docNumber || details.docNumber || r.id || "—"}</td>
         <td>${recv.fio || "—"}</td>
-        <td>${route.toCity || "—"}</td>
+        <td>${recv.phone || "—"}</td>
         <td style="text-align:center">${totals.seats || "—"}</td>
         <td style="text-align:center">${totals.weight ? totals.weight + " кг" : "—"}</td>
+        <td>${route.toCity || batch.city || "—"}</td>
       </tr>`;
     }).join("");
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Партия ${batch.number}</title>
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Грузовая ведомость ${batch.number}</title>
     <style>
       body { font-family: Arial, sans-serif; font-size: 12px; padding: 20px; }
-      h2 { margin: 0 0 4px 0; font-size: 20px; font-weight: 900; text-transform: uppercase; }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #000; }
-      .formed-badge { display: inline-block; padding: 4px 12px; background: #d1fae5; color: #065f46; border-radius: 4px; font-size: 11px; font-weight: 700; margin-top: 4px; }
-      .info { display: flex; gap: 0; border: 1px solid #aaa; margin-bottom: 16px; flex-wrap: wrap; }
-      .info-cell { flex: 1; min-width: 140px; padding: 8px 12px; border-right: 1px solid #aaa; font-size: 11px; }
-      .info-cell:last-child { border-right: none; }
-      .info-label { color: #666; font-size: 10px; margin-bottom: 2px; }
-      .info-val { font-weight: 700; font-size: 13px; }
-      .totals { display: flex; gap: 12px; margin: 16px 0; }
-      .total-card { flex: 1; padding: 12px; background: #f3f4f6; border-radius: 6px; text-align: center; }
-      .total-card .num { font-size: 22px; font-weight: 900; color: #1f2937; }
-      .total-card .lbl { font-size: 11px; color: #6b7280; margin-top: 4px; }
-      table.requests { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 11px; }
-      table.requests th, table.requests td { border: 1px solid #aaa; padding: 5px 8px; text-align: left; }
-      table.requests th { background: #f3f4f6; font-weight: 700; }
-      .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 30px; }
+      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #000; }
+      h2 { margin: 0; font-size: 20px; font-weight: 900; text-transform: uppercase; }
+      .sub { color: #333; font-size: 11px; margin-top: 4px; }
+      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
+      th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
+      th { background: #f3f4f6; font-weight: 700; text-align: center; }
+      .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 40px; }
       .sig { flex: 1; }
       .sig-line { border-bottom: 1px solid #000; margin-bottom: 5px; height: 28px; }
       .sig-label { font-size: 10px; color: #333; text-align: center; }
     </style></head><body>
     <div class="header">
       <div>
-        <h2>Партия № ${batch.number}</h2>
-        <div style="color:#333;font-size:11px;margin-top:4px;">${company?.name || ""} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")} &nbsp;&nbsp; Город: ${batch.city}</div>
-        ${batch.isFormed ? '<div class="formed-badge">✓ СФОРМИРОВАНА ' + (batch.formedAt ? new Date(batch.formedAt).toLocaleDateString("ru") : '') + '</div>' : ''}
+        <h2>Грузовая ведомость</h2>
+        <div class="sub">${company?.name || ""} &nbsp;&nbsp; Партия № ${batch.number} &nbsp;&nbsp; Город: ${batch.city || "—"} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")}</div>
       </div>
-      <img src="${qrUrl}" width="90" height="90" style="border:1px solid #ccc;padding:3px;"/>
+      <img src="${qrUrl}" width="80" height="80" style="border:1px solid #ccc;padding:3px;"/>
     </div>
-    <div class="info">
-      <div class="info-cell"><div class="info-label">Водитель</div><div class="info-val">${batch.driverName || "—"}</div></div>
-      <div class="info-cell"><div class="info-label">Телефон водителя</div><div class="info-val">${batch.driverPhone || "—"}</div></div>
-      <div class="info-cell"><div class="info-label">Номер авто</div><div class="info-val">${batch.carNumber || "—"}</div></div>
-      <div class="info-cell"><div class="info-label">Стоимость перевозки</div><div class="info-val">${batch.deliveryCost ? Number(batch.deliveryCost).toLocaleString() + " тг" : "—"}</div></div>
-    </div>
-    <div class="totals">
-      <div class="total-card"><div class="num">${requestIds.length}</div><div class="lbl">Накладных</div></div>
-      <div class="total-card"><div class="num">${totalSeats}</div><div class="lbl">Мест всего</div></div>
-      <div class="total-card"><div class="num">${Number(totalWeight).toLocaleString()} кг</div><div class="lbl">Общий вес</div></div>
-    </div>
-    ${requestsRows ? `<table class="requests">
-      <thead><tr><th style="width:30px">№</th><th>Номер накладной</th><th>Получатель</th><th>Город</th><th style="width:60px;text-align:center">Мест</th><th style="width:90px;text-align:center">Вес</th></tr></thead>
-      <tbody>${requestsRows}</tbody>
+    ${rows ? `<table>
+      <thead>
+        <tr>
+          <th style="width:30px">№</th>
+          <th>Номер накладной</th>
+          <th>Получатель</th>
+          <th>Номер телефона</th>
+          <th style="width:60px">Мест</th>
+          <th style="width:90px">Вес</th>
+          <th>Город</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
     </table>` : '<div style="color:#888;font-style:italic;margin-top:16px;">В партии нет накладных</div>'}
     <div class="signatures">
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Перевозчик (подпись, М.П.)</div></div>
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Отправитель (подпись, М.П.)</div></div>
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Получатель (подпись, М.П.)</div></div>
+      <div class="sig"><div class="sig-line"></div><div class="sig-label">Выдал (ФИО, подпись)</div></div>
+      <div class="sig"><div class="sig-line"></div><div class="sig-label">Принял (ФИО, подпись)</div></div>
     </div>
     <script>window.onload=function(){window.print();}</script>
     </body></html>`;
@@ -159,7 +141,6 @@ export default function BatchDetailPage() {
         </button>
       </div>
 
-      {/* Основная информация */}
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card_head"><div className="card_title">Основная информация</div></div>
         <div className="card_body">
@@ -180,7 +161,6 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      {/* Водитель */}
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card_head"><div className="card_title">Водитель и транспорт</div></div>
         <div className="card_body">
@@ -201,7 +181,6 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      {/* Итоги */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 16 }}>
         <div style={{ padding: 16, background: "#f3f4f6", borderRadius: 8, textAlign: "center" }}>
           <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#1f2937" }}>{requests.length}</div>
@@ -217,7 +196,6 @@ export default function BatchDetailPage() {
         </div>
       </div>
 
-      {/* Список накладных */}
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card_head">
           <div className="card_title">Накладные в партии ({requests.length})</div>

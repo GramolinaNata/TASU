@@ -279,6 +279,20 @@ export const api = {
     update: (id, data) => request(`/counterparties/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id) => request(`/counterparties/${id}`, { method: 'DELETE' }),
   },
+  carriers: {
+    list: () => request('/carriers'),
+    get: (id) => request(`/carriers/${id}`),
+    create: (data) => request('/carriers', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => request(`/carriers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id) => request(`/carriers/${id}`, { method: 'DELETE' }),
+  },
+  representatives: {
+    list: () => request('/representatives'),
+    get: (id) => request(`/representatives/${id}`),
+    create: (data) => request('/representatives', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id, data) => request(`/representatives/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+    delete: (id) => request(`/representatives/${id}`, { method: 'DELETE' }),
+  },
   expenses: {
     /**
      * Старая сигнатура: api.expenses.list('companyId') — работает.

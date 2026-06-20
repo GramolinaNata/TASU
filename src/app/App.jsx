@@ -118,12 +118,14 @@ import ContractCreatePage from "../pages/contracts/ContractCreatePage.jsx";
 import ContractDetailsPage from "../pages/contracts/ContractDetailsPage.jsx";
 import CounterpartiesPage from "../pages/companies/CounterpartiesPage.jsx";
 import AccountantExpensesPage from "../pages/accountant/AccountantExpensesPage.jsx";
-import SimpleActsListPage from "../pages/simple/SimpleActsListPage.jsx";
+import BookkeeperReportPage from "../pages/accountant/BookkeeperReportPage.jsx";import SimpleActsListPage from "../pages/simple/SimpleActsListPage.jsx";
 import SimpleActPage from "../pages/simple/SimpleActPage.jsx";
 import TariffsPage from "../pages/admin/TariffsPage.jsx";
 import SimpleActDetailPage from "../pages/simple/SimpleActDetailPage.jsx";
 import BatchesPage from "../pages/simple/BatchesPage.jsx";
 import BatchDetailPage from "../pages/simple/BatchDetailPage.jsx";
+import CarriersPage from "../pages/admin/CarriersPage.jsx";
+import RepresentativesPage from "../pages/admin/RepresentativesPage.jsx";
 import { useEffect } from "react";
 import { loadCompanies } from "../shared/storage/companyStorage.js";
 import { loadActs } from "../shared/storage/actsStorage.js";
@@ -193,10 +195,13 @@ export default function App() {
         <Route path="/admin" element={<RequireAuth adminOnly><AdminStatsPage /></RequireAuth>} />
         <Route path="/admin/users" element={<RequireAuth adminOnly><UsersPage /></RequireAuth>} />
         <Route path="/admin/tariffs" element={<RequireAuth adminOnly><TariffsPage /></RequireAuth>} />
+        <Route path="/admin/carriers" element={<RequireAuth adminOnly><CarriersPage /></RequireAuth>} />
+        <Route path="/admin/representatives" element={<RequireAuth adminOnly><RepresentativesPage /></RequireAuth>} />
         <Route path="/counterparties" element={<CounterpartiesPage />} />
         <Route path="/accountant/general" element={<RequireAuth accountantOnly><AccountantGeneralPage /></RequireAuth>} />
         <Route path="/accountant/acts/:id" element={<RequireAuth accountantOnly><ActDetailsPage /></RequireAuth>} />
         <Route path="/accountant/expenses" element={<RequireAuth accountant1Only><AccountantExpensesPage /></RequireAuth>} />
+        <Route path="/accountant/report" element={<RequireAuth accountant1Only><BookkeeperReportPage /></RequireAuth>} />
         <Route path="/courier" element={<RequireAuth courierOnly><CourierPage /></RequireAuth>} />
         <Route path="/deferred" element={<RequireAuth managerOrAdminOnly><DeferredPage /></RequireAuth>} />
         <Route path="/deferred/:id" element={<RequireAuth managerOrAdminOnly><ActDetailsPage /></RequireAuth>} />

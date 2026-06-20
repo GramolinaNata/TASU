@@ -553,7 +553,7 @@ export async function exportToDocx(act, templateOverride = null) {
         if (tagName === "stamp" || tagName === "company_stamp") {
           return [130, 130];
         }
-        return [173, 56]; // лого в шапке
+        return [120, 39]; // лого в шапке (уменьшено)
       },
     };
 

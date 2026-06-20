@@ -1494,6 +1494,9 @@ export default function ActCreatePage() {
   const [allTariffs, setAllTariffs] = useState([]);
   const [calcByCubic, setCalcByCubic] = useState(false);
   const [cubicVolume, setCubicVolume] = useState("");
+  // ТЗ: грузчики — галочка + количество, тариф из категории loaders
+  const [addLoaders, setAddLoaders] = useState(false);
+  const [loadersCount, setLoadersCount] = useState(1);
 
   const [showCompanyCard, setShowCompanyCard] = useState(false);
   const [showCustCard, setShowCustCard] = useState(false);
@@ -1565,7 +1568,9 @@ export default function ActCreatePage() {
     if (!tariff) { alert(`Тариф для направления "${route.toCity}" не найден. Добавьте его в Тарифы (или укажите регион в тарифе ближайшего города).`); return; }
 
     const totalWeight = cargoRows.reduce((acc, r) => acc + (parseFloat(r.weight) || 0), 0);
-    const totalVolume = cargoRows.reduce((acc, r) => acc + (parseFloat(r.volume) || 0), 0);
+    // ТЗ финал: volume хранится в см³, для тарифа КУБ нужны м³ (1 м³ = 1 000 000 см³)
+    const totalVolumeCm3 = cargoRows.reduce((acc, r) => acc + (parseFloat(r.volume) || 0), 0);
+    const totalVolume = totalVolumeCm3 / 1000000;
 
     let sum = 0;
     let description = "";
@@ -1591,8 +1596,22 @@ const wrAll = tariff.weightRanges || {};
         sum = r20 || (totalWeight * overKg);
         description = `Доставка ${route.toCity} (до 20 кг)`;
       } else {
-        sum = r20 + (totalWeight - 20) * overKg;
-        description = `Доставка ${route.toCity} (${totalWeight} кг = до 20 кг + ${(totalWeight-20).toFixed(1)} кг × ${overKg})`;
+        // ТЗ финал: ВЕСЬ вес × цена за кг свыше (а не "r20 + остаток")
+        sum = totalWeight * overKg;
+        description = `Доставка ${route.toCity} (${totalWeight} кг × ${overKg.toLocaleString()} тг/кг)`;
+      }
+
+      // ТЗ финал: max(вес, куб) — если объём задан, считаем оба и берём БОЛЬШУЮ сумму
+      const totalVol = parseFloat(cubicVolume) || totalVolume || 0;
+      const pricePerCubicMax = parseFloat(wr._pricePerCubic) || parseFloat(tariff.pricePerCubic) || 0;
+      if (totalVol > 0 && pricePerCubicMax > 0) {
+        const sumByCube = totalVol * pricePerCubicMax;
+        if (sumByCube > sum) {
+          sum = sumByCube;
+          description = `Доставка ${route.toCity} (${totalVol} м³ × ${pricePerCubicMax.toLocaleString()} тг/м³) [макс из 2]`;
+        } else {
+          description += ` [макс из 2: вес=${sum.toLocaleString()}тг, куб=${sumByCube.toLocaleString()}тг]`;
+        }
       }
     }
 
@@ -1608,6 +1627,62 @@ const wrAll = tariff.weightRanges || {};
       return [...filtered, { id: safeUuid(), name: description, qty: 1, price: sum, total: sum }];
     });
     alert(`Добавлена услуга: ${description}\nСумма: ${sum.toLocaleString()} тг`);
+  };
+
+  // ТЗ: добавить грузчиков — берём тариф категории loaders по городу, цену по весу × количество
+  const addLoadersService = () => {
+    if (!route.toCity) { alert("Сначала выберите город получателя"); return; }
+    const count = parseInt(loadersCount) || 0;
+    if (count <= 0) { alert("Укажите количество грузчиков"); return; }
+    const cityClean = route.toCity.replace(/__PRIVATE$/, "").trim().toLowerCase();
+
+    // Ищем тариф грузчиков (категория loaders) для этого города
+    const getCategory = (t) => {
+      const wr = t.weightRanges || {};
+      return wr._category || (t.isPrivate ? 'private' : 'legal');
+    };
+    // В базе город грузчиков хранится с суффиксом __LOADERS — чистим перед сравнением
+    const tariff = allTariffs.find(t =>
+      getCategory(t) === 'loaders' &&
+      (t.city || "").replace(/__LOADERS$/, "").replace(/__CARRIERS$/, "").replace(/__PRIVATE$/, "").trim().toLowerCase() === cityClean
+    );
+
+    if (!tariff) {
+      alert(`Тариф грузчиков для города "${route.toCity}" не найден. Добавьте его в Тарифы → вкладка «Грузчики».`);
+      return;
+    }
+
+    // Цена за одного грузчика по весу груза (диапазоны как в обычном тарифе)
+    const totalWeight = cargoRows.reduce((acc, r) => acc + (parseFloat(r.weight) || 0), 0);
+    const wr = tariff.weightRanges || {};
+    let pricePerLoader = 0;
+    if (totalWeight <= 10) pricePerLoader = parseFloat(wr.r10) || 0;
+    else if (totalWeight <= 20) pricePerLoader = parseFloat(wr.r20) || 0;
+    else if (totalWeight <= 30) pricePerLoader = parseFloat(wr.r30) || 0;
+    else if (totalWeight <= 80) pricePerLoader = parseFloat(wr.r80) || 0;
+    else if (totalWeight <= 150) pricePerLoader = parseFloat(wr.r150) || 0;
+    else if (totalWeight <= 300) pricePerLoader = parseFloat(wr.r300) || 0;
+    else pricePerLoader = parseFloat(wr.r600) || 0;
+
+    // Если по весу пусто — берём первый непустой диапазон
+    if (pricePerLoader <= 0) {
+      pricePerLoader = parseFloat(wr.r10) || parseFloat(wr.r20) || parseFloat(wr.r30) ||
+                       parseFloat(wr.r80) || parseFloat(wr.r150) || parseFloat(wr.r300) || parseFloat(wr.r600) || 0;
+    }
+
+    if (pricePerLoader <= 0) {
+      alert(`У тарифа грузчиков "${route.toCity}" не заполнены цены по весу. Откройте Тарифы → Грузчики и задайте суммы.`);
+      return;
+    }
+
+    const total = pricePerLoader * count;
+    const description = `Грузчики ${route.toCity} (${count} чел × ${pricePerLoader.toLocaleString()} тг)`;
+
+    setWarehouseServices(prev => {
+      const filtered = prev.filter(s => s.name || s.price);
+      return [...filtered, { id: safeUuid(), name: description, qty: count, price: pricePerLoader, total }];
+    });
+    alert(`Добавлено: ${description}\nСумма: ${total.toLocaleString()} тг`);
   };
 
   const [docType, setDocType] = useState(null);
@@ -2461,6 +2536,22 @@ const wrAll = tariff.weightRanges || {};
                   <span style={{ fontSize: '0.8rem', color: '#888' }}>
                     Направление: <strong>{route.toCity || '— не указано'}</strong>
                   </span>
+                  <div style={{ width: '100%', borderTop: '1px dashed #93c5fd', margin: '4px 0' }} />
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: '0.9rem' }}>
+                    <input type="checkbox" checked={addLoaders} onChange={e => setAddLoaders(e.target.checked)} />
+                    <span>💪 Добавить грузчиков</span>
+                  </label>
+                  {addLoaders && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{ fontSize: '0.85rem', color: '#666' }}>Кол-во:</span>
+                        <input type="number" min="1" value={loadersCount} onChange={e => setLoadersCount(e.target.value)} style={{ width: 70, padding: '4px 8px' }} />
+                      </div>
+                      <button type="button" className="btn" onClick={addLoadersService}>
+                        ➕ Добавить грузчиков в услуги
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
 
