@@ -1638,6 +1638,7 @@ export default function ActCreatePage() {
     api.tariffs
       .list()
       .then((data) => setAllTariffs(Array.isArray(data) ? data : []))
+      
       .catch((e) => console.error("Не удалось загрузить тарифы:", e));
   }, []);
 

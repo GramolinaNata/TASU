@@ -33,7 +33,152 @@ export default function ActDetailsPage() {
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
 // 🆕 ТЗ v3: Печать наклейки с логотипом выбранной компании
-  const printLabel = async () => {
+//   const printLabel = async () => {
+//     if (!act) return;
+
+//     let comp = null;
+//     if (act.companyId) {
+//       try {
+//         comp = await api.companies.get(act.companyId);
+//       } catch (e) {
+//         try {
+//           const all = await api.companies.list();
+//           comp = all.find(c => c.id === act.companyId) || null;
+//         } catch (e2) { /* ignore */ }
+//       }
+//     }
+//     const logoSrc = comp?.logo || "";
+//     const companyName = comp?.name || "ТСУ Казахстан";
+
+//     const logoFallbackInitials = (() => {
+//       if (!companyName) return "TASU";
+//       const cleaned = companyName.replace(/ТОО|ИП|OOO|LLP/gi, "").trim();
+//       return cleaned.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || cleaned.slice(0, 4).toUpperCase();
+//     })();
+
+//     const num = act?.docNumber || act?.number || '';
+//     const fromCity = act?.route?.fromCity || '—';
+//     const toCity = act?.route?.toCity || '—';
+//     const receiver = act?.receiver?.fio || act?.receiver?.companyName || '—';
+//     const seats = act?.totals?.seats || '—';
+//     const weight = act?.totals?.weight || '—';
+
+//     let qrUrl = '';
+//     try {
+//       const { toDataURL } = await import("qrcode");
+//       const qrData = `TASU-${num}-${toCity}-${receiver}`;
+//       qrUrl = await toDataURL(qrData, { width: 140, margin: 1 });
+//     } catch (e) {
+//       console.warn("QR generation failed", e);
+//     }
+
+//     const esc = (s) => String(s == null ? '' : s)
+//       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+//     const routeFull = fromCity && toCity ? `${fromCity} → ${toCity}` : toCity;
+
+//     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Наклейка ${esc(num)}</title>
+// <style>
+//   @page { size: 100mm 150mm; margin: 0; }
+//   @media print {
+//     body { margin: 0; }
+//     html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+//   }
+//   * { box-sizing: border-box; }
+//   html, body { width: 100mm; height: 150mm; }
+//   body {
+//     font-family: Arial, Helvetica, sans-serif;
+//     margin: 0;
+//     padding: 0;
+//     background: #fff;
+//     color: #000;
+//   }
+//   .label {
+//     width: 100mm;
+//     height: 150mm;
+//     border: 1.5mm solid #000;
+//     display: flex;
+//     flex-direction: column;
+//   }
+//   .header {
+//     display: flex;
+//     justify-content: center;
+//     align-items: center;
+//     padding: 4mm;
+//     border-bottom: 1mm solid #000;
+//     min-height: 16mm;
+//   }
+//   .logo img { max-height: 12mm; max-width: 60mm; object-fit: contain; filter: grayscale(1) contrast(2); }
+//   .logo-text { font-weight: 900; font-size: 7mm; letter-spacing: 1mm; border: 1mm solid #000; padding: 2mm 4mm; }
+//   .cities { display: flex; border-bottom: 1mm solid #000; }
+//   .city-from { flex: 1; padding: 3mm 4mm; border-right: 1mm solid #000; }
+//   .city-to { flex: 2; padding: 3mm 4mm; text-align: center; }
+//   .city-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
+//   .city-val { font-size: 5mm; font-weight: 900; }
+//   .city-big { font-size: 10mm; font-weight: 900; line-height: 1; }
+//   .direction-row { padding: 3mm 4mm; border-bottom: 1mm solid #000; text-align: center; }
+//   .direction-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
+//   .direction-val { font-size: 5mm; font-weight: 900; }
+//   .info-row { display: flex; border-bottom: 1mm solid #000; }
+//   .info-cell { flex: 1; padding: 3mm 4mm; border-right: 1mm solid #000; }
+//   .info-cell:last-child { border-right: none; }
+//   .info-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
+//   .info-val { font-weight: 900; font-size: 6mm; }
+//   .num-row {
+//     padding: 4mm;
+//     border-bottom: 1mm solid #000;
+//     background: #000;
+//     color: #fff;
+//     font-size: 7mm;
+//     font-weight: 900;
+//     text-align: center;
+//     letter-spacing: 2mm;
+//   }
+//   .receiver-block { padding: 4mm; border-bottom: 1mm solid #000; text-align: center; }
+//   .receiver-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 2mm; font-weight: 700; }
+//   .receiver-name { font-size: 6mm; font-weight: 900; line-height: 1.3; }
+//   .qr-block { padding: 4mm; text-align: center; flex: 1; display: flex; align-items: center; justify-content: center; }
+//   .qr-block img { width: 30mm; height: 30mm; filter: grayscale(1) contrast(2); }
+// </style></head><body>
+// <div class="label">
+//   <div class="header">
+//     <div class="logo">${logoSrc ? `<img src="${esc(logoSrc)}" alt="Logo"/>` : `<div class="logo-text">${esc(logoFallbackInitials)}</div>`}</div>
+//   </div>
+//   <div class="cities">
+//     <div class="city-from">
+//       <div class="city-label">Отправитель</div>
+//       <div class="city-val">${esc(fromCity)}</div>
+//     </div>
+//     <div class="city-to">
+//       <div class="city-label">Получатель</div>
+//       <div class="city-big">${esc(toCity)}</div>
+//     </div>
+//   </div>
+//   <div class="direction-row">
+//     <div class="direction-label">Направление</div>
+//     <div class="direction-val">${esc(routeFull)}</div>
+//   </div>
+//   <div class="info-row">
+//     <div class="info-cell"><div class="info-label">мест</div><div class="info-val">${esc(seats)}</div></div>
+//     <div class="info-cell"><div class="info-label">вес</div><div class="info-val">${esc(weight)} кг</div></div>
+//   </div>
+//   <div class="num-row">№ ${esc(num)}</div>
+//   <div class="receiver-block">
+//     <div class="receiver-label">получатель</div>
+//     <div class="receiver-name">${esc(receiver)}</div>
+//   </div>
+//   ${qrUrl ? `<div class="qr-block"><img src="${qrUrl}" alt="QR"/></div>` : ''}
+// </div>
+// <script>window.onload = () => { window.print(); }</script>
+// </body></html>`;
+
+//     const blob = new Blob([html], { type: 'text/html' });
+//     const url = URL.createObjectURL(blob);
+//     window.open(url, '_blank');
+//   };
+
+
+const printLabel = async () => {
     if (!act) return;
 
     let comp = null;
@@ -57,8 +202,8 @@ export default function ActDetailsPage() {
     })();
 
     const num = act?.docNumber || act?.number || '';
-    const fromCity = act?.route?.fromCity || '—';
-    const toCity = act?.route?.toCity || '—';
+    const fromCity = act?.route?.fromCity || '';
+    const toCity = act?.route?.toCity || '';
     const receiver = act?.receiver?.fio || act?.receiver?.companyName || '—';
     const seats = act?.totals?.seats || '—';
     const weight = act?.totals?.weight || '—';
@@ -67,7 +212,7 @@ export default function ActDetailsPage() {
     try {
       const { toDataURL } = await import("qrcode");
       const qrData = `TASU-${num}-${toCity}-${receiver}`;
-      qrUrl = await toDataURL(qrData, { width: 140, margin: 1 });
+      qrUrl = await toDataURL(qrData, { width: 500, margin: 0 });
     } catch (e) {
       console.warn("QR generation failed", e);
     }
@@ -75,8 +220,8 @@ export default function ActDetailsPage() {
     const esc = (s) => String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-    const routeFull = fromCity && toCity ? `${fromCity} → ${toCity}` : toCity;
-
+    // ТЗ: термопринтер — мм-размеры (не px), сплошной ч/б без градиентов/полутонов,
+    // чёткая иерархия, логотип слева, QR гарантированно вписан с отступами
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Наклейка ${esc(num)}</title>
 <style>
   @page { size: 100mm 150mm; margin: 0; }
@@ -84,12 +229,10 @@ export default function ActDetailsPage() {
     body { margin: 0; }
     html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
-  * { box-sizing: border-box; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 100mm; height: 150mm; }
   body {
     font-family: Arial, Helvetica, sans-serif;
-    margin: 0;
-    padding: 0;
     background: #fff;
     color: #000;
   }
@@ -100,67 +243,93 @@ export default function ActDetailsPage() {
     display: flex;
     flex-direction: column;
   }
+
+  /* Шапка: логотип слева, название компании справа */
   .header {
     display: flex;
-    justify-content: center;
     align-items: center;
-    padding: 4mm;
+    justify-content: space-between;
+    gap: 3mm;
+    padding: 3mm 4mm;
     border-bottom: 1mm solid #000;
-    min-height: 16mm;
+    min-height: 14mm;
   }
-  .logo img { max-height: 12mm; max-width: 60mm; object-fit: contain; filter: grayscale(1) contrast(2); }
-  .logo-text { font-weight: 900; font-size: 7mm; letter-spacing: 1mm; border: 1mm solid #000; padding: 2mm 4mm; }
+  .logo { display: flex; align-items: center; flex-shrink: 0; }
+  .logo img { max-height: 10mm; max-width: 40mm; object-fit: contain; filter: grayscale(1) contrast(2); }
+  .logo-text { font-weight: 900; font-size: 6mm; letter-spacing: 0.5mm; border: 0.8mm solid #000; padding: 1.5mm 3mm; }
+  .company-name { font-weight: 700; font-size: 3.2mm; text-align: right; line-height: 1.2; }
+
   .cities { display: flex; border-bottom: 1mm solid #000; }
-  .city-from { flex: 1; padding: 3mm 4mm; border-right: 1mm solid #000; }
-  .city-to { flex: 2; padding: 3mm 4mm; text-align: center; }
-  .city-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
-  .city-val { font-size: 5mm; font-weight: 900; }
-  .city-big { font-size: 10mm; font-weight: 900; line-height: 1; }
-  .direction-row { padding: 3mm 4mm; border-bottom: 1mm solid #000; text-align: center; }
-  .direction-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
-  .direction-val { font-size: 5mm; font-weight: 900; }
+  .city-from { flex: 1; padding: 2.5mm 4mm; border-right: 1mm solid #000; }
+  .city-to { flex: 2; padding: 2.5mm 4mm; text-align: center; }
+  .city-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #555; }
+  .city-val { font-size: 4.5mm; font-weight: 900; }
+  .city-big { font-size: 9mm; font-weight: 900; line-height: 1; }
+  .city-empty { color: #bbb; }
+
+  .direction-row { padding: 2.5mm 4mm; border-bottom: 1mm solid #000; text-align: center; }
+  .direction-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #555; }
+  .direction-val { font-size: 4.5mm; font-weight: 900; }
+
   .info-row { display: flex; border-bottom: 1mm solid #000; }
-  .info-cell { flex: 1; padding: 3mm 4mm; border-right: 1mm solid #000; }
+  .info-cell { flex: 1; padding: 2.5mm 4mm; border-right: 1mm solid #000; }
   .info-cell:last-child { border-right: none; }
-  .info-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
-  .info-val { font-weight: 900; font-size: 6mm; }
+  .info-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #555; }
+  .info-val { font-weight: 900; font-size: 5.5mm; }
+
   .num-row {
-    padding: 4mm;
+    padding: 3.5mm 4mm;
     border-bottom: 1mm solid #000;
     background: #000;
     color: #fff;
-    font-size: 7mm;
+    font-size: 6.5mm;
     font-weight: 900;
     text-align: center;
-    letter-spacing: 2mm;
+    letter-spacing: 1.5mm;
   }
-  .receiver-block { padding: 4mm; border-bottom: 1mm solid #000; text-align: center; }
-  .receiver-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 2mm; font-weight: 700; }
-  .receiver-name { font-size: 6mm; font-weight: 900; line-height: 1.3; }
-  .qr-block { padding: 4mm; text-align: center; flex: 1; display: flex; align-items: center; justify-content: center; }
-  .qr-block img { width: 30mm; height: 30mm; filter: grayscale(1) contrast(2); }
+
+  .receiver-block { padding: 3.5mm 4mm; border-bottom: 1mm solid #000; text-align: center; }
+  .receiver-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1.5mm; font-weight: 700; color: #555; }
+  .receiver-name { font-size: 5.5mm; font-weight: 900; line-height: 1.3; }
+
+  .qr-block {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4mm;
+  overflow: hidden;
+}
+  .qr-block img {
+  width: 38mm;
+  height: 38mm;
+  object-fit: contain;
+  display: block;
+  filter: grayscale(1) contrast(2);
+}
 </style></head><body>
 <div class="label">
   <div class="header">
     <div class="logo">${logoSrc ? `<img src="${esc(logoSrc)}" alt="Logo"/>` : `<div class="logo-text">${esc(logoFallbackInitials)}</div>`}</div>
+    <div class="company-name">${esc(companyName)}</div>
   </div>
   <div class="cities">
     <div class="city-from">
       <div class="city-label">Отправитель</div>
-      <div class="city-val">${esc(fromCity)}</div>
+      <div class="city-val ${fromCity ? '' : 'city-empty'}">${esc(fromCity) || 'не указан'}</div>
     </div>
     <div class="city-to">
       <div class="city-label">Получатель</div>
-      <div class="city-big">${esc(toCity)}</div>
+      <div class="city-big ${toCity ? '' : 'city-empty'}">${esc(toCity) || '—'}</div>
     </div>
   </div>
-  <div class="direction-row">
+  ${fromCity && toCity ? `<div class="direction-row">
     <div class="direction-label">Направление</div>
-    <div class="direction-val">${esc(routeFull)}</div>
-  </div>
+    <div class="direction-val">${esc(fromCity)} → ${esc(toCity)}</div>
+  </div>` : ''}
   <div class="info-row">
     <div class="info-cell"><div class="info-label">мест</div><div class="info-val">${esc(seats)}</div></div>
-    <div class="info-cell"><div class="info-label">вес</div><div class="info-val">${esc(weight)} кг</div></div>
+    <div class="info-cell"><div class="info-label">вес</div><div class="info-val">${esc(weight)}${weight !== '—' ? ' кг' : ''}</div></div>
   </div>
   <div class="num-row">№ ${esc(num)}</div>
   <div class="receiver-block">
@@ -700,7 +869,7 @@ export default function ActDetailsPage() {
                   position: 'absolute', top: '100%', right: 0, background: '#fff',
                   border: '1px solid #ddd', borderRadius: 4,
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                  zIndex: 1000, minWidth: 200, marginTop: 5
+                  zIndex: 1000, minWidth: 500, marginTop: 5
                 }}>
                   <div className="menu_item" style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => handleExport("Заявка")}>
                     📄 Экспорт как Заявка
