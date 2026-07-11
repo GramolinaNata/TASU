@@ -3,13 +3,9 @@ import { api } from "../../shared/api/api.js";
 
 // 🆕 ТЗ v2: Стандартные диапазоны весов для частных лиц
 const WEIGHT_RANGES = [
-  { key: 'r10',  label: 'до 10 кг' },
-  { key: 'r20',  label: 'до 20 кг' },
-  { key: 'r30',  label: 'до 30 кг' },
-  { key: 'r80',  label: 'до 80 кг' },
-  { key: 'r150', label: 'до 150 кг' },
-  { key: 'r300', label: 'до 300 кг' },
-  { key: 'r600', label: 'до 600 кг' },
+  { key: 'r10', label: 'до 10 кг' },
+  { key: 'r20', label: 'до 20 кг' },
+  { key: 'r30', label: 'до 30 кг' },
 ];
 
 // Категория тарифа: из weightRanges._category, fallback по isPrivate

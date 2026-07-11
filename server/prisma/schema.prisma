@@ -152,6 +152,7 @@ model Tariff {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
+
 model Batch {
   id           String    @id @default(uuid())
   number       String    @unique
@@ -174,6 +175,8 @@ model Batch {
   carrierId        String?
   representativeId String?
   loadersCount     Int       @default(0)
+  // ТЗ: партия может входить только в ОДНУ ведомость перевозчика одновременно
+  carrierVedomostId String?
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -196,4 +199,23 @@ model Representative {
   city      String   @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ТЗ: Ведомость перевозчика — формируется ТОЛЬКО из уже сформированных партий
+// (не напрямую из накладных), содержит авторасчёт сумм для перевозчика,
+// грузчиков и представителя по тарифам из справочника Тарифы
+model CarrierVedomost {
+  id                String   @id @default(uuid())
+  number            String   @unique
+  companyId         String?
+  // JSON-массив id партий (Batch), из которых сформирована ведомость
+  batchIds          String
+  // JSON-снэпшот: разбивка по каждой партии (город, вес, тарифы, суммы) — для печати
+  data              String
+  totalWeight       Float    @default(0)
+  carrierSum        Float    @default(0)
+  loaderSum         Float    @default(0)
+  representativeSum Float    @default(0)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 }

@@ -32,16 +32,10 @@ export default function ActDetailsPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
-
-  // 🆕 ТЗ v3: Печать наклейки с логотипом выбранной компании
-  // - логотип + название ИП динамически из карточки компании
-  // - убран блок отправителя полностью
-  // - только имя получателя (без телефона, без контактов)
-  // - формат 100×150мм, цвета сохраняются, без URL/дат при печати
+// 🆕 ТЗ v3: Печать наклейки с логотипом выбранной компании
   const printLabel = async () => {
     if (!act) return;
 
-    // Подгружаем компанию для логотипа и названия
     let comp = null;
     if (act.companyId) {
       try {
@@ -56,7 +50,6 @@ export default function ActDetailsPage() {
     const logoSrc = comp?.logo || "";
     const companyName = comp?.name || "ТСУ Казахстан";
 
-    // Заглушка из инициалов если нет логотипа
     const logoFallbackInitials = (() => {
       if (!companyName) return "TASU";
       const cleaned = companyName.replace(/ТОО|ИП|OOO|LLP/gi, "").trim();
@@ -87,32 +80,65 @@ export default function ActDetailsPage() {
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Наклейка ${esc(num)}</title>
 <style>
   @page { size: 100mm 150mm; margin: 0; }
-  @media print { body { margin: 0; } html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-  body { font-family: Arial, sans-serif; margin: 0; padding: 8px; background: white; }
-  .label { border: 2px solid #222; width: 380px; font-size: 13px; border-radius: 4px; overflow: hidden; }
-  .header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 2px solid #222; gap: 10px; }
-  .logo img { max-height: 50px; max-width: 130px; object-fit: contain; }
-  .logo-text { font-weight: 900; color: #222; font-size: 22px; letter-spacing: 1px; padding: 4px 10px; border: 2px solid #222; border-radius: 6px; background: #f5f5f5; }
-  .company-name { font-weight: 900; color: #222; font-size: 14px; text-align: right; flex: 1; }
-  .cities { display: flex; border-bottom: 1px solid #222; }
-  .city-from { flex: 1; padding: 8px 10px; border-right: 1px solid #222; background: #f9f9f9; }
-  .city-to { flex: 2; padding: 8px 10px; background: #fff3cd; text-align: center; }
-  .city-label { font-size: 10px; color: #888; margin-bottom: 3px; text-transform: uppercase; }
-  .city-val { font-size: 13px; font-weight: 700; }
-  .city-big { font-size: 28px; font-weight: 900; color: #333; }
-  .direction-row { padding: 8px 12px; border-bottom: 1px solid #222; background: #f0f7ff; text-align: center; }
-  .direction-label { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 3px; }
-  .direction-val { font-size: 14px; font-weight: 700; color: #0050b3; }
-  .info-row { display: flex; border-bottom: 1px solid #222; }
-  .info-cell { flex: 1; padding: 7px 10px; border-right: 1px solid #ddd; }
+  @media print {
+    body { margin: 0; }
+    html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
+  * { box-sizing: border-box; }
+  html, body { width: 100mm; height: 150mm; }
+  body {
+    font-family: Arial, Helvetica, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    color: #000;
+  }
+  .label {
+    width: 100mm;
+    height: 150mm;
+    border: 1.5mm solid #000;
+    display: flex;
+    flex-direction: column;
+  }
+  .header {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 4mm;
+    border-bottom: 1mm solid #000;
+    min-height: 16mm;
+  }
+  .logo img { max-height: 12mm; max-width: 60mm; object-fit: contain; filter: grayscale(1) contrast(2); }
+  .logo-text { font-weight: 900; font-size: 7mm; letter-spacing: 1mm; border: 1mm solid #000; padding: 2mm 4mm; }
+  .cities { display: flex; border-bottom: 1mm solid #000; }
+  .city-from { flex: 1; padding: 3mm 4mm; border-right: 1mm solid #000; }
+  .city-to { flex: 2; padding: 3mm 4mm; text-align: center; }
+  .city-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
+  .city-val { font-size: 5mm; font-weight: 900; }
+  .city-big { font-size: 10mm; font-weight: 900; line-height: 1; }
+  .direction-row { padding: 3mm 4mm; border-bottom: 1mm solid #000; text-align: center; }
+  .direction-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
+  .direction-val { font-size: 5mm; font-weight: 900; }
+  .info-row { display: flex; border-bottom: 1mm solid #000; }
+  .info-cell { flex: 1; padding: 3mm 4mm; border-right: 1mm solid #000; }
   .info-cell:last-child { border-right: none; }
-  .info-label { font-size: 10px; color: #888; margin-bottom: 3px; text-transform: uppercase; }
-  .info-val { font-weight: 700; font-size: 15px; }
-  .num-row { padding: 10px 12px; border-bottom: 1px solid #222; background: #222; color: #fff; font-size: 17px; font-weight: 900; text-align: center; letter-spacing: 3px; }
-  .receiver-block { padding: 12px; border-bottom: 1px solid #222; text-align: center; }
-  .receiver-label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 5px; }
-  .receiver-name { font-size: 17px; font-weight: 900; color: #111; line-height: 1.3; }
-  .qr-block { padding: 12px; text-align: center; }
+  .info-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; }
+  .info-val { font-weight: 900; font-size: 6mm; }
+  .num-row {
+    padding: 4mm;
+    border-bottom: 1mm solid #000;
+    background: #000;
+    color: #fff;
+    font-size: 7mm;
+    font-weight: 900;
+    text-align: center;
+    letter-spacing: 2mm;
+  }
+  .receiver-block { padding: 4mm; border-bottom: 1mm solid #000; text-align: center; }
+  .receiver-label { font-size: 3mm; text-transform: uppercase; margin-bottom: 2mm; font-weight: 700; }
+  .receiver-name { font-size: 6mm; font-weight: 900; line-height: 1.3; }
+  .qr-block { padding: 4mm; text-align: center; flex: 1; display: flex; align-items: center; justify-content: center; }
+  .qr-block img { width: 30mm; height: 30mm; filter: grayscale(1) contrast(2); }
 </style></head><body>
 <div class="label">
   <div class="header">
@@ -120,11 +146,11 @@ export default function ActDetailsPage() {
   </div>
   <div class="cities">
     <div class="city-from">
-      <div class="city-label">город отправителя</div>
+      <div class="city-label">Отправитель</div>
       <div class="city-val">${esc(fromCity)}</div>
     </div>
     <div class="city-to">
-      <div class="city-label">город получателя</div>
+      <div class="city-label">Получатель</div>
       <div class="city-big">${esc(toCity)}</div>
     </div>
   </div>
@@ -141,7 +167,7 @@ export default function ActDetailsPage() {
     <div class="receiver-label">получатель</div>
     <div class="receiver-name">${esc(receiver)}</div>
   </div>
-  ${qrUrl ? `<div class="qr-block"><img src="${qrUrl}" alt="QR" style="width:120px;height:120px;"/></div>` : ''}
+  ${qrUrl ? `<div class="qr-block"><img src="${qrUrl}" alt="QR"/></div>` : ''}
 </div>
 <script>window.onload = () => { window.print(); }</script>
 </body></html>`;
@@ -150,7 +176,11 @@ export default function ActDetailsPage() {
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
   };
-
+  // 🆕 ТЗ v3: Печать наклейки с логотипом выбранной компании
+  // - логотип + название ИП динамически из карточки компании
+  // - убран блок отправителя полностью
+  // - только имя получателя (без телефона, без контактов)
+  // - формат 100×150мм, цвета сохраняются, без URL/дат при печати
   const downloadQRCode = () => {
     const canvas = qrRef.current?.querySelector("canvas");
     if (canvas) {
@@ -883,12 +913,10 @@ export default function ActDetailsPage() {
                 </div>
               )}
           </div>
-          {!isManager && (
-            <div className="summary_item">
-                <div className="label">Сумма (заявленная)</div>
-                <div className="v">{act.totalSum || "—"}</div>
-            </div>
-          )}
+          <div className="summary_item">
+    <div className="label">Сумма</div>
+    <div className="v">{act.totalSum || "—"}</div>
+</div>
           {act.isWarehouse && (
             <div className="summary_item">
                 <div className="label">Тип</div>

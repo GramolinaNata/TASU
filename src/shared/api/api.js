@@ -330,4 +330,10 @@ export const api = {
     update: (id, data) => request(`/batches/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     delete: (id) => request(`/batches/${id}`, { method: 'DELETE' }),
   },
+  carrierVedomosts: {
+    list: (companyId) => request(`/carrier-vedomosts${companyId ? `?companyId=${companyId}` : ''}`),
+    get: (id) => request(`/carrier-vedomosts/${id}`),
+    create: (data) => request('/carrier-vedomosts', { method: 'POST', body: JSON.stringify(data) }),
+    delete: (id) => request(`/carrier-vedomosts/${id}`, { method: 'DELETE' }),
+  },
 };

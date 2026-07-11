@@ -15,6 +15,7 @@ import expenseRoutes from './routes/expense.route';
 import tariffRoutes from './routes/tariff.route';
 import batchRoutes from './routes/batch.route';
 import carrierRoutes from './routes/carrier.routes';
+import carrierVedomostRoutes from './routes/carrierVedomost.routes';
 import representativeRoutes from './routes/representative.routes';
 
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
@@ -55,6 +56,7 @@ app.use('/api/expenses', expenseRoutes);
 app.use('/api/tariffs', tariffRoutes);
 app.use('/api/batches', batchRoutes);
 app.use('/api/carriers', carrierRoutes);
+app.use('/api/carrier-vedomosts', carrierVedomostRoutes);
 app.use('/api/representatives', representativeRoutes);
 
 app.get('/api/health', (req, res) => {

@@ -440,14 +440,14 @@ function makeTextWatermark(text) {
 
       // Красный круг (полупрозрачный)
       ctx.strokeStyle = "rgba(220, 38, 38, 0.25)";
-      ctx.lineWidth = 12;
+      ctx.lineWidth = 8;
       ctx.beginPath();
-      ctx.arc(size / 2, size / 2, size / 2 - 30, 0, 2 * Math.PI);
+      ctx.arc(size / 2, size / 2, size / 2 - 40, 0, 2 * Math.PI);
       ctx.stroke();
 
       // Внутренний круг
       ctx.strokeStyle = "rgba(220, 38, 38, 0.18)";
-      ctx.lineWidth = 4;
+      ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.arc(size / 2, size / 2, size / 2 - 60, 0, 2 * Math.PI);
       ctx.stroke();
@@ -546,9 +546,13 @@ export async function exportToDocx(act, templateOverride = null) {
         return buf;
       },
       getSize: (img, tagValue, tagName) => {
-        if (tagName === "watermark" || tagName === "watermark_corner" || tagName === "watermark_8910") {
-          return [150, 150];
-        }
+        if (
+  tagName === "watermark" ||
+  tagName === "watermark_corner" ||
+  tagName === "watermark_8910"
+) {
+    return [90, 90];   // можно даже 80, если нужно
+}
         // 🆕 ТЗ v2: Печать компании (PNG) — квадратная, ~120x120
         if (tagName === "stamp" || tagName === "company_stamp") {
           return [130, 130];

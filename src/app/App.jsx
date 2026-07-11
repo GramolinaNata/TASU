@@ -123,6 +123,7 @@ import SimpleActPage from "../pages/simple/SimpleActPage.jsx";
 import TariffsPage from "../pages/admin/TariffsPage.jsx";
 import SimpleActDetailPage from "../pages/simple/SimpleActDetailPage.jsx";
 import BatchesPage from "../pages/simple/BatchesPage.jsx";
+import CarrierVedomostCreatePage from "../pages/simple/CarrierVedomostCreatePage.jsx";
 import BatchDetailPage from "../pages/simple/BatchDetailPage.jsx";
 import CarriersPage from "../pages/admin/CarriersPage.jsx";
 import RepresentativesPage from "../pages/admin/RepresentativesPage.jsx";
@@ -210,6 +211,7 @@ export default function App() {
         <Route path="/simple/new" element={<SimpleActPage />} />
         <Route path="/simple/:id" element={<SimpleActDetailPage />} />
         <Route path="/simple/batches" element={<BatchesPage />} />
+        <Route path="/simple/carrier-vedomost/new" element={<CarrierVedomostCreatePage />} />
         {/* Детальная страница партии — для просмотра накладных внутри партии */}
         <Route path="/simple/batches/:id" element={<BatchDetailPage />} />
       </Route>
