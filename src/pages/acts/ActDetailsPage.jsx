@@ -212,7 +212,8 @@ const printLabel = async () => {
     try {
       const { toDataURL } = await import("qrcode");
       const qrData = `TASU-${num}-${toCity}-${receiver}`;
-      qrUrl = await toDataURL(qrData, { width: 500, margin: 0 });
+      // Оптимизировали размер генерируемого QR-кода для лучшей четкости на термопринтере
+      qrUrl = await toDataURL(qrData, { width: 250, margin: 0 });
     } catch (e) {
       console.warn("QR generation failed", e);
     }
@@ -220,17 +221,16 @@ const printLabel = async () => {
     const esc = (s) => String(s == null ? '' : s)
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-    // ТЗ: термопринтер — мм-размеры (не px), сплошной ч/б без градиентов/полутонов,
-    // чёткая иерархия, логотип слева, QR гарантированно вписан с отступами
+    // HTML и CSS адаптированы строго под термопечать 100x150 мм
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Наклейка ${esc(num)}</title>
 <style>
   @page { size: 100mm 150mm; margin: 0; }
   @media print {
-    body { margin: 0; }
-    html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    html, body { width: 100mm; height: 150mm; overflow: hidden; }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100mm; height: 150mm; }
+  html, body { width: 100mm; height: 150mm; overflow: hidden; }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #fff;
@@ -242,9 +242,10 @@ const printLabel = async () => {
     border: 1.5mm solid #000;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
-  /* Шапка: логотип слева, название компании справа */
+  /* Логотип четко слева, название справа */
   .header {
     display: flex;
     align-items: center;
@@ -252,33 +253,32 @@ const printLabel = async () => {
     gap: 3mm;
     padding: 3mm 4mm;
     border-bottom: 1mm solid #000;
-    min-height: 14mm;
   }
   .logo { display: flex; align-items: center; flex-shrink: 0; }
   .logo img { max-height: 10mm; max-width: 40mm; object-fit: contain; filter: grayscale(1) contrast(2); }
-  .logo-text { font-weight: 900; font-size: 6mm; letter-spacing: 0.5mm; border: 0.8mm solid #000; padding: 1.5mm 3mm; }
-  .company-name { font-weight: 700; font-size: 3.2mm; text-align: right; line-height: 1.2; }
+  .logo-text { font-weight: 900; font-size: 5.5mm; letter-spacing: 0.5mm; border: 0.8mm solid #000; padding: 1mm 2.5mm; text-align: center; }
+  .company-name { font-weight: 700; font-size: 3.2mm; text-align: right; line-height: 1.2; max-width: 50mm; }
 
   .cities { display: flex; border-bottom: 1mm solid #000; }
   .city-from { flex: 1; padding: 2.5mm 4mm; border-right: 1mm solid #000; }
   .city-to { flex: 2; padding: 2.5mm 4mm; text-align: center; }
-  .city-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #555; }
+  .city-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #000; }
   .city-val { font-size: 4.5mm; font-weight: 900; }
-  .city-big { font-size: 9mm; font-weight: 900; line-height: 1; }
+  .city-big { font-size: 8mm; font-weight: 900; line-height: 1; }
   .city-empty { color: #bbb; }
 
   .direction-row { padding: 2.5mm 4mm; border-bottom: 1mm solid #000; text-align: center; }
-  .direction-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #555; }
+  .direction-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #000; }
   .direction-val { font-size: 4.5mm; font-weight: 900; }
 
   .info-row { display: flex; border-bottom: 1mm solid #000; }
   .info-cell { flex: 1; padding: 2.5mm 4mm; border-right: 1mm solid #000; }
   .info-cell:last-child { border-right: none; }
-  .info-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #555; }
+  .info-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #000; }
   .info-val { font-weight: 900; font-size: 5.5mm; }
 
   .num-row {
-    padding: 3.5mm 4mm;
+    padding: 3mm 4mm;
     border-bottom: 1mm solid #000;
     background: #000;
     color: #fff;
@@ -288,25 +288,29 @@ const printLabel = async () => {
     letter-spacing: 1.5mm;
   }
 
-  .receiver-block { padding: 3.5mm 4mm; border-bottom: 1mm solid #000; text-align: center; }
-  .receiver-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1.5mm; font-weight: 700; color: #555; }
-  .receiver-name { font-size: 5.5mm; font-weight: 900; line-height: 1.3; }
+  .receiver-block { padding: 3mm 4mm; border-bottom: 1mm solid #000; text-align: center; }
+  .receiver-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #000; }
+  .receiver-name { font-size: 5mm; font-weight: 900; line-height: 1.2; }
 
+  /* Нижний блок для QR-кода: гарантирует, что код не "убежит" вниз */
   .qr-block {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 4mm;
-  overflow: hidden;
-}
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2mm;
+    min-height: 0;
+    background: #fff;
+  }
   .qr-block img {
-  width: 38mm;
-  height: 38mm;
-  object-fit: contain;
-  display: block;
-  filter: grayscale(1) contrast(2);
-}
+    max-height: 100%;
+    max-width: 38mm;
+    width: auto;
+    height: auto;
+    aspect-ratio: 1 / 1;
+    filter: grayscale(1) contrast(3);
+    image-rendering: pixelated;
+  }
 </style></head><body>
 <div class="label">
   <div class="header">
@@ -338,13 +342,18 @@ const printLabel = async () => {
   </div>
   ${qrUrl ? `<div class="qr-block"><img src="${qrUrl}" alt="QR"/></div>` : ''}
 </div>
-<script>window.onload = () => { window.print(); }</script>
+<script>
+  window.onload = () => { 
+    window.print(); 
+    setTimeout(() => { window.close(); }, 500); // Автоматически закрывать окно после отправки на печать
+  }
+</script>
 </body></html>`;
 
     const blob = new Blob([html], { type: 'text/html' });
     const url = URL.createObjectURL(blob);
     window.open(url, '_blank');
-  };
+}
   // 🆕 ТЗ v3: Печать наклейки с логотипом выбранной компании
   // - логотип + название ИП динамически из карточки компании
   // - убран блок отправителя полностью
