@@ -771,9 +771,8 @@ export default function CarrierVedomostCreatePage() {
 
       const loadersCount = toNum(b.loadersCount);
       const loaderTariff = loadersCount > 0 ? findLoaderTariff(b.city) : null;
-      const loaderPricePerPerson = loaderTariff ? findLoaderPricePerPerson(loaderTariff, weight) : 0;
-      const loaderSum = Math.round(loaderPricePerPerson * loadersCount);
-
+const loaderRate = loaderTariff ? toNum(loaderTariff.pricePerKg) : 0;
+const loaderSum = Math.round(weight * loaderRate);
       const representativeName = b.representativeId
         ? (representatives.find(r => r.id === b.representativeId)?.name || "—")
         : "—";
@@ -789,7 +788,7 @@ export default function CarrierVedomostCreatePage() {
         carrierSum,
         carrierMissing: !!b.carrierId && !carrierTariff,
         loadersCount,
-        loaderPricePerPerson,
+loaderRate,
         loaderSum,
         loaderMissing: loadersCount > 0 && !loaderTariff,
         representativeId: b.representativeId,
@@ -823,7 +822,7 @@ export default function CarrierVedomostCreatePage() {
       <td style="text-align:center">${r.carrierRate} тг/кг</td>
       <td style="text-align:center;font-weight:700">${r.carrierSum.toLocaleString()} тг</td>
       <td style="text-align:center">${r.loadersCount || '—'}</td>
-      <td style="text-align:center">${r.loadersCount > 0 ? r.loaderPricePerPerson + ' тг' : '—'}</td>
+      <td style="text-align:center">${r.loadersCount > 0 ? r.loaderRate + ' тг/кг' : '—'}</td>
       <td style="text-align:center;font-weight:700">${r.loaderSum.toLocaleString()} тг</td>
       <td>${esc(r.representativeName)}</td>
     </tr>`).join("");
@@ -1043,7 +1042,7 @@ export default function CarrierVedomostCreatePage() {
                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.carrierSum.toLocaleString()} тг</td>
                     <td style={{ textAlign: 'center' }}>
                       {r.loadersCount > 0
-                        ? (r.loaderMissing ? <span style={{ color: '#dc2626' }}>тариф не найден</span> : `${r.loadersCount} × ${r.loaderPricePerPerson} тг`)
+                        ? (r.loaderMissing ? <span style={{ color: '#dc2626' }}>тариф не найден</span> : `${r.weight} кг × ${r.loaderRate} тг/кг`)
                         : '—'}
                     </td>
                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.loaderSum.toLocaleString()} тг</td>

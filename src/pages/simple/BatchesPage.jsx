@@ -705,6 +705,10 @@ export default function BatchesPage() {
   // ТЗ: выбор партий галочками для формирования ведомости перевозчика
   const [selectedForVedomost, setSelectedForVedomost] = useState({});
 
+  // Свободные накладные (не входящие в партии) + выбор для текущей партии
+  const [freeRequests, setFreeRequests] = useState([]);
+  const [selectedReqIds, setSelectedReqIds] = useState([]);
+
   const toggleVedomostSelect = (id) => {
     setSelectedForVedomost(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -793,15 +797,95 @@ export default function BatchesPage() {
     }
   };
 
+  // Загрузка свободных накладных: статус act, ещё не в какой-либо партии.
+  // Возвращает нормализованные объекты { id, number, city, receiver, seats, weight }.
+  const loadFreeRequests = async (currentBatchRequestIds = []) => {
+    try {
+      const [reqs, allBatches] = await Promise.all([
+        api.requests.list(),
+        api.batches.list(),
+      ]);
+
+      // Собираем id всех накладных, уже занятых партиями (кроме редактируемой)
+      const busy = new Set();
+      (allBatches || []).forEach(b => {
+        if (editBatch && b.id === editBatch.id) return;
+        let ids = [];
+        try { ids = JSON.parse(b.requestIds || "[]"); } catch (e) { ids = []; }
+        (ids || []).forEach(id => busy.add(id));
+      });
+
+      const free = (reqs || [])
+        .filter(r => {
+          const status = r.status || "";
+          // берём готовые накладные (act) и простые (SIMPLE); черновики пропускаем
+          const isReady = status === "act" || r.type === "SIMPLE" || status === "";
+          return isReady && !busy.has(r.id);
+        })
+        .map(r => {
+          let d = {};
+          try { d = typeof r.details === "string" ? JSON.parse(r.details) : (r.details || {}); } catch (e) { d = {}; }
+          const totals = d.totals || {};
+          const receiver = d.receiver || {};
+          const route = d.route || {};
+          return {
+            id: r.id,
+            number: d.docNumber || r.docNumber || r.number || "—",
+            city: route.toCity || "—",
+            receiver: receiver.fio || receiver.companyName || "—",
+            seats: Number(totals.seats) || 0,
+            weight: Number(totals.weight) || 0,
+          };
+        });
+
+      setFreeRequests(free);
+      setSelectedReqIds(currentBatchRequestIds);
+    } catch (e) {
+      console.error("Не удалось загрузить свободные накладные", e);
+      setFreeRequests([]);
+    }
+  };
+
+  // Накладные, отсортированные: совпадающие с городом партии — сверху
+  const sortedFreeRequests = useMemo(() => {
+    const cityClean = (form.city || "").trim().toLowerCase();
+    return [...freeRequests].sort((a, b) => {
+      const ma = (a.city || "").trim().toLowerCase() === cityClean ? 0 : 1;
+      const mb = (b.city || "").trim().toLowerCase() === cityClean ? 0 : 1;
+      if (ma !== mb) return ma - mb;
+      return (a.number || "").localeCompare(b.number || "", "ru");
+    });
+  }, [freeRequests, form.city]);
+
+  // Автоподсчёт веса/мест из выбранных накладных
+  const selectedTotals = useMemo(() => {
+    let seats = 0, weight = 0;
+    freeRequests.forEach(r => {
+      if (selectedReqIds.includes(r.id)) { seats += r.seats; weight += r.weight; }
+    });
+    return { seats, weight };
+  }, [freeRequests, selectedReqIds]);
+
+  const toggleReq = (id) => {
+    setSelectedReqIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
   const openCreate = async () => {
     setEditBatch(null);
     const nextNum = await genNextBatchNumber(company?.id);
     setForm({ ...EMPTY_FORM, number: nextNum });
+    setSelectedReqIds([]);
+    await loadFreeRequests([]);
     setShowForm(true);
   };
 
   const openEdit = (batch) => {
     setEditBatch(batch);
+    let existingIds = [];
+    try { existingIds = JSON.parse(batch.requestIds || "[]"); } catch (e) { existingIds = []; }
+    loadFreeRequests(existingIds);
     setForm({
       number: batch.number,
       city: batch.city,
@@ -826,8 +910,10 @@ export default function BatchesPage() {
     try {
       const payload = {
         ...form,
-        totalSeats: parseInt(form.totalSeats) || 0,
-        totalWeight: parseFloat(form.totalWeight) || 0,
+        // вес/места считаются из выбранных накладных
+        totalSeats: selectedTotals.seats,
+        totalWeight: selectedTotals.weight,
+        requestIds: JSON.stringify(selectedReqIds),
         // Если галочка снята — поле обнуляем
         carrierId: form.needCarrier ? (form.carrierId || null) : null,
         representativeId: form.needRepresentative ? (form.representativeId || null) : null,
@@ -841,7 +927,7 @@ export default function BatchesPage() {
       if (editBatch) {
         await api.batches.update(editBatch.id, payload);
       } else {
-        await api.batches.create({ ...payload, companyId: company?.id, requestIds: "[]" });
+        await api.batches.create({ ...payload, companyId: company?.id });
       }
       setShowForm(false);
       load();
@@ -1053,12 +1139,55 @@ export default function BatchesPage() {
                 <input type="number" value={form.deliveryCost} onChange={e => setForm({ ...form, deliveryCost: e.target.value })} placeholder="0" />
               </div>
               <div className="field">
-                <div className="label">Количество мест</div>
-                <input type="number" value={form.totalSeats} onChange={e => setForm({ ...form, totalSeats: e.target.value })} placeholder="0" />
+                <div className="label">Количество мест <span style={{ color: '#94a3b8', fontWeight: 400 }}>(из накладных)</span></div>
+                <input type="number" value={selectedTotals.seats} readOnly style={{ background: '#f1f5f9', cursor: 'not-allowed' }} />
               </div>
               <div className="field">
-                <div className="label">Общий вес (кг)</div>
-                <input type="number" value={form.totalWeight} onChange={e => setForm({ ...form, totalWeight: e.target.value })} placeholder="0" />
+                <div className="label">Общий вес, кг <span style={{ color: '#94a3b8', fontWeight: 400 }}>(из накладных)</span></div>
+                <input type="number" value={selectedTotals.weight} readOnly style={{ background: '#f1f5f9', cursor: 'not-allowed' }} />
+              </div>
+            </div>
+
+            {/* Выбор накладных в партию */}
+            <div style={{ marginTop: 16, padding: 14, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>
+                  Накладные в партии
+                </div>
+                <div style={{ fontSize: '0.8rem', color: '#0369a1' }}>
+                  выбрано: <strong>{selectedReqIds.length}</strong> · {selectedTotals.weight} кг · {selectedTotals.seats} мест
+                </div>
+              </div>
+
+              {sortedFreeRequests.length === 0 ? (
+                <div style={{ fontSize: '0.85rem', color: '#64748b', padding: '8px 0' }}>
+                  Нет свободных накладных. Создайте накладную (Упрощённый режим) или заявку — она появится здесь.
+                </div>
+              ) : (
+                <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {sortedFreeRequests.map(r => {
+                    const cityMatch = (r.city || "").trim().toLowerCase() === (form.city || "").trim().toLowerCase();
+                    const checked = selectedReqIds.includes(r.id);
+                    return (
+                      <label key={r.id} style={{
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', cursor: 'pointer',
+                        background: checked ? '#dbeafe' : '#fff',
+                        border: `1px solid ${checked ? '#60a5fa' : '#e2e8f0'}`, borderRadius: 6,
+                      }}>
+                        <input type="checkbox" checked={checked} onChange={() => toggleReq(r.id)} />
+                        <span style={{ fontWeight: 700, minWidth: 90 }}>{r.number}</span>
+                        <span style={{ flex: 1, fontSize: '0.85rem' }}>{r.receiver}</span>
+                        <span style={{ fontSize: '0.8rem', color: cityMatch ? '#059669' : '#64748b', fontWeight: cityMatch ? 700 : 400 }}>
+                          {r.city}{cityMatch ? ' ✓' : ''}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: '#475569', minWidth: 60, textAlign: 'right' }}>{r.weight} кг</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', marginTop: 8 }}>
+                Совпадающие с городом «{form.city || '—'}» отмечены ✓ и показаны сверху. Можно добавить и попутные из других городов.
               </div>
             </div>
 

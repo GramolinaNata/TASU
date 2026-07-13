@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
+import { calcDeliveryPrice, findDeliveryTariff, cleanCityName } from "../../shared/tariff/calcTariff.js";
 
 const TRANSPORT_TYPES = [
   { value: "auto_console", label: "Авто-консолидация" },
@@ -32,9 +33,7 @@ async function genNextSimpleNumber() {
     const pattern = /^А(\d+)$/;
     let maxNum = 0;
     (allActs || []).forEach(a => {
-      // Проверяем корневой docNumber
       const candidates = [a.docNumber, a.number];
-      // И docNumber внутри JSON details (старые накладные так хранят)
       try {
         const det = typeof a.details === 'string' ? JSON.parse(a.details) : (a.details || {});
         if (det && det.docNumber) candidates.push(det.docNumber);
@@ -90,17 +89,30 @@ export default function SimpleActPage() {
     genNextSimpleNumber().then(setDocNumber);
   }, []);
 
+  // 🆕 Автоподсчёт суммы через единый движок calcTariff (категория "private").
+  // Считается по правилам частных лиц: ступени до 10/20/30, свыше 30 × ставку,
+  // max(вес, куб), + доставка, + доп. сумма (extraSum). Куб для частных = 0
+  // (нет габаритов), поэтому идёт чистый расчёт по весу.
   useEffect(() => {
-    if (!form.toCity || !form.weight) return;
-    const tariff = tariffs.find(t => t.city.toLowerCase() === form.toCity.toLowerCase());
-    if (tariff) {
-      const sum = (Number(form.weight) * Number(tariff.pricePerKg)) + Number(tariff.deliveryPrice);
-      setForm(prev => ({ ...prev, totalSum: sum.toString() }));
+    if (!form.toCity || !form.weight) {
+      setAutoCalc(false);
+      return;
+    }
+    const res = calcDeliveryPrice({
+      tariffs,
+      city: form.toCity,
+      weightKg: Number(form.weight) || 0,
+      volumeM3: 0,
+      category: "private",
+      transport: form.transportType === "avia_console" ? "avia" : "auto",
+    });
+    if (res.ok) {
+      setForm(prev => ({ ...prev, totalSum: String(res.sum) }));
       setAutoCalc(true);
     } else {
       setAutoCalc(false);
     }
-  }, [form.toCity, form.weight, tariffs]);
+  }, [form.toCity, form.weight, form.transportType, tariffs]);
 
   const resetForm = async () => {
     setForm({
@@ -119,7 +131,6 @@ export default function SimpleActPage() {
     });
     setSaved(false);
     setAutoCalc(false);
-    // 🆕 Последовательная нумерация
     const next = await genNextSimpleNumber();
     setDocNumber(next);
   };
@@ -157,23 +168,19 @@ export default function SimpleActPage() {
       const { toDataURL } = await import("qrcode");
       const qrUrl = await toDataURL(qrData, { width: 120, margin: 1 });
 
-      // Лого и данные компании — из выбранной компании
       const logoSrc = company?.logo || "";
       const companyName = company?.name || "";
 
-      // Заглушка из инициалов если нет логотипа
       const logoFallbackInitials = (() => {
         if (!companyName) return "TASU";
         const cleaned = companyName.replace(/ТОО|ИП|OOO|LLP/gi, "").trim();
         return cleaned.split(/\s+/).slice(0, 2).map(w => w[0]).join("").toUpperCase() || cleaned.slice(0, 4).toUpperCase();
       })();
 
-      // ФИО/компания получателя полностью
       const receiverDisplay = form.receiverCompany && form.receiverName
         ? `${form.receiverCompany}, ${form.receiverName}`
         : (form.receiverCompany || form.receiverName || "—");
 
-      // Номер направления
       const routeFull = form.fromCity && form.toCity
         ? `${form.fromCity} → ${form.toCity}`
         : (form.toCity || "—");
@@ -255,7 +262,6 @@ export default function SimpleActPage() {
         setSaved(true);
         await resetForm();
       } else {
-        // 🆕 Передаём флаг refresh чтобы список перезагрузился (избегаем кэша)
         navigate("/simple", { state: { refresh: Date.now() } });
       }
     } catch (err) {
@@ -265,7 +271,8 @@ export default function SimpleActPage() {
     }
   };
 
-  const matchedTariff = tariffs.find(t => t.city.toLowerCase() === form.toCity.toLowerCase());
+  // Совпадение частного тарифа для подсказки под полем города
+  const matchedTariff = findDeliveryTariff(tariffs, form.toCity, "private");
 
   return (
     <>
@@ -333,17 +340,23 @@ export default function SimpleActPage() {
                 <datalist id="cities-list">
                   {[...new Set(
                     tariffs
+                      .filter(t => {
+                        const wr = t.weightRanges && typeof t.weightRanges === 'object' ? t.weightRanges : {};
+                        const cat = wr._category || (t.isPrivate ? 'private' : 'legal');
+                        return cat === 'private';
+                      })
                       .map(t => (t.city || "")
                         .replace(/__LOADERS$/, "")
                         .replace(/__CARRIERS$/, "")
                         .replace(/__PRIVATE$/, "")
+                        .replace(/__AVIA$/, "")
                         .trim())
                       .filter(Boolean)
                   )].map((city, i) => <option key={i} value={city} />)}
                 </datalist>
                 {matchedTariff && (
                   <div style={{ marginTop: 4, fontSize: "0.8rem", color: "#389e0d" }}>
-                    ✅ Тариф: {Number(matchedTariff.pricePerKg).toLocaleString()} тг/кг + доставка {Number(matchedTariff.deliveryPrice).toLocaleString()} тг
+                    ✅ Частный тариф найден для «{cleanCityName(matchedTariff.city)}»
                   </div>
                 )}
               </div>

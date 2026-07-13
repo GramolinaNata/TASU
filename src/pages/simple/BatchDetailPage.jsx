@@ -1,128 +1,207 @@
-import React, { useEffect, useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
-import Loader from "../../shared/components/Loader";
 
-function formatDate(val) {
-  if (!val) return "—";
-  const d = new Date(val);
-  if (isNaN(d.getTime())) return val;
-  return d.toLocaleDateString("ru");
+// Достаём сумму перевозки из накладной (юр: из услуг; частные: автоподсчёт).
+// Пробуем несколько мест, приводим к числу. Нет суммы → null (покажем «—»).
+function getRequestSum(req) {
+  const candidates = [req?.details?.totalSum, req?.totalSum];
+  for (const c of candidates) {
+    if (c === 0 || c === "0") return 0;
+    const n = parseFloat(c);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return null;
 }
 
 export default function BatchDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [batch, setBatch] = useState(null);
-  const [requests, setRequests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [company, setCompany] = useState(getSelectedCompany());
+  const [company, setCompany] = useState(null);
 
   useEffect(() => {
-    if (!id) return;
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    setCompany(getSelectedCompany());
+    loadBatch();
   }, [id]);
 
-  const load = async () => {
+  const loadBatch = async () => {
     setLoading(true);
     try {
-      const b = await api.batches.get(id);
-      setBatch(b);
-
-      let requestIds = [];
-      try { requestIds = JSON.parse(b.requestIds || "[]"); } catch (e) {}
-
-      if (requestIds.length > 0) {
-        const reqs = await Promise.all(
-          requestIds.map(reqId => api.requests.get(reqId).catch(() => null))
-        );
-        setRequests(reqs.filter(Boolean));
-      } else {
-        setRequests([]);
+      const data = await api.batches.get(id);
+      // Парсим details у вложенных накладных
+      if (data && Array.isArray(data.requests)) {
+        data.requests = data.requests.map((r) => {
+          let details = {};
+          try {
+            details = typeof r.details === "string" ? JSON.parse(r.details) : (r.details || {});
+          } catch (e) {
+            details = {};
+          }
+          return { ...r, details };
+        });
       }
+      setBatch(data);
     } catch (e) {
-      console.error(e);
-      alert("Ошибка загрузки партии: " + e.message);
+      console.error("Ошибка загрузки партии:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  // Грузовая ведомость (без суммы) — по образцу бумажной формы.
-  // Колонки: № | Номер накладной | Получатель | Номер телефона | Мест | Вес | Город
-  const printVedomost = async () => {
+  const printVedomost = () => {
     if (!batch) return;
 
-    const { toDataURL } = await import("qrcode");
-    const qrUrl = await toDataURL(`TASU-BATCH-${batch.number}`, { width: 100, margin: 1 });
+    const requests = Array.isArray(batch.requests) ? batch.requests : [];
+    const companyName = company?.name || "";
+    const logoSrc = company?.logo || "";
 
-    const rows = requests.map((r, i) => {
-      let details = {};
-      try { details = JSON.parse(r.details || "{}"); } catch (e) {}
-      const recv = details.receiver || {};
-      const route = details.route || {};
-      const totals = details.totals || {};
+    let totalSeats = 0;
+    let totalWeight = 0;
+    let totalSum = 0;
+    let hasAnySum = false;
+
+    const rows = requests.map((req, i) => {
+      const d = req.details || {};
+      const receiver = d.receiver || {};
+      const route = d.route || {};
+      const totals = d.totals || {};
+      const docNum = d.docNumber || req.docNumber || req.number || "—";
+      const receiverName = receiver.fio || receiver.companyName || "—";
+      const receiverPhone = receiver.phone || "—";
+      const seats = Number(totals.seats) || 0;
+      const weight = Number(totals.weight) || 0;
+      const city = route.toCity || "—";
+
+      const sum = getRequestSum(req);
+      if (sum !== null) {
+        totalSum += sum;
+        hasAnySum = true;
+      }
+
+      totalSeats += seats;
+      totalWeight += weight;
+
+      const sumCell = sum !== null ? sum.toLocaleString() + " ₸" : "—";
+
       return `<tr>
-        <td style="text-align:center">${i + 1}</td>
-        <td>${r.docNumber || details.docNumber || r.id || "—"}</td>
-        <td>${recv.fio || "—"}</td>
-        <td>${recv.phone || "—"}</td>
-        <td style="text-align:center">${totals.seats || "—"}</td>
-        <td style="text-align:center">${totals.weight ? totals.weight + " кг" : "—"}</td>
-        <td>${route.toCity || batch.city || "—"}</td>
+        <td>${i + 1}</td>
+        <td><strong>${docNum}</strong></td>
+        <td>${receiverName}</td>
+        <td>${receiverPhone}</td>
+        <td style="text-align:center">${seats || "—"}</td>
+        <td style="text-align:center">${weight ? weight + " кг" : "—"}</td>
+        <td>${city}</td>
+        <td style="text-align:right; font-weight:700">${sumCell}</td>
       </tr>`;
     }).join("");
 
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Грузовая ведомость ${batch.number}</title>
-    <style>
-      body { font-family: Arial, sans-serif; font-size: 12px; padding: 20px; }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #000; }
-      h2 { margin: 0; font-size: 20px; font-weight: 900; text-transform: uppercase; }
-      .sub { color: #333; font-size: 11px; margin-top: 4px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
-      th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
-      th { background: #f3f4f6; font-weight: 700; text-align: center; }
-      .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 40px; }
-      .sig { flex: 1; }
-      .sig-line { border-bottom: 1px solid #000; margin-bottom: 5px; height: 28px; }
-      .sig-label { font-size: 10px; color: #333; text-align: center; }
-    </style></head><body>
-    <div class="header">
-      <div>
-        <h2>Грузовая ведомость</h2>
-        <div class="sub">${company?.name || ""} &nbsp;&nbsp; Партия № ${batch.number} &nbsp;&nbsp; Город: ${batch.city || "—"} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")}</div>
-      </div>
-      <img src="${qrUrl}" width="80" height="80" style="border:1px solid #ccc;padding:3px;"/>
+    const totalSumCell = hasAnySum ? totalSum.toLocaleString() + " ₸" : "—";
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Грузовая ведомость № ${batch.number || ""}</title>
+<style>
+  @page { size: A4 landscape; margin: 12mm; }
+  body { font-family: Arial, sans-serif; margin: 0; color: #111; }
+  .head { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid #222; padding-bottom: 10px; margin-bottom: 14px; }
+  .logo img { max-height: 54px; max-width: 160px; object-fit: contain; }
+  .logo-text { font-weight: 900; font-size: 22px; border: 2px solid #222; border-radius: 6px; padding: 4px 12px; }
+  .title { text-align: center; flex: 1; }
+  .title h1 { margin: 0; font-size: 20px; }
+  .title .sub { font-size: 13px; color: #555; margin-top: 4px; }
+  .meta { display: flex; gap: 24px; font-size: 13px; margin-bottom: 12px; }
+  .meta b { color: #000; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #333; padding: 6px 8px; }
+  th { background: #f0f0f0; text-align: left; }
+  tfoot td { font-weight: 900; background: #f7f7f7; }
+  .sign { display: flex; justify-content: space-between; margin-top: 40px; font-size: 13px; }
+  .sign .box { width: 45%; }
+  .sign .line { border-top: 1px solid #333; margin-top: 40px; padding-top: 4px; text-align: center; color: #555; }
+</style></head><body>
+  <div class="head">
+    <div class="logo">${logoSrc ? `<img src="${logoSrc}" alt="logo"/>` : `<div class="logo-text">${companyName || "TASU"}</div>`}</div>
+    <div class="title">
+      <h1>ГРУЗОВАЯ ВЕДОМОСТЬ № ${batch.number || ""}</h1>
+      <div class="sub">${companyName}</div>
     </div>
-    ${rows ? `<table>
-      <thead>
-        <tr>
-          <th style="width:30px">№</th>
-          <th>Номер накладной</th>
-          <th>Получатель</th>
-          <th>Номер телефона</th>
-          <th style="width:60px">Мест</th>
-          <th style="width:90px">Вес</th>
-          <th>Город</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>` : '<div style="color:#888;font-style:italic;margin-top:16px;">В партии нет накладных</div>'}
-    <div class="signatures">
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Выдал (ФИО, подпись)</div></div>
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Принял (ФИО, подпись)</div></div>
-    </div>
-    <script>window.onload=function(){window.print();}</script>
-    </body></html>`;
+    <div style="width:160px"></div>
+  </div>
+
+  <div class="meta">
+    <div><b>Город:</b> ${batch.city || "—"}</div>
+    <div><b>Водитель:</b> ${batch.driver || "—"}</div>
+    <div><b>Дата:</b> ${new Date(batch.createdAt || Date.now()).toLocaleDateString("ru-RU")}</div>
+    <div><b>Накладных:</b> ${requests.length}</div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:36px">№</th>
+        <th>Номер накладной</th>
+        <th>Получатель</th>
+        <th>Телефон</th>
+        <th style="width:60px">Мест</th>
+        <th style="width:80px">Вес</th>
+        <th>Город</th>
+        <th style="width:120px; text-align:right">Сумма перевозки</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td colspan="4" style="text-align:right">ИТОГО:</td>
+        <td style="text-align:center">${totalSeats || "—"}</td>
+        <td style="text-align:center">${totalWeight ? totalWeight + " кг" : "—"}</td>
+        <td></td>
+        <td style="text-align:right">${totalSumCell}</td>
+      </tr>
+    </tfoot>
+  </table>
+
+  <div class="sign">
+    <div class="box"><div class="line">Выдал (Ф.И.О., подпись)</div></div>
+    <div class="box"><div class="line">Принял представитель (Ф.И.О., подпись)</div></div>
+  </div>
+
+  <script>window.onload = function(){ window.print(); }</script>
+</body></html>`;
 
     const blob = new Blob([html], { type: "text/html; charset=utf-8" });
     window.open(URL.createObjectURL(blob), "_blank");
   };
 
-  if (loading) return <Loader />;
-  if (!batch) return <div style={{ padding: 20 }}>Партия не найдена. <button className="btn" onClick={() => navigate("/simple/batches")}>← Назад</button></div>;
+  if (loading) {
+    return <div style={{ padding: 40, textAlign: "center" }}>Загрузка партии...</div>;
+  }
+
+  if (!batch) {
+    return (
+      <div style={{ padding: 40, textAlign: "center" }}>
+        <p>Партия не найдена</p>
+        <button className="btn" onClick={() => navigate("/simple/batches")}>← К списку партий</button>
+      </div>
+    );
+  }
+
+  const requests = Array.isArray(batch.requests) ? batch.requests : [];
+
+  // Итоги для экранной таблицы
+  let screenSeats = 0;
+  let screenWeight = 0;
+  let screenSum = 0;
+  let screenHasSum = false;
+  requests.forEach((req) => {
+    const totals = req.details?.totals || {};
+    screenSeats += Number(totals.seats) || 0;
+    screenWeight += Number(totals.weight) || 0;
+    const s = getRequestSum(req);
+    if (s !== null) { screenSum += s; screenHasSum = true; }
+  });
 
   return (
     <>
@@ -131,68 +210,37 @@ export default function BatchDetailPage() {
           <button className="btn" onClick={() => navigate("/simple/batches")}>← Назад</button>
           <h1 style={{ margin: 0 }}>Партия № {batch.number}</h1>
           {batch.isFormed && (
-            <div className="chip" style={{ background: "#d1fae5", borderColor: "#86efac", color: "#065f46" }}>
-              ✓ Сформирована {formatDate(batch.formedAt)}
-            </div>
+            <span className="chip" style={{ background: "#f6ffed", borderColor: "#b7eb8f", color: "#389e0d" }}>
+              Сформирована
+            </span>
           )}
         </div>
         <button className="btn btn--accent" onClick={printVedomost}>
-          🖨 Печать ведомости
+          🖨 Печать грузовой ведомости
         </button>
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <div className="card_head"><div className="card_title">Основная информация</div></div>
+        <div className="card_head"><div className="card_title">Информация о партии</div></div>
         <div className="card_body">
-          <div className="form_grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-            <div>
-              <div style={{ fontSize: "0.8rem", color: "#888" }}>Город назначения</div>
-              <div style={{ fontWeight: 700, fontSize: "1.1rem" }}>{batch.city || "—"}</div>
+          <div className="form_grid">
+            <div className="field">
+              <div className="label">Город</div>
+              <div style={{ fontWeight: 600 }}>{batch.city || "—"}</div>
             </div>
-            <div>
-              <div style={{ fontSize: "0.8rem", color: "#888" }}>Дата создания</div>
-              <div style={{ fontWeight: 700 }}>{formatDate(batch.createdAt)}</div>
+            <div className="field">
+              <div className="label">Водитель</div>
+              <div style={{ fontWeight: 600 }}>{batch.driver || "—"}</div>
             </div>
-            <div>
-              <div style={{ fontSize: "0.8rem", color: "#888" }}>Стоимость перевозки</div>
-              <div style={{ fontWeight: 700 }}>{batch.deliveryCost ? `${Number(batch.deliveryCost).toLocaleString()} тг` : "—"}</div>
+            <div className="field">
+              <div className="label">Накладных</div>
+              <div style={{ fontWeight: 600 }}>{requests.length}</div>
+            </div>
+            <div className="field">
+              <div className="label">Общий вес</div>
+              <div style={{ fontWeight: 600 }}>{screenWeight} кг</div>
             </div>
           </div>
-        </div>
-      </div>
-
-      <div className="card" style={{ marginTop: 16 }}>
-        <div className="card_head"><div className="card_title">Водитель и транспорт</div></div>
-        <div className="card_body">
-          <div className="form_grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16 }}>
-            <div>
-              <div style={{ fontSize: "0.8rem", color: "#888" }}>ФИО водителя</div>
-              <div style={{ fontWeight: 700 }}>{batch.driverName || "—"}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: "0.8rem", color: "#888" }}>Телефон</div>
-              <div style={{ fontWeight: 700 }}>{batch.driverPhone || "—"}</div>
-            </div>
-            <div>
-              <div style={{ fontSize: "0.8rem", color: "#888" }}>Номер авто</div>
-              <div style={{ fontWeight: 700 }}>{batch.carNumber || "—"}</div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12, marginTop: 16 }}>
-        <div style={{ padding: 16, background: "#f3f4f6", borderRadius: 8, textAlign: "center" }}>
-          <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#1f2937" }}>{requests.length}</div>
-          <div style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: 4 }}>Накладных в партии</div>
-        </div>
-        <div style={{ padding: 16, background: "#f3f4f6", borderRadius: 8, textAlign: "center" }}>
-          <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#1f2937" }}>{batch.totalSeats || 0}</div>
-          <div style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: 4 }}>Мест всего</div>
-        </div>
-        <div style={{ padding: 16, background: "#f3f4f6", borderRadius: 8, textAlign: "center" }}>
-          <div style={{ fontSize: "1.8rem", fontWeight: 900, color: "#1f2937" }}>{batch.totalWeight ? `${Number(batch.totalWeight).toLocaleString()} кг` : "0"}</div>
-          <div style={{ fontSize: "0.85rem", color: "#6b7280", marginTop: 4 }}>Общий вес</div>
         </div>
       </div>
 
@@ -200,60 +248,61 @@ export default function BatchDetailPage() {
         <div className="card_head">
           <div className="card_title">Накладные в партии ({requests.length})</div>
         </div>
-        <div className="card_body" style={{ padding: 0 }}>
-          {requests.length === 0 ? (
-            <div style={{ padding: 20, textAlign: "center", color: "#888", fontStyle: "italic" }}>
-              В этой партии пока нет накладных
-            </div>
-          ) : (
-            <table className="table_fixed">
+        <div className="card_body">
+          <div className="table_wrap">
+            <table className="table">
               <thead>
                 <tr>
-                  <th style={{ width: 50 }}>№</th>
-                  <th style={{ width: 140 }}>Номер</th>
+                  <th style={{ width: 40 }}>№</th>
+                  <th>Номер накладной</th>
                   <th>Получатель</th>
+                  <th>Телефон</th>
+                  <th style={{ width: 70 }}>Мест</th>
+                  <th style={{ width: 90 }}>Вес</th>
                   <th>Город</th>
-                  <th style={{ width: 80, textAlign: "center" }}>Мест</th>
-                  <th style={{ width: 100, textAlign: "center" }}>Вес</th>
-                  <th style={{ width: 100 }}></th>
+                  <th style={{ width: 130, textAlign: "right" }}>Сумма перевозки</th>
                 </tr>
               </thead>
               <tbody>
-                {requests.map((r, i) => {
-                  let details = {};
-                  try { details = JSON.parse(r.details || "{}"); } catch (e) {}
-                  const recv = details.receiver || {};
-                  const route = details.route || {};
-                  const totals = details.totals || {};
-                  return (
-                    <tr
-                      key={r.id}
-                      style={{ cursor: "pointer" }}
-                      onClick={() => navigate(`/simple/${r.id}`)}
-                      onMouseEnter={(e) => e.currentTarget.style.background = "#f0f9ff"}
-                      onMouseLeave={(e) => e.currentTarget.style.background = ""}
-                    >
-                      <td>{i + 1}</td>
-                      <td style={{ fontWeight: 700 }}>{r.docNumber || details.docNumber || "—"}</td>
-                      <td>{recv.fio || "—"}</td>
-                      <td>{route.toCity || "—"}</td>
-                      <td style={{ textAlign: "center" }}>{totals.seats || "—"}</td>
-                      <td style={{ textAlign: "center" }}>{totals.weight ? `${totals.weight} кг` : "—"}</td>
-                      <td>
-                        <button
-                          className="btn btn--sm"
-                          onClick={(e) => { e.stopPropagation(); navigate(`/simple/${r.id}`); }}
-                          style={{ fontSize: 11 }}
-                        >
-                          Открыть
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {requests.length === 0 ? (
+                  <tr><td colSpan={8} className="muted" style={{ padding: 16, textAlign: "center" }}>Накладных нет</td></tr>
+                ) : (
+                  requests.map((req, i) => {
+                    const d = req.details || {};
+                    const receiver = d.receiver || {};
+                    const route = d.route || {};
+                    const totals = d.totals || {};
+                    const sum = getRequestSum(req);
+                    return (
+                      <tr key={req.id || i}>
+                        <td>{i + 1}</td>
+                        <td style={{ fontWeight: 600 }}>{d.docNumber || req.docNumber || req.number || "—"}</td>
+                        <td>{receiver.fio || receiver.companyName || "—"}</td>
+                        <td>{receiver.phone || "—"}</td>
+                        <td style={{ textAlign: "center" }}>{Number(totals.seats) || "—"}</td>
+                        <td style={{ textAlign: "center" }}>{Number(totals.weight) ? Number(totals.weight) + " кг" : "—"}</td>
+                        <td>{route.toCity || "—"}</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>
+                          {sum !== null ? sum.toLocaleString() + " ₸" : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
+              {requests.length > 0 && (
+                <tfoot>
+                  <tr style={{ fontWeight: 700, background: "#fafafa" }}>
+                    <td colSpan={4} style={{ textAlign: "right" }}>ИТОГО:</td>
+                    <td style={{ textAlign: "center" }}>{screenSeats || "—"}</td>
+                    <td style={{ textAlign: "center" }}>{screenWeight ? screenWeight + " кг" : "—"}</td>
+                    <td></td>
+                    <td style={{ textAlign: "right" }}>{screenHasSum ? screenSum.toLocaleString() + " ₸" : "—"}</td>
+                  </tr>
+                </tfoot>
+              )}
             </table>
-          )}
+          </div>
         </div>
       </div>
     </>
