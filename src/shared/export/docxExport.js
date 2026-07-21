@@ -1642,6 +1642,30 @@ watermark: watermarkImage,
       throw error;
     }
 
+    const roleVal = act.role || act.contractRole || "";
+    if (roleVal === "carrier") {
+      try {
+        const zipObj = doc.getZip();
+        let xml = zipObj.file("word/document.xml").asText();
+        const repl = [
+          [/Экспедитором/g, "Перевозчиком"],
+          [/Экспедитору/g, "Перевозчику"],
+          [/Экспедитора/g, "Перевозчика"],
+          [/Экспедиторе/g, "Перевозчике"],
+          [/Экспедитор/g, "Перевозчик"],
+          [/экспедитором/g, "перевозчиком"],
+          [/экспедитору/g, "перевозчику"],
+          [/экспедитора/g, "перевозчика"],
+          [/экспедиторе/g, "перевозчике"],
+          [/экспедитор/g, "перевозчик"],
+        ];
+        repl.forEach(function(pair){ xml = xml.replace(pair[0], pair[1]); });
+        zipObj.file("word/document.xml", xml);
+      } catch (e) {
+        console.warn("[Export] замена роли не удалась:", e);
+      }
+    }
+
     const out = doc.getZip().generate({
       type: "blob",
       mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

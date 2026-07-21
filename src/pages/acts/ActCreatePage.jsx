@@ -181,6 +181,7 @@ export default function ActCreatePage() {
   // ---------- Тарифы ----------
   const [allTariffs, setAllTariffs] = useState([]);
   const [tariffTransport, setTariffTransport] = useState("auto");
+  const [prrType, setPrrType] = useState("");
 
   // ---------- UI: сворачиваемые карточки ----------
   const [showCompanyCard, setShowCompanyCard] = useState(false);
@@ -430,7 +431,9 @@ export default function ActCreatePage() {
       tariffs: allTariffs,
       city: route.toCity,
       weightKg: cargoWeightKg,
-      volumeM3: cargoVolumeM3, // объём из габаритов (см³ → м³), сравнивается с весом
+      volumeM3: cargoVolumeM3,
+      seats: cargoTotals.seats,
+      prrType: prrType,
       transport: tariffTransport, // авто/авиа — выбор рядом с кнопкой
       // category не ограничиваем: берётся legal или private (что найдётся).
       // Если юр НИКОГДА не должен ловить частный тариф — добавь: category: "legal",
@@ -446,7 +449,7 @@ export default function ActCreatePage() {
       return [...filtered, { id: safeUuid(), name: res.description, qty: 1, price: res.sum, total: res.sum }];
     });
     alert(`Добавлена услуга: ${res.description}\nСумма: ${res.sum.toLocaleString()} тг`);
-  }, [route.toCity, cargoVolumeM3, cargoWeightKg, allTariffs, tariffTransport]);
+  }, [route.toCity, cargoVolumeM3, cargoWeightKg, allTariffs, tariffTransport, prrType]);
 
   // ============================================================
   // ОБРАБОТЧИКИ: строки груза
@@ -1191,6 +1194,15 @@ export default function ActCreatePage() {
                   </div>
                 </div>
               )}
+
+              <div className="field" style={{ maxWidth: 320, marginBottom: 12 }}>
+                <div className="label">ПРР (погрузка-разгрузка)</div>
+                <select value={prrType} onChange={e => setPrrType(e.target.value)}>
+                  <option value="">Нет ПРР</option>
+                  <option value="pallet">Палетная</option>
+                  <option value="manual">Ручная</option>
+                </select>
+              </div>
 
               <div className="table_wrap">
                 <table className="table_fixed">

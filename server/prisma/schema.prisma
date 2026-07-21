@@ -43,6 +43,14 @@ model Company {
   status         String    @default("active")
   // ТЗ: ставка налога в % (для расчёта расхода "Налоги"), 0 = нет налога
   taxRate        Float     @default(0)
+  // ТЗ: налоговый режим компании: 'none' | 'simplified' | 'our'
+  //   simplified (упрощёнка): налог = оборот × (taxRate% + taxExtra%)
+  //   our (ОУР с НДС): используется vatRate; точная формула — по данным бухгалтера
+  taxMode        String    @default("none")
+  // Доп. сбор % (напр. 1% за снятие наличных у TASU KZ) — для упрощёнки
+  taxExtra       Float     @default(0)
+  // Ставка НДС % (для режима ОУР)
+  vatRate        Float     @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   logo           String?

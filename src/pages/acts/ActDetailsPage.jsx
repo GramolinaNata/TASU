@@ -703,7 +703,7 @@ const printLabel = async () => {
     alert("Сохранено!");
   };
 
-  const handleExport = async (docTypeOverride = null) => {
+  const handleExport = async (docTypeOverride = null, roleOverride = null) => {
     if (!act || !act.companyId) {
       alert("Не указана компания экспедитор");
       return;
@@ -727,7 +727,7 @@ const printLabel = async () => {
       if (exportType === "ttn") {
         await exportTtnToXlsx({ ...act, company: comp });
       } else {
-        await exportToDocx({ ...act, company: comp }, exportType);
+        await exportToDocx({ ...act, company: comp, role: roleOverride || act.role }, exportType);
       }
       setShowExportMenu(false);
     } catch (err) {
@@ -880,8 +880,11 @@ const printLabel = async () => {
                   boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                   zIndex: 1000, minWidth: 500, marginTop: 5
                 }}>
-                  <div className="menu_item" style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => handleExport("Заявка")}>
-                    📄 Экспорт как Заявка
+                  <div className="menu_item" style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => handleExport("Заявка", "expeditor")}>
+                    📄 Заявка (Экспедитор)
+                  </div>
+                  <div className="menu_item" style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => handleExport("Заявка", "carrier")}>
+                    📄 Заявка (Перевозчик)
                   </div>
                   <div className="menu_item" style={{ padding: '10px 15px', cursor: 'pointer' }} onClick={() => handleExport(act.docType)}>
                     🚛 Экспорт как {act.docType.toUpperCase()}

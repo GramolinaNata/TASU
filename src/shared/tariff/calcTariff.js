@@ -23,6 +23,7 @@ export function cleanCityName(city) {
     .replace(/__PRIVATE$/, "")
     .replace(/__LOADERS$/, "")
     .replace(/__CARRIERS$/, "")
+    .replace(/__REPRESENTATIVES$/, "")
     .replace(/__AVIA$/, "")
     .trim()
     .toLowerCase();
@@ -89,19 +90,33 @@ export function findRegionalTariff(tariffs, cityRaw, weightKg, category, transpo
 }
 
 // Плата за вес по ступеням.
+// Каждый диапазон хранит СВОЮ цену за вес (rN) и СВОЮ доставку (dN).
+// Находим первый диапазон, в который попадает вес, и берём обе суммы этого диапазона.
+// Если вес больше всех порогов — берём последний (максимальный) диапазон.
 function weightPrice(wr, weightKg, isPrivate) {
-  const r10 = toNum(wr.r10);
-  const r20 = toNum(wr.r20);
-  const r30 = toNum(wr.r30);
-  const overKg = toNum(wr._pricePerKgOver20);
+  const steps = [];
+  Object.keys(wr).forEach((k) => {
+    const m = /^r(\d+)$/.exec(k);
+    if (!m) return;
+    const maxW = parseInt(m[1], 10);
+    const price = toNum(wr[k]);
+    const delivery = toNum(wr["d" + maxW]);
+    if (maxW > 0 && (price > 0 || delivery > 0)) steps.push({ maxW, price, delivery });
+  });
+  steps.sort((a, b) => a.maxW - b.maxW);
 
-  if (r10 > 0 && weightKg <= 10) return { sum: r10, label: "до 10 кг" };
-  if (r20 > 0 && weightKg <= 20) return { sum: r20, label: "до 20 кг" };
-  if (isPrivate && r30 > 0 && weightKg <= 30) return { sum: r30, label: "до 30 кг" };
-  return {
-    sum: weightKg * overKg,
-    label: `${weightKg} кг × ${overKg.toLocaleString()} тг/кг`,
-  };
+  if (steps.length === 0) {
+    return { sum: 0, delivery: 0, label: "нет диапазонов" };
+  }
+
+  for (const st of steps) {
+    if (weightKg <= st.maxW) {
+      return { sum: st.price, delivery: st.delivery, label: `до ${st.maxW} кг` };
+    }
+  }
+
+  const last = steps[steps.length - 1];
+  return { sum: last.price, delivery: last.delivery, label: `свыше ${last.maxW} кг (макс. диапазон)` };
 }
 
 /**
@@ -113,7 +128,7 @@ function weightPrice(wr, weightKg, isPrivate) {
  * @param {string}   [category]— 'legal' | 'private' | undefined (не ограничивать)
  * @returns {{ ok:boolean, sum?:number, description?:string, tariff?:object, error?:string }}
  */
-export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, category, transport }) {
+export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, seats = 0, prrType = '', category, transport }) {
   const cityClean = cleanCityName(city);
   if (!cityClean) return { ok: false, error: "Не указан город получателя" };
 
@@ -148,18 +163,11 @@ export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, c
     return { ok: false, error: "Укажите вес или объём груза" };
   }
 
-  const threshold = isPrivate ? 30 : 20;
-  if (weightKg > threshold && overKg <= 0) {
-    return {
-      ok: false,
-      error: `Для направления «${city}» не задан тариф «за кг (сверх ${threshold} кг)».`,
-    };
-  }
-
-  // 1) База: max(вес, куб)
+  // 1) База: max(вес, куб). Плюс доставка ЭТОГО диапазона веса.
   const wp = weightPrice(wr, weightKg, isPrivate);
   let base = wp.sum;
   let baseLabel = wp.label;
+  const rangeDelivery = toNum(wp.delivery);
 
   if (volumeM3 > 0 && pricePerCubic > 0) {
     const byCube = volumeM3 * pricePerCubic;
@@ -172,6 +180,11 @@ export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, c
   let sum = base;
   let description = `Доставка ${city} (${baseLabel})`;
 
+  if (rangeDelivery > 0) {
+    sum += rangeDelivery;
+    description += ` + доставка диапазона ${rangeDelivery.toLocaleString()} тг`;
+  }
+
   // 2) Региональная доплата
   if (regionalExtra > 0) {
     sum += regionalExtra;
@@ -182,6 +195,21 @@ export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, c
   if (deliveryPrice > 0) {
     sum += deliveryPrice;
     description += ` + доставка ${deliveryPrice.toLocaleString()} тг`;
+  }
+
+  const unloadPerSeat = toNum(wr._unloadPerSeat);
+  if (unloadPerSeat > 0 && seats > 0) {
+    sum += unloadPerSeat * seats;
+    description += ` + выгрузка ${seats} мест × ${unloadPerSeat.toLocaleString()} тг`;
+  }
+
+  // 5) PRR: pallet ili ruchnaya
+  if (prrType === 'pallet' || prrType === 'manual') {
+    const prr = prrType === 'pallet' ? toNum(wr._prrPallet) : toNum(wr._prrManual);
+    if (prr > 0) {
+      sum += prr;
+      description += ` + ПРР ${prrType === 'pallet' ? 'палетная' : 'ручная'} ${prr.toLocaleString()} тг`;
+    }
   }
 
   sum = Math.round(sum);

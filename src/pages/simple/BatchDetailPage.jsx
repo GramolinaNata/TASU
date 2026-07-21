@@ -31,24 +31,142 @@ export default function BatchDetailPage() {
     setLoading(true);
     try {
       const data = await api.batches.get(id);
-      // Парсим details у вложенных накладных
-      if (data && Array.isArray(data.requests)) {
-        data.requests = data.requests.map((r) => {
-          let details = {};
-          try {
-            details = typeof r.details === "string" ? JSON.parse(r.details) : (r.details || {});
-          } catch (e) {
-            details = {};
-          }
-          return { ...r, details };
-        });
+
+      // Накладные партии. Если бэк не вернул вложенный requests —
+      // подтягиваем сами по requestIds (иначе вес/места/накладные не отобразятся).
+      let reqs = Array.isArray(data?.requests) ? data.requests : [];
+      if (reqs.length === 0 && data?.requestIds) {
+        let ids = [];
+        try { ids = JSON.parse(data.requestIds || "[]"); } catch (e) { ids = []; }
+        if (ids.length > 0) {
+          reqs = await Promise.all(
+            ids.map(rid => api.requests.get(rid).catch(() => null))
+          );
+          reqs = reqs.filter(Boolean);
+        }
       }
-      setBatch(data);
+
+      // Парсим details у накладных
+      const parsed = reqs.map((r) => {
+        let details = {};
+        try {
+          details = typeof r.details === "string" ? JSON.parse(r.details) : (r.details || {});
+        } catch (e) {
+          details = {};
+        }
+        return { ...r, details };
+      });
+
+      setBatch({ ...(data || {}), requests: parsed });
     } catch (e) {
       console.error("Ошибка загрузки партии:", e);
     } finally {
       setLoading(false);
     }
+  };
+
+  const printCarrierVedomost = async () => {
+    if (!batch || !batch.carrierVedomostId) {
+      alert("По этой партии ещё не создана ведомость перевозчика.");
+      return;
+    }
+    let ved = null;
+    try {
+      const list = await api.carrierVedomosts.list(company?.id);
+      ved = (list || []).find(v => String(v.id) === String(batch.carrierVedomostId));
+    } catch (e) {
+      alert("Не удалось загрузить ведомость перевозчика: " + (e.message || e));
+      return;
+    }
+    if (!ved) { alert("Ведомость перевозчика не найдена."); return; }
+    let snap = {};
+    try { snap = typeof ved.data === "string" ? JSON.parse(ved.data) : (ved.data || {}); } catch (e) { snap = {}; }
+    const snapRows = Array.isArray(snap.rows) ? snap.rows : [];
+    const my = snapRows.find(r => String(r.batchId) === String(batch.id)) || snapRows[0] || {};
+    const carrierName = my.carrierName || "—";
+    const carrierRate = Number(my.carrierRate) || 0;
+    const representativeName = my.representativeName || "—";
+    const companyName = company?.name || "";
+    const requests = Array.isArray(batch.requests) ? batch.requests : [];
+    let totalSeats = 0, totalWeight = 0, totalCarrierSum = 0;
+    const trs = requests.map((req, i) => {
+      const d = req.details || {};
+      const receiver = d.receiver || {};
+      const totals = d.totals || {};
+      const docNum = d.docNumber || req.docNumber || req.number || "—";
+      const receiverName = receiver.fio || receiver.companyName || "—";
+      const receiverPhone = receiver.phone || "—";
+      const seats = Number(totals.seats) || 0;
+      const weight = Number(totals.weight) || 0;
+      const carrierSum = Math.round(weight * carrierRate);
+      totalSeats += seats; totalWeight += weight; totalCarrierSum += carrierSum;
+      return `<tr>
+        <td>${i + 1}</td>
+        <td><strong>${docNum}</strong></td>
+        <td>${receiverName}</td>
+        <td>${receiverPhone}</td>
+        <td style="text-align:center">${seats || "—"}</td>
+        <td style="text-align:center">${weight ? weight + " кг" : "—"}</td>
+        <td style="text-align:right">${carrierRate ? carrierRate.toLocaleString() : "—"}</td>
+        <td style="text-align:right; font-weight:700">${carrierSum ? carrierSum.toLocaleString() + " ₸" : "—"}</td>
+      </tr>`;
+    }).join("");
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ведомость перевозчика № ${ved.number || ""}</title>
+<style>
+  @page { size: A4 landscape; margin: 12mm; }
+  body { font-family: Arial, sans-serif; margin: 0; color: #111; }
+  .head { text-align:center; border-bottom: 2px solid #222; padding-bottom: 10px; margin-bottom: 12px; }
+  .head h1 { margin: 0; font-size: 20px; }
+  .head .sub { font-size: 13px; color: #555; margin-top: 4px; }
+  .meta { display: flex; gap: 24px; font-size: 13px; margin-bottom: 12px; flex-wrap: wrap; }
+  .meta b { color: #000; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  th, td { border: 1px solid #333; padding: 6px 8px; }
+  th { background: #f0f0f0; text-align: left; }
+  tfoot td { font-weight: 900; background: #f7f7f7; }
+  .sign { display: flex; justify-content: space-between; margin-top: 40px; font-size: 13px; }
+  .sign .box { width: 45%; }
+  .sign .line { border-top: 1px solid #333; margin-top: 40px; padding-top: 4px; text-align: center; color: #555; }
+</style></head><body>
+  <div class="head">
+    <h1>ВЕДОМОСТЬ ПЕРЕВОЗЧИКА № ${ved.number || ""}</h1>
+    <div class="sub">${companyName}</div>
+  </div>
+  <div class="meta">
+    <div><b>Партия:</b> ${batch.number || "—"}</div>
+    <div><b>Город:</b> ${batch.city || "—"}</div>
+    <div><b>Перевозчик:</b> ${carrierName}</div>
+    <div><b>Представитель:</b> ${representativeName}</div>
+    <div><b>Тариф перевозчика:</b> ${carrierRate ? carrierRate.toLocaleString() + " тг/кг" : "—"}</div>
+  </div>
+  <table>
+    <thead><tr>
+      <th style="width:36px">№</th>
+      <th>Накладная</th>
+      <th>Получатель</th>
+      <th>Телефон</th>
+      <th style="width:60px">Мест</th>
+      <th style="width:80px">Вес</th>
+      <th style="width:90px; text-align:right">Тариф/кг</th>
+      <th style="width:120px; text-align:right">Сумма перевозчику</th>
+    </tr></thead>
+    <tbody>${trs}</tbody>
+    <tfoot><tr>
+      <td colspan="4" style="text-align:right">ИТОГО:</td>
+      <td style="text-align:center">${totalSeats || "—"}</td>
+      <td style="text-align:center">${totalWeight ? totalWeight + " кг" : "—"}</td>
+      <td></td>
+      <td style="text-align:right">${totalCarrierSum ? totalCarrierSum.toLocaleString() + " ₸" : "—"}</td>
+    </tr></tfoot>
+  </table>
+  <div class="sign">
+    <div class="box"><div class="line">Выдал (Ф.И.О., подпись)</div></div>
+    <div class="box"><div class="line">Перевозчик (Ф.И.О., подпись)</div></div>
+  </div>
+  <script>window.onload = function(){ window.print(); }</script>
+</body></html>`;
+    const blob = new Blob([html], { type: "text/html; charset=utf-8" });
+    window.open(URL.createObjectURL(blob), "_blank");
   };
 
   const printVedomost = () => {
@@ -215,9 +333,16 @@ export default function BatchDetailPage() {
             </span>
           )}
         </div>
-        <button className="btn btn--accent" onClick={printVedomost}>
-          🖨 Печать грузовой ведомости
-        </button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button className="btn btn--accent" onClick={printVedomost}>
+            🖨 Грузовая ведомость
+          </button>
+          {batch.carrierVedomostId && (
+            <button className="btn btn--accent" onClick={printCarrierVedomost}>
+              🚚 Ведомость перевозчика
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="card" style={{ marginTop: 16 }}>

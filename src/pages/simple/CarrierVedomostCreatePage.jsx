@@ -821,9 +821,6 @@ loaderRate,
       <td>${esc(r.carrierName)}</td>
       <td style="text-align:center">${r.carrierRate} тг/кг</td>
       <td style="text-align:center;font-weight:700">${r.carrierSum.toLocaleString()} тг</td>
-      <td style="text-align:center">${r.loadersCount || '—'}</td>
-      <td style="text-align:center">${r.loadersCount > 0 ? r.loaderRate + ' тг/кг' : '—'}</td>
-      <td style="text-align:center;font-weight:700">${r.loaderSum.toLocaleString()} тг</td>
       <td>${esc(r.representativeName)}</td>
     </tr>`).join("");
 
@@ -859,9 +856,6 @@ loaderRate,
           <th>Перевозчик</th>
           <th style="width:70px">Тариф</th>
           <th style="width:80px">Сумма перевозчику</th>
-          <th style="width:50px">Грузч.</th>
-          <th style="width:70px">Тариф грузчика</th>
-          <th style="width:80px">Сумма грузчикам</th>
           <th>Представитель</th>
         </tr>
       </thead>
@@ -870,7 +864,6 @@ loaderRate,
     <div class="totals">
       <div>Общий вес: ${snapshot.totalWeight.toLocaleString()} кг</div>
       <div>Сумма перевозчику: ${snapshot.carrierSum.toLocaleString()} тг</div>
-      <div>Сумма грузчикам: ${snapshot.loaderSum.toLocaleString()} тг</div>
       <div>Тариф представителя: ${snapshot.representativeRate} тг/кг</div>
       <div>Сумма представителю: ${snapshot.representativeSum.toLocaleString()} тг</div>
     </div>
@@ -1024,8 +1017,6 @@ loaderRate,
                   <th>Перевозчик</th>
                   <th style={{ textAlign: 'center' }}>Тариф перевозчика</th>
                   <th style={{ textAlign: 'center' }}>Сумма перевозчику</th>
-                  <th style={{ textAlign: 'center' }}>Грузчиков × тариф</th>
-                  <th style={{ textAlign: 'center' }}>Сумма грузчикам</th>
                   <th>Представитель</th>
                 </tr>
               </thead>
@@ -1040,12 +1031,6 @@ loaderRate,
                       {r.carrierMissing ? <span style={{ color: '#dc2626' }}>тариф не найден</span> : `${r.carrierRate} тг/кг`}
                     </td>
                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.carrierSum.toLocaleString()} тг</td>
-                    <td style={{ textAlign: 'center' }}>
-                      {r.loadersCount > 0
-                        ? (r.loaderMissing ? <span style={{ color: '#dc2626' }}>тариф не найден</span> : `${r.weight} кг × ${r.loaderRate} тг/кг`)
-                        : '—'}
-                    </td>
-                    <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.loaderSum.toLocaleString()} тг</td>
                     <td>{r.representativeName}</td>
                   </tr>
                 ))}
@@ -1067,9 +1052,6 @@ loaderRate,
               </div>
               <div style={{ padding: '8px 16px', background: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe' }}>
                 Сумма перевозчику: <strong>{breakdown.carrierSum.toLocaleString()} тг</strong>
-              </div>
-              <div style={{ padding: '8px 16px', background: '#f0fdf4', borderRadius: 8, border: '1px solid #bbf7d0' }}>
-                Сумма грузчикам: <strong>{breakdown.loaderSum.toLocaleString()} тг</strong>
               </div>
               <div style={{ padding: '8px 16px', background: '#fdf4ff', borderRadius: 8, border: '1px solid #f0abfc' }}>
                 Сумма представителю: <strong>{breakdown.representativeSum.toLocaleString()} тг</strong>

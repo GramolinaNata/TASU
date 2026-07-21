@@ -1,3 +1,6 @@
+// 
+
+
 // // import { Request, Response } from 'express';
 // // import prisma from '../lib/prisma';
 // // import { AuthRequest } from '../middlewares/auth.middleware';
@@ -320,6 +323,9 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       stamp: restData.stamp || null,
       status: restData.status || 'active',
       taxRate: parseFloat(restData.taxRate) || 0,
+      taxMode: restData.taxMode || 'none',
+      taxExtra: parseFloat(restData.taxExtra) || 0,
+      vatRate: parseFloat(restData.vatRate) || 0,
     };
 
     if (id && typeof id === 'string') dataToSave.id = id;
@@ -346,12 +352,17 @@ export const updateCompany = async (req: AuthRequest, res: Response) => {
       'name', 'bin', 'address', 'factAddress', 'phone',
       'director', 'email', 'bank', 'bik', 'account', 'kbe',
       'bankDetails', 'managerDetails', 'logo',
-      'stamp', 'status', 'taxRate',
+      'stamp', 'status', 'taxRate', 'taxMode',
     ];
 
     fields.forEach(f => {
       if (restData[f] !== undefined) dataToUpdate[f] = restData[f];
     });
+
+    // Числовые налоговые поля — приводим к числу
+    if (restData.taxRate !== undefined) dataToUpdate.taxRate = parseFloat(restData.taxRate) || 0;
+    if (restData.taxExtra !== undefined) dataToUpdate.taxExtra = parseFloat(restData.taxExtra) || 0;
+    if (restData.vatRate !== undefined) dataToUpdate.vatRate = parseFloat(restData.vatRate) || 0;
 
     const updatedCompany = await prisma.company.update({
       where: { id: id as string },

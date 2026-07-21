@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
@@ -20,6 +21,73 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+// 🆕 ТЗ: чек всплывает сразу при сохранении. Строим HTML чека из данных формы.
+function openReceipt(form, company, docNumber) {
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  const dateStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
+  const companyName = company?.name || "";
+  const companyBin = company?.bin || "";
+  const companyPhones = (company?.phone || "").split(/[,\n;]/).map(s => s.trim()).filter(Boolean);
+
+  const docNum = docNumber || "—";
+  const senderFio = form.senderName || "—";
+  const senderPhone = form.senderPhone || "";
+  const receiverFio = form.receiverName || "—";
+  const receiverPhone = form.receiverPhone || "";
+  const toCity = form.toCity || "—";
+  const seats = form.seats || "—";
+  const weight = form.weight ? `${form.weight} кг` : "—";
+  const sum = form.totalSum ? Number(form.totalSum).toLocaleString() : "—";
+
+  const tt = form.transportType;
+  const transportLabel = (tt === 'avia_console' || tt === 'plane') ? 'Авиа' : (tt === 'train' ? 'Поезд' : 'Авто');
+  const paymentLabel = "ОПЛАТА ПОЛУЧАТЕЛЕМ";
+
+  const receiptBlock = `
+<div class="receipt">
+  <div class="row"><strong>${escapeHtml(companyName)}</strong></div>
+  ${companyBin ? `<div class="row">БИН: ${escapeHtml(companyBin)}</div>` : ''}
+  <div class="row"><strong>№${escapeHtml(docNum)}</strong></div>
+  <div class="sep">- - - - - - - - - - - - - - - - - -</div>
+  <div class="row">Отпр: ${escapeHtml(senderFio)}${senderPhone ? ' ' + escapeHtml(senderPhone) : ''}</div>
+  <div class="row">Получ: ${escapeHtml(receiverFio)}${receiverPhone ? ' ' + escapeHtml(receiverPhone) : ''}</div>
+  <div class="row">Направление: ${escapeHtml(toCity)}</div>
+  <div class="sep">- - - - - - - - - - - - - - - - - -</div>
+  <div class="row">Перевозка: ${escapeHtml(transportLabel)}</div>
+  <div class="row">Мест: ${escapeHtml(String(seats))} | Вес: ${escapeHtml(String(weight))}</div>
+  <div class="row"><strong>Итого: ${escapeHtml(String(sum))} тг</strong></div>
+  <div class="row">Дата: ${escapeHtml(dateStr)}</div>
+  <div class="sep">- - - - - - - - - - - - - - - - - -</div>
+  <div class="row"><strong>${escapeHtml(paymentLabel)}</strong></div>
+  <div class="row">подпись: _______________</div>
+  ${companyPhones.length > 0 ? `<div class="row">Тел: ${escapeHtml(companyPhones.join(', '))}</div>` : ''}
+</div>`;
+
+  const html = `<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>Чек №${escapeHtml(docNum)}</title>
+<style>
+@page { size: 70mm auto; margin: 0; }
+  @media print { body { margin: 0; } html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  body { font-family: 'Courier New', monospace; padding: 4px; max-width: 280px; margin: 0 auto; color: #000; background: #fff; font-size: 11px; line-height: 1.25; font-weight: 700; }
+  .receipt { padding: 4px 2px; margin-bottom: 8px; border-bottom: 1px dashed #000; }
+  .receipt:last-child { border-bottom: none; }
+  .row { margin: 0; word-wrap: break-word; font-weight: 700; }
+  .sep { color: #000; margin: 2px 0; font-weight: 700; }
+  strong { font-weight: 900; }
+</style>
+</head><body>
+${receiptBlock}
+${receiptBlock}
+<script>window.onload = () => { window.print(); }</script>
+</body></html>`;
+
+  const blob = new Blob([html], { type: "text/html; charset=utf-8" });
+  window.open(URL.createObjectURL(blob), "_blank");
 }
 
 /**
@@ -73,6 +141,7 @@ export default function SimpleActPage() {
     fromCity: "",
     toCity: "",
     seats: "",
+    prrType: "",
     weight: "",
     cargoText: "",
     transportType: "auto_console",
@@ -103,6 +172,8 @@ export default function SimpleActPage() {
       city: form.toCity,
       weightKg: Number(form.weight) || 0,
       volumeM3: 0,
+      seats: Number(form.seats) || 0,
+      prrType: form.prrType || "",
       category: "private",
       transport: form.transportType === "avia_console" ? "avia" : "auto",
     });
@@ -124,6 +195,7 @@ export default function SimpleActPage() {
       fromCity: "",
       toCity: "",
       seats: "",
+    prrType: "",
       weight: "",
       cargoText: "",
       transportType: "auto_console",
@@ -258,6 +330,9 @@ export default function SimpleActPage() {
       const blob = new Blob([label], { type: "text/html; charset=utf-8" });
       window.open(URL.createObjectURL(blob), "_blank");
 
+      // 🆕 ТЗ: чек всплывает сразу при сохранении
+      openReceipt(form, company, docNumber);
+
       if (saveAndNext) {
         setSaved(true);
         await resetForm();
@@ -371,6 +446,14 @@ export default function SimpleActPage() {
               <div className="field">
                 <div className="label">Количество мест</div>
                 <input type="number" value={form.seats} onChange={e => setForm({...form, seats: e.target.value})} placeholder="0" />
+              </div>
+              <div className="field">
+                <div className="label">ПРР (погрузка-разгрузка)</div>
+                <select value={form.prrType || ""} onChange={e => setForm({...form, prrType: e.target.value})}>
+                  <option value="">Нет ПРР</option>
+                  <option value="pallet">Палетная</option>
+                  <option value="manual">Ручная</option>
+                </select>
               </div>
               <div className="field">
                 <div className="label">Вес (кг)</div>

@@ -411,6 +411,7 @@ export default function AdminStatsPage() {
 
   // 🆕 ТЗ v2: фильтры
   const [filterCompanyId, setFilterCompanyId] = useState('');
+  const [filterMonth, setFilterMonth] = useState(''); // '' = все месяцы, иначе 'YYYY-MM'
   const [filterPaid, setFilterPaid] = useState('all');     // 'all' | 'paid' | 'unpaid'
   const [showDeferred, setShowDeferred] = useState(false); // 🆕 показать только отложенные
 
@@ -458,13 +459,31 @@ export default function AdminStatsPage() {
   const filteredRequests = useMemo(() => {
     let arr = data.requests;
     if (filterCompanyId) arr = arr.filter(r => r.companyId === filterCompanyId);
+    if (filterMonth) {
+      arr = arr.filter(r => {
+        const d = new Date(r.createdAt);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return key === filterMonth;
+      });
+    }
     if (filterPaid === 'paid') arr = arr.filter(r => r.isPaid === true);
     else if (filterPaid === 'unpaid') arr = arr.filter(r => r.isPaid !== true);
     if (showDeferred) {
       arr = arr.filter(r => parseDetails(r.details).isDeferredForAccountant === true);
     }
     return arr;
-  }, [data.requests, filterCompanyId, filterPaid, showDeferred]);
+  }, [data.requests, filterCompanyId, filterMonth, filterPaid, showDeferred]);
+
+  // Список доступных месяцев для выпадашки (из всех заявок, свежие сверху)
+  const availableMonths = useMemo(() => {
+    const set = new Set();
+    (data.requests || []).forEach(r => {
+      if (!r.createdAt) return;
+      const d = new Date(r.createdAt);
+      set.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    });
+    return Array.from(set).sort().reverse();
+  }, [data.requests]);
 
   // 🆕 ТЗ v2: Количество отложенных (всегда из полного списка, для бейджа)
   const deferredCount = useMemo(() => {
@@ -633,6 +652,38 @@ export default function AdminStatsPage() {
           </select>
         </div>
 
+        {/* Месяц */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 180 }}>
+          <label style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 600, letterSpacing: '0.5px', textTransform: 'uppercase' }}>
+            📅 Месяц
+          </label>
+          <select
+            value={filterMonth}
+            onChange={(e) => setFilterMonth(e.target.value)}
+            style={{
+              padding: '9px 12px',
+              borderRadius: 10,
+              border: '1px solid var(--line)',
+              background: filterMonth ? 'rgba(0,136,254,0.06)' : 'var(--card)',
+              color: 'var(--text)',
+              fontSize: 13,
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              outline: 'none',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#8884d8'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; }}
+          >
+            <option value="">Все месяцы</option>
+            {availableMonths.map(m => (
+              <option key={m} value={m}>
+                {new Date(`${m}-01`).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Разделитель */}
         <div style={{ width: 1, height: 40, background: 'var(--line)' }} />
 
@@ -744,9 +795,9 @@ export default function AdminStatsPage() {
         </div>
 
         {/* Сброс — справа */}
-        {(filterCompanyId || filterPaid !== 'all' || showDeferred) && (
+        {(filterCompanyId || filterMonth || filterPaid !== 'all' || showDeferred) && (
           <button
-            onClick={() => { setFilterCompanyId(''); setFilterPaid('all'); setShowDeferred(false); }}
+            onClick={() => { setFilterCompanyId(''); setFilterMonth(''); setFilterPaid('all'); setShowDeferred(false); }}
             style={{
               marginLeft: 'auto',
               padding: '8px 14px',
