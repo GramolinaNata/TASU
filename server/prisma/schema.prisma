@@ -95,6 +95,7 @@ model Contract {
   number           String
   date             String
   type             String
+  role             String?
   status           String   @default("active")
   companyId        String
   companyName      String?
