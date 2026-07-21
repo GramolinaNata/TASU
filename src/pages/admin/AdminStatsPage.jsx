@@ -440,20 +440,36 @@ export default function AdminStatsPage() {
     loadAllData();
   }, []);
 
-  // 🆕 ТЗ v2: Расчёт расходов (загружается с фильтром по компании)
+  // ТЗ v2: расходы фильтруются по компании И по месяцу (на фронте — как заявки),
+  // иначе при смене месяца сумма расходов оставалась общей.
+  const [allExpenses, setAllExpenses] = useState([]);
   useEffect(() => {
-    const loadSummary = async () => {
+    const loadExpenses = async () => {
       try {
-        const params = {};
-        if (filterCompanyId) params.companyId = filterCompanyId;
-        const summary = await api.expenses.summary(params);
-        setExpensesSummary(summary || { totalAmount: 0, count: 0, byCategory: [], byCompany: [] });
+        const list = await api.expenses.list();
+        setAllExpenses(Array.isArray(list) ? list : []);
       } catch (err) {
-        console.error('Failed to load expenses summary', err);
+        console.error('Failed to load expenses', err);
+        setAllExpenses([]);
       }
     };
-    loadSummary();
-  }, [filterCompanyId]);
+    loadExpenses();
+  }, []);
+
+  useEffect(() => {
+    let arr = allExpenses;
+    if (filterCompanyId) arr = arr.filter(e => e.companyId === filterCompanyId);
+    if (filterMonth) {
+      arr = arr.filter(e => {
+        const d = new Date(e.date || e.createdAt);
+        if (isNaN(d)) return false;
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return key === filterMonth;
+      });
+    }
+    const totalAmount = arr.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    setExpensesSummary({ totalAmount, count: arr.length, byCategory: [], byCompany: [] });
+  }, [allExpenses, filterCompanyId, filterMonth]);
 
   // 🆕 ТЗ v2: Применяем фильтры к заявкам перед расчётом статистики
   const filteredRequests = useMemo(() => {
