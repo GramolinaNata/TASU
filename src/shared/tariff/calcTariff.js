@@ -191,12 +191,6 @@ export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, s
     description += ` + ${regionalExtra.toLocaleString()} тг регион «${regionLabel}»`;
   }
 
-  // 3) Доставка — одна фикс. сумма, один раз
-  if (deliveryPrice > 0) {
-    sum += deliveryPrice;
-    description += ` + доставка ${deliveryPrice.toLocaleString()} тг`;
-  }
-
   const unloadPerSeat = toNum(wr._unloadPerSeat);
   if (unloadPerSeat > 0 && seats > 0) {
     sum += unloadPerSeat * seats;
