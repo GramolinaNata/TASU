@@ -1,6 +1,4 @@
 ﻿
-
-
 import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../shared/api/api.js";
 
@@ -29,7 +27,7 @@ const CITY_SUFFIX = { loaders: '__LOADERS', carriers: '__CARRIERS', representati
 
 // Чистый город для показа (без служебного суффикса)
 function cleanCity(city) {
-  return (city || '').replace(/__LOADERS$/, '').replace(/__CARRIERS$/, '').replace(/__AVIA$/, '');
+  return (city || '').replace(/__LOADERS$/, '').replace(/__CARRIERS$/, '').replace(/__REPRESENTATIVES$/, '').replace(/__PRIVATE$/, '').replace(/__AVIA$/, '');
 }
 
 // Город с суффиксом для сохранения по категории + типу перевозки.
