@@ -111,6 +111,10 @@ export default function BatchesPage() {
   const [freeRequests, setFreeRequests] = useState([]);
   const [selectedReqIds, setSelectedReqIds] = useState([]);
 
+  // Итоги накладных (места/вес) по id — для подсчёта колонок в списке налету.
+  // Так и старые партии без сохранённых totalSeats/totalWeight покажут цифры.
+  const [reqTotals, setReqTotals] = useState({});
+
   const toggleVedomostSelect = (id) => {
     setSelectedForVedomost(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -146,20 +150,41 @@ export default function BatchesPage() {
     </th>
   );
 
+  // Итоги (места/вес) по партии — сумма по накладным из requestIds.
+  // Fallback на сохранённые totalSeats/totalWeight, если накладные не подтянулись.
+  const batchTotals = (b) => {
+    let ids = [];
+    try { ids = JSON.parse(b.requestIds || "[]"); } catch (e) { ids = []; }
+    let seats = 0, weight = 0;
+    ids.forEach(id => {
+      const t = reqTotals[id];
+      if (t) { seats += t.seats; weight += t.weight; }
+    });
+    if (!seats) seats = Number(b.totalSeats) || 0;
+    if (!weight) weight = Number(b.totalWeight) || 0;
+    return { seats, weight };
+  };
+
   const filteredBatches = useMemo(() => {
     const filtered = batches.filter(b => {
       if (tab === 'vedomost') return !!b.carrierVedomostId;
       if (tab === 'formed') return !!b.isFormed && !b.carrierVedomostId;
       return !b.isFormed; // active
     });
+    const sortVal = (b) => {
+      if (sortBy === 'totalSeats') return batchTotals(b).seats;
+      if (sortBy === 'totalWeight') return batchTotals(b).weight;
+      return getSortValue(b, sortBy);
+    };
     return [...filtered].sort((a, b) => {
-      const av = getSortValue(a, sortBy);
-      const bv = getSortValue(b, sortBy);
+      const av = sortVal(a);
+      const bv = sortVal(b);
       if (av < bv) return sortOrder === 'asc' ? -1 : 1;
       if (av > bv) return sortOrder === 'asc' ? 1 : -1;
       return 0;
     });
-  }, [batches, sortBy, sortOrder, tab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [batches, sortBy, sortOrder, tab, reqTotals]);
 
   const tabCounts = useMemo(() => ({
     active: batches.filter(b => !b.isFormed).length,
@@ -195,12 +220,23 @@ export default function BatchesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [list, cvs] = await Promise.all([
+      const [list, cvs, reqs] = await Promise.all([
         api.batches.list(company?.id),
         api.carrierVedomosts.list(company?.id).catch(() => []),
+        api.requests.list().catch(() => []),
       ]);
       if (Array.isArray(list)) setBatches(list);
       setCarrierVedomosts(Array.isArray(cvs) ? cvs : []);
+
+      // Карта итогов по накладным: id -> { seats, weight }
+      const reqMap = {};
+      (Array.isArray(reqs) ? reqs : []).forEach(r => {
+        let d = {};
+        try { d = typeof r.details === "string" ? JSON.parse(r.details) : (r.details || {}); } catch (e) { d = {}; }
+        const t = d.totals || {};
+        reqMap[r.id] = { seats: Number(t.seats) || 0, weight: Number(t.weight) || 0 };
+      });
+      setReqTotals(reqMap);
     } catch(e) {
       console.error(e);
     } finally {
@@ -805,8 +841,15 @@ export default function BatchesPage() {
                       {b.driverPhone && <div className="muted" style={{ fontSize: "0.8rem" }}>{b.driverPhone}</div>}
                     </td>
                     <td>{b.carNumber || "—"}</td>
-                    <td style={{ textAlign: 'center', fontWeight: 600 }}>{b.totalSeats || "—"}</td>
-                    <td style={{ textAlign: 'center', fontWeight: 600 }}>{b.totalWeight ? `${Number(b.totalWeight).toLocaleString()} кг` : "—"}</td>
+                    {(() => {
+                      const { seats, weight } = batchTotals(b);
+                      return (
+                        <>
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>{seats || "—"}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 600 }}>{weight ? `${Number(weight).toLocaleString()} кг` : "—"}</td>
+                        </>
+                      );
+                    })()}
                     <td>{b.deliveryCost ? `${Number(b.deliveryCost).toLocaleString()} тг` : "—"}</td>
                     <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: "flex", gap: 6, flexWrap: 'wrap' }}>

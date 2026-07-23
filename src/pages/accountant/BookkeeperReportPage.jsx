@@ -122,32 +122,54 @@ export default function BookkeeperReportPage() {
     return sum;
   };
 
+  // Строка снапшота ведомости перевозчика, относящаяся к этой партии.
+  // В снапшоте сохранены перевозчик/представитель/грузчики и суммы — партия
+  // сама их НЕ хранит (назначаются в форме создания ведомости).
+  const batchVedomostRow = (batch) => {
+    if (!batch.carrierVedomostId) return null;
+    const vedomost = carrierVedomosts.find(v => v.id === batch.carrierVedomostId);
+    if (!vedomost) return null;
+    const snapshot = parseJson(vedomost.data) || {};
+    const rows = Array.isArray(snapshot.rows) ? snapshot.rows : [];
+    const row = rows.find(r => r.batchId === batch.id) || null;
+    return row ? { ...row, _snapshot: snapshot } : null;
+  };
+
   // ТЗ: суммы перевозчику/грузчикам/представителю — из сформированной ведомости
   // перевозчика, если партия в неё входит (берём точную разбивку по этой партии,
   // а не общий итог ведомости, т.к. в одну ведомость может входить несколько партий)
   const batchPayouts = (batch) => {
-    if (!batch.carrierVedomostId) {
-      return { carrierSum: 0, loaderSum: 0, representativeSum: 0 };
-    }
-    const vedomost = carrierVedomosts.find(v => v.id === batch.carrierVedomostId);
-    if (!vedomost) return { carrierSum: 0, loaderSum: 0, representativeSum: 0 };
-
-    const snapshot = parseJson(vedomost.data) || {};
-    const rows = Array.isArray(snapshot.rows) ? snapshot.rows : [];
-    const row = rows.find(r => r.batchId === batch.id);
+    const row = batchVedomostRow(batch);
     if (!row) return { carrierSum: 0, loaderSum: 0, representativeSum: 0 };
 
     // Новые ведомости: сумма представителя сохранена в строке (ставка из тарифов).
     // Старые: fallback на ручную ставку из snapshot × вес.
     const representativeSum = row.representativeSum != null
       ? Number(row.representativeSum) || 0
-      : Math.round((Number(row.weight) || 0) * (Number(snapshot.representativeRate) || 0));
+      : Math.round((Number(row.weight) || 0) * (Number(row._snapshot.representativeRate) || 0));
 
     return {
       carrierSum: Number(row.carrierSum) || 0,
       loaderSum: Number(row.loaderSum) || 0,
       representativeSum,
     };
+  };
+
+  // Мест в партии — сумма по накладным из requestIds (поле totalSeats не заполняется).
+  // Fallback на сохранённое totalSeats, если накладные не подтянулись.
+  const batchSeats = (batch) => {
+    let ids = [];
+    try { ids = JSON.parse(batch.requestIds || "[]"); } catch (e) {}
+    let seats = 0;
+    ids.forEach(rid => {
+      const r = requests.find(rr => rr.id === rid);
+      if (r) {
+        const d = parseDetails(r.details);
+        seats += Number(d.totals?.seats) || 0;
+      }
+    });
+    if (!seats) seats = Number(batch.totalSeats) || 0;
+    return seats;
   };
 
   // Компания партии = компания её накладных (у самих партий companyId пустой)
@@ -176,6 +198,17 @@ export default function BookkeeperReportPage() {
       const income = batchIncome(b);
       const expense = batchExpenses(b);
       const payouts = batchPayouts(b);
+      const vedRow = batchVedomostRow(b);
+
+      // Перевозчик / представитель / грузчики: приоритет — снапшот ведомости
+      // (там они назначены при её создании), иначе поля партии как fallback.
+      const carrier = (vedRow && vedRow.carrierName && vedRow.carrierName !== "—")
+        ? vedRow.carrierName : carrierName(b.carrierId);
+      const representative = (vedRow && vedRow.representativeName && vedRow.representativeName !== "—")
+        ? vedRow.representativeName : repName(b.representativeId);
+      const loaders = (vedRow && vedRow.loadersCount != null)
+        ? Number(vedRow.loadersCount) || 0 : (b.loadersCount || 0);
+      const seats = batchSeats(b);
 
       // ТЗ: налог считается от компании партии по её ставке (Company.taxRate, %)
       const compId = batchCompanyId(b);
@@ -200,10 +233,10 @@ export default function BookkeeperReportPage() {
         name: `${b.number}`,
         hasVedomost: !!b.carrierVedomostId,
         vedomostNumber: b.carrierVedomostId ? (carrierVedomosts.find(v => v.id === b.carrierVedomostId)?.number || "") : "",
-        representative: repName(b.representativeId),
-        carrier: carrierName(b.carrierId),
-        loaders: b.loadersCount || 0,
-        seats: b.totalSeats || 0,
+        representative,
+        carrier,
+        loaders,
+        seats,
         region: b.city || "—",
         income,
         expense,
@@ -294,7 +327,7 @@ export default function BookkeeperReportPage() {
       </tr></thead>
       <tbody>${trs}</tbody>
       <tfoot><tr>
-        <td colspan="6" style="text-align:right">ИТОГО:</td>
+        <td colspan="7" style="text-align:right">ИТОГО:</td>
         <td style="text-align:right">${fmt(totals.income)} тг</td>
         <td style="text-align:right">${fmt(totals.expense)} тг</td>
         <td style="text-align:right">${fmt(totals.carrierSum)} тг</td>

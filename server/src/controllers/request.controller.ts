@@ -1090,7 +1090,11 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       const existingDetails = safeParseDetails((existing as any).details);
       const { status, date, type, docNumber, companyId, totalSum, ...bodyFields } = req.body;
 
-      if (companyId !== undefined && companyId !== existing.companyId) {
+      // Перевод заявки на другую компанию/ИП (упрощёнка ↔ НДС) разрешён только
+      // администратору и бухгалтеру. Номер (docNumber) при этом сохраняется —
+      // нумерация сквозная по всем компаниям, поэтому конфликта нет.
+      const canChangeCompany = ['ADMIN', 'ACCOUNTANT', 'ACCOUNTANT2'].includes(req.user?.role || '');
+      if (companyId !== undefined && companyId !== existing.companyId && !canChangeCompany) {
         throw new Error('CANNOT_CHANGE_COMPANY');
       }
 
@@ -1135,6 +1139,9 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
         docNumber: docNumber !== undefined ? docNumber : existing.docNumber,
         totalSum: totalSum !== undefined ? String(totalSum) : existing.totalSum,
         details: JSON.stringify(mergedDetails),
+        // Перевод на другую компанию — только для разрешённых ролей (см. canChangeCompany).
+        // Номер (docNumber выше) сохраняется, заявка не аннулируется.
+        companyId: (canChangeCompany && companyId !== undefined) ? companyId : existing.companyId,
       };
 
       if (wasFullyCompleted && isManagerEditing) {
@@ -1160,7 +1167,7 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Нельзя отправить заявку бухгалтеру до формирования СМР/ТТН/Склад' });
     }
     if (error.message === 'CANNOT_CHANGE_COMPANY') {
-      return res.status(400).json({ message: 'Нельзя менять компанию у существующей заявки. Аннулируйте текущую и создайте новую.' });
+      return res.status(403).json({ message: 'Менять компанию заявки может только администратор или бухгалтер.' });
     }
     console.error('Update Request Error:', error);
     res.status(500).json({ message: 'Ошибка при обновлении заявки', details: error.message });
