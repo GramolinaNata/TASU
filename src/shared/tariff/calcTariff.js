@@ -22,6 +22,10 @@ function toNum(v) {
   return isNaN(n) ? 0 : n;
 }
 
+// Город отправления по умолчанию: старые тарифы и заявки без явного отправления
+// считаются как «Алматы» (обратная совместимость).
+export const DEFAULT_FROM_CITY = "Алматы";
+
 // Чистое имя города без служебных суффиксов и регистра.
 export function cleanCityName(city) {
   return (city || "")
@@ -50,18 +54,23 @@ export function getTariffTransport(t) {
   return wr._transport === "avia" ? "avia" : "auto";
 }
 
-// Прямой тариф доставки (legal/private) по городу.
+// Прямой тариф доставки (legal/private) по паре направлений.
 // category:  'legal' | 'private' | undefined (любой из двух)
 // transport: 'auto' | 'avia' | undefined (не ограничивать)
-export function findDeliveryTariff(tariffs, cityRaw, category, transport) {
+// fromCityRaw: город отправления; пусто → «Алматы» (старые тарифы/заявки).
+export function findDeliveryTariff(tariffs, cityRaw, category, transport, fromCityRaw) {
   const clean = cleanCityName(cityRaw);
   if (!clean) return undefined;
+  const cleanFrom = cleanCityName(fromCityRaw) || cleanCityName(DEFAULT_FROM_CITY);
   return (tariffs || []).find((t) => {
     const cat = getTariffCategory(t);
     if (cat !== "legal" && cat !== "private") return false;
     if (category && cat !== category) return false;
     if (transport && getTariffTransport(t) !== transport) return false;
-    return cleanCityName(t.city) === clean;
+    if (cleanCityName(t.city) !== clean) return false;
+    // fromCity отсутствует у совсем старых записей → трактуем как «Алматы».
+    const tFrom = cleanCityName(t.fromCity) || cleanCityName(DEFAULT_FROM_CITY);
+    return tFrom === cleanFrom;
   });
 }
 
@@ -79,9 +88,10 @@ export function findDeliveryCategoryTariff(tariffs, cityRaw, category) {
 // есть посёлок с именем = город получателя. База берётся из тарифа-города,
 // доплата — из диапазонов посёлка по весу. Поддерживаются форматы: новый
 // { maxWeight, sum } и старый { maxWeight, extra/price }.
-export function findRegionalTariff(tariffs, cityRaw, weightKg, category, transport) {
+export function findRegionalTariff(tariffs, cityRaw, weightKg, category, transport, fromCityRaw) {
   const clean = cleanCityName(cityRaw);
   if (!clean) return null;
+  const cleanFrom = cleanCityName(fromCityRaw) || cleanCityName(DEFAULT_FROM_CITY);
   // maxWeight пустой/null трактуем как открытый диапазон («свыше»).
   const normMax = (v) => (v === "" || v == null ? Infinity : (Number(v) || 0));
   for (const t of tariffs || []) {
@@ -89,6 +99,8 @@ export function findRegionalTariff(tariffs, cityRaw, weightKg, category, transpo
     if (cat !== "legal" && cat !== "private") continue;
     if (category && cat !== category) continue;
     if (transport && getTariffTransport(t) !== transport) continue;
+    const tFrom = cleanCityName(t.fromCity) || cleanCityName(DEFAULT_FROM_CITY);
+    if (tFrom !== cleanFrom) continue;
 
     const wr = t.weightRanges || {};
     const regions = Array.isArray(wr._regionalDeliveries) ? wr._regionalDeliveries : [];
@@ -198,11 +210,11 @@ function weightPrice(wr, weightKg, isPrivate) {
  * @param {string}   [category]— 'legal' | 'private' | undefined (не ограничивать)
  * @returns {{ ok:boolean, sum?:number, description?:string, tariff?:object, error?:string }}
  */
-export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, seats = 0, prrType = '', pallets = 0, storageMode = '', storageDays = 0, cityDelivery = false, regionDelivery = '', sizeCategory = '', category, transport }) {
+export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, volumeM3 = 0, seats = 0, prrType = '', pallets = 0, storageMode = '', storageDays = 0, cityDelivery = false, regionDelivery = '', sizeCategory = '', category, transport }) {
   const cityClean = cleanCityName(city);
   if (!cityClean) return { ok: false, error: "Не указан город получателя" };
 
-  let tariff = findDeliveryTariff(tariffs, city, category, transport);
+  let tariff = findDeliveryTariff(tariffs, city, category, transport, fromCity);
   let regionalExtra = 0;
   let regionLabel = "";
   let regionParent = "";  // город-родитель, если база взята из посёлка внутри тарифа
@@ -213,7 +225,7 @@ export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, s
   // База берётся из тарифа-города, доплата — из диапазонов посёлка. Категория
   // (юр/частный) определяется автоматически тем, в тарифе какой категории найден посёлок.
   if (!tariff) {
-    const regional = findRegionalTariff(tariffs, city, weightKg, category, transport);
+    const regional = findRegionalTariff(tariffs, city, weightKg, category, transport, fromCity);
     if (regional) {
       tariff = regional.tariff;
       regionalExtra = regional.regionalExtra;
@@ -227,7 +239,7 @@ export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, s
     const rd = findDeliveryCategoryTariff(tariffs, city, "region_delivery");
     const hub = rd && rd.weightRanges ? rd.weightRanges._hubCity : "";
     if (rd && hub) {
-      const hubTariff = findDeliveryTariff(tariffs, hub, category, transport);
+      const hubTariff = findDeliveryTariff(tariffs, hub, category, transport, fromCity);
       if (hubTariff) {
         tariff = hubTariff;
         hubPoselok = city;
@@ -239,7 +251,7 @@ export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, s
   if (!tariff) {
     return {
       ok: false,
-      error: `Тариф для направления «${city}» не найден. Добавьте его в Тарифы (или укажите этот город как регион в тарифе ближайшего города).`,
+      error: `Тариф для направления «${fromCity || DEFAULT_FROM_CITY} → ${city}» не найден. Добавьте его в Тарифы (или укажите этот город как регион в тарифе ближайшего города).`,
     };
   }
 
@@ -268,7 +280,7 @@ export function calcDeliveryPrice({ tariffs, city, weightKg = 0, volumeM3 = 0, s
   }
 
   let sum = base;
-  const baseWhere = regionParent ? `${regionParent} → ${city}` : (hubPoselok ? `${hubCityName} → ${city}` : city);
+  const baseWhere = regionParent ? `${regionParent} → ${city}` : (hubPoselok ? `${hubCityName} → ${city}` : `${fromCity || DEFAULT_FROM_CITY} → ${city}`);
   let description = `Доставка ${baseWhere} (${baseLabel})`;
 
   if (rangeDelivery > 0) {

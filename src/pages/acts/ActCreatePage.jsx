@@ -153,6 +153,11 @@ export default function ActCreatePage() {
   const [loading, setLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(false);
 
+  // ---------- Перевод заявки на другой ИП (аннулирование + новая заявка) ----------
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [transferCompanyId, setTransferCompanyId] = useState("");
+  const [transferring, setTransferring] = useState(false);
+
   // ---------- Стороны сделки ----------
   const [customer, setCustomer] = useState(emptyParty);
   const [isSenderSameAsCustomer, setIsSenderSameAsCustomer] = useState(true);
@@ -445,6 +450,7 @@ export default function ActCreatePage() {
     const res = calcDeliveryPrice({
       tariffs: allTariffs,
       city: route.toCity,
+      fromCity: route.fromCity,
       weightKg: cargoWeightKg,
       volumeM3: cargoVolumeM3,
       seats: cargoTotals.seats,
@@ -470,6 +476,38 @@ export default function ActCreatePage() {
     });
     alert(`Добавлена услуга: ${res.description}\nСумма: ${res.sum.toLocaleString()} тг`);
   }, [route.toCity, cargoVolumeM3, cargoWeightKg, allTariffs, tariffTransport, prrType, pallets, storageMode, storageDays, cityDelivery, regionEnabled, regionDelivery]);
+
+  // Перевод заявки на другой ИП: старая аннулируется (номер остаётся за ней),
+  // в целевом ИП создаётся новая заявка со СВОИМ следующим номером (genNumber(target)).
+  const handleTransferToCompany = async () => {
+    if (!isEditMode || !id) return;
+    if (!transferCompanyId) return alert("Выберите ИП, на который переводим заявку");
+    if (transferCompanyId === selectedCompanyId) return alert("Это та же компания — выберите другой ИП");
+    const target = allCompanies.find((c) => c.id === transferCompanyId);
+    if (!window.confirm(
+      `Текущая заявка будет аннулирована, а в ИП «${target?.name || ""}» создастся новая заявка со своим номером.\n\nПродолжить?`
+    )) return;
+    setTransferring(true);
+    try {
+      const newDocNumber = await genNumber(target);
+      const result = await api.requests.cancelAndClone(id, transferCompanyId, newDocNumber);
+      const newId = result?.id;
+      const newNumber = result?.docNumber || newDocNumber;
+      if (!newId) {
+        alert("Заявка создана, но не удалось определить её ID. Обновите страницу.");
+        return;
+      }
+      alert(`Готово. Прежняя заявка аннулирована, в новом ИП создана заявка №${newNumber}. Открываю…`);
+      if (isWarehouse) nav(`/warehouse/${newId}`);
+      else if (docType === "smr" || dbType === "smr") nav(`/smr/${newId}`);
+      else if (docType === "ttn" || dbType === "ttn") nav(`/requests/${newId}`);
+      else nav(`/acts/${newId}`);
+    } catch (e) {
+      alert("Ошибка перевода на другой ИП: " + (e.message || e));
+    } finally {
+      setTransferring(false);
+    }
+  };
 
   // Список посёлков для «Доставки в регион» — из тарифов категории region_delivery.
   const regionOptions = useMemo(() => {
@@ -829,9 +867,11 @@ export default function ActCreatePage() {
           <div className="card_body">
             <div className="field">
               <select
-                style={{ width: "100%", height: 44, fontSize: 16, fontWeight: 700 }}
+                style={{ width: "100%", height: 44, fontSize: 16, fontWeight: 700, background: isEditMode ? "#f1f5f9" : undefined, cursor: isEditMode ? "not-allowed" : undefined }}
                 value={selectedCompanyId}
                 onChange={(e) => setSelectedCompanyId(e.target.value)}
+                disabled={isEditMode}
+                title={isEditMode ? "ИП существующей заявки не меняется здесь. Используйте «Перевести на другой ИП»." : undefined}
               >
                 <option value="">-- Выберите компанию --</option>
                 {allCompanies.map((c) => (
@@ -841,6 +881,53 @@ export default function ActCreatePage() {
                 ))}
               </select>
             </div>
+
+            {/* Перевод на другой ИП — только для существующей заявки (аннулирование + новая) */}
+            {isEditMode && (
+              <div style={{ marginTop: 12, padding: 12, background: "#fff7ed", border: "1px dashed #fdba74", borderRadius: 8 }}>
+                {!transferOpen ? (
+                  <button
+                    type="button"
+                    className="btn"
+                    onClick={() => { setTransferOpen(true); setTransferCompanyId(""); }}
+                    style={{ fontWeight: 700 }}
+                  >
+                    🔄 Перевести на другой ИП
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    <div style={{ fontSize: "0.85rem", color: "#9a3412" }}>
+                      Текущая заявка будет <strong>аннулирована</strong> (её номер останется за ней), а в выбранном ИП
+                      создастся <strong>новая заявка со своим следующим номером</strong>.
+                    </div>
+                    <select
+                      style={{ height: 40, fontSize: 15 }}
+                      value={transferCompanyId}
+                      onChange={(e) => setTransferCompanyId(e.target.value)}
+                    >
+                      <option value="">-- Выберите целевой ИП --</option>
+                      {allCompanies.filter((c) => c.id !== selectedCompanyId).map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        className="btn btn--accent"
+                        onClick={handleTransferToCompany}
+                        disabled={transferring || !transferCompanyId}
+                        style={{ fontWeight: 700 }}
+                      >
+                        {transferring ? "Перевод…" : "Аннулировать и создать в новом ИП"}
+                      </button>
+                      <button type="button" className="btn" onClick={() => setTransferOpen(false)} disabled={transferring}>
+                        Отмена
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1241,8 +1328,8 @@ export default function ActCreatePage() {
                 {isWarehouse ? "Складские услуги" : "Услуги"}
               </div>
 
-              {!isWarehouse && (
-                <div style={{ marginBottom: 16, padding: 12, background: "#f0f9ff", border: "1px dashed #60a5fa", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              {/* Правка ТЗ: расчёт по тарифу доступен и при складских услугах (раньше блок прятался под !isWarehouse) */}
+              <div style={{ marginBottom: 16, padding: 12, background: "#f0f9ff", border: "1px dashed #60a5fa", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <button type="button" className="btn btn--accent" onClick={calculateByTariff}>
                     💰 Рассчитать по тарифу
                   </button>
@@ -1251,7 +1338,7 @@ export default function ActCreatePage() {
                     <span style={{ color: "#aaa", marginLeft: 4 }}>(из габаритов, сравнивается с весом)</span>
                   </span>
                   <span style={{ fontSize: "0.8rem", color: "#888" }}>
-                    Направление: <strong>{route.toCity || "— не указано"}</strong>
+                    Направление: <strong>{(route.fromCity || "Алматы")} → {route.toCity || "— не указано"}</strong>
                   </span>
                   <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
                     <button type="button" onClick={() => setTariffTransport("auto")} style={{ cursor: "pointer", padding: "6px 12px", borderRadius: 6, fontWeight: 700, fontSize: "0.85rem", border: `2px solid ${tariffTransport === "auto" ? "#1890ff" : "#d9d9d9"}`, background: tariffTransport === "auto" ? "#e6f7ff" : "#fff", color: tariffTransport === "auto" ? "#0050b3" : "#666" }}>
@@ -1262,7 +1349,6 @@ export default function ActCreatePage() {
                     </button>
                   </div>
                 </div>
-              )}
 
               <div className="field" style={{ maxWidth: 320, marginBottom: 12 }}>
                 <div className="label">ПРР (погрузка-разгрузка)</div>

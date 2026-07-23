@@ -505,11 +505,16 @@ export default function BatchesPage() {
       };
     });
 
+    // ТЗ: контакт нашего представителя в грузовой ведомости — из назначенного в партии
+    const rep = representatives.find(r => r.id === batch.representativeId);
+
     await printCargoVedomost({
       companyName: company?.name || "",
       batchNumber: batch.number,
       city: batch.city,
       rows,
+      representativeName: rep?.name || "",
+      representativePhone: rep?.phone || "",
     });
   };
 

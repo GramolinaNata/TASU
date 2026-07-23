@@ -248,11 +248,11 @@ export const api = {
       body: JSON.stringify({ isPaid }),
     }),
 
-    // 🆕 ТЗ v2: Редактирование — нельзя менять компанию.
-    // Старая аннулируется, создаётся новая с новым номером и датой.
-    cancelAndClone: (id, newCompanyId) => request(`/requests/${id}/cancel-and-clone`, {
+    // Редактирование не меняет ИП. Перевод: старая аннулируется, создаётся новая
+    // в целевом ИП. newDocNumber — следующий номер целевого ИП (genNumber(target)).
+    cancelAndClone: (id, newCompanyId, newDocNumber) => request(`/requests/${id}/cancel-and-clone`, {
       method: 'POST',
-      body: JSON.stringify({ newCompanyId }),
+      body: JSON.stringify({ newCompanyId, newDocNumber }),
     }),
   },
   users: {

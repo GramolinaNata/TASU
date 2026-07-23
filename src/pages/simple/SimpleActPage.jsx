@@ -229,6 +229,7 @@ export default function SimpleActPage() {
     const res = calcDeliveryPrice({
       tariffs,
       city: form.toCity,
+      fromCity: form.fromCity,
       weightKg: Number(form.weight) || 0,
       volumeM3: volumeM3,
       seats: Number(form.seats) || 0,
@@ -459,8 +460,8 @@ export default function SimpleActPage() {
     }
   };
 
-  // Совпадение частного тарифа для подсказки под полем города
-  const matchedTariff = findDeliveryTariff(tariffs, form.toCity, "private");
+  // Совпадение частного тарифа для подсказки под полем города (учитываем направление)
+  const matchedTariff = findDeliveryTariff(tariffs, form.toCity, "private", undefined, form.fromCity);
 
   return (
     <>

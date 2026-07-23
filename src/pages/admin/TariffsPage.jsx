@@ -205,6 +205,7 @@ function RangesEditor({ rows, onUpdate, onAdd, onRemove }) {
 }
 
 const EMPTY_FORM = {
+  fromCity: "Алматы",
   city: "",
   pricePerKg: "",
   deliveryPrice: "",
@@ -331,6 +332,7 @@ const tabCounts = useMemo(() => ({
     }
 
     setForm({
+      fromCity: t.fromCity || "Алматы",
       city: cleanCity(t.city),
       pricePerKg: t.pricePerKg,
       deliveryPrice: t.deliveryPrice ?? "",
@@ -438,6 +440,7 @@ const tabCounts = useMemo(() => ({
       }
 
       const payload = {
+        fromCity: (form.fromCity || "Алматы").trim() || "Алматы",
         city: cityWithSuffix(form.city, form.category, form.transport),
         pricePerKg: parseFloat(form.pricePerKg) || 0,
         deliveryPrice: parseFloat(form.deliveryPrice) || 0,
@@ -617,7 +620,9 @@ const tabCounts = useMemo(() => ({
                   return (
                     <tr key={t.id}>
                       <td style={{ fontWeight: 600 }}>
-                        {cleanCity(t.city)}
+                        {(tab === 'legal' || tab === 'private')
+                          ? `${t.fromCity || 'Алматы'} → ${cleanCity(t.city)}`
+                          : cleanCity(t.city)}
                         {(tab === 'legal' || tab === 'private') && (
                           (/__AVIA$/.test(t.city || '') || wr._transport === 'avia')
                             ? <span style={{ marginLeft: 8, fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: '#fff7e6', color: '#fa8c16', fontWeight: 700 }}>✈️ авиа</span>
@@ -702,9 +707,19 @@ const tabCounts = useMemo(() => ({
                 )}
               </div>
 
+              {(form.category === 'legal' || form.category === 'private') && (
+                <div className="field" style={{ marginBottom: 16 }}>
+                  <div className="label">Город отправления *</div>
+                  <input value={form.fromCity} onChange={e => setForm({ ...form, fromCity: e.target.value })} placeholder="Алматы" required />
+                  <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>
+                    Направление тарифа. По умолчанию Алматы — так считаются старые тарифы.
+                  </div>
+                </div>
+              )}
+
               <div className="field" style={{ marginBottom: 16 }}>
-                <div className="label">{form.category === 'region_delivery' ? 'Посёлок / регион *' : 'Город *'}</div>
-                <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder={form.category === 'region_delivery' ? 'Жанаозен' : 'Алматы'} required />
+                <div className="label">{form.category === 'region_delivery' ? 'Посёлок / регион *' : ((form.category === 'legal' || form.category === 'private') ? 'Город назначения *' : 'Город *')}</div>
+                <input value={form.city} onChange={e => setForm({ ...form, city: e.target.value })} placeholder={form.category === 'region_delivery' ? 'Жанаозен' : 'Астана'} required />
               </div>
 
               {form.category === 'region_delivery' && (

@@ -148,7 +148,9 @@ model Expense {
 
 model Tariff {
   id            String   @id @default(uuid())
-  city          String   @unique
+  // ТЗ: направление тарифа — из какого города. Старые тарифы = Алматы (по умолчанию).
+  fromCity      String   @default("Алматы")
+  city          String
   pricePerKg    Float    @default(0)
   deliveryPrice Float    @default(0)
   // ТЗ: Тарифы частных лиц — диапазоны (до 10, до 20, до 30, до 80, до 150, до 300, до 600 кг)
@@ -160,6 +162,9 @@ model Tariff {
   companyId     String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+
+  // Уникальность теперь по паре направление+назначение (city хранит суффиксы категорий).
+  @@unique([fromCity, city])
 }
 
 model Batch {

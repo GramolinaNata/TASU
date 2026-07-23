@@ -141,6 +141,7 @@ export const createTariff = async (req: Request, res: Response) => {
   try {
     const {
       city,
+      fromCity,
       pricePerKg,
       deliveryPrice,
       companyId,
@@ -153,10 +154,12 @@ export const createTariff = async (req: Request, res: Response) => {
     if (!city) return res.status(400).json({ error: 'Укажите город' });
 
     const cityToSave = cityForDb(city, !!isPrivate);
+    const fromCityToSave = String(fromCity || '').trim() || 'Алматы';
 
     const tariff = await prisma.tariff.create({
       data: {
         city: cityToSave,
+        fromCity: fromCityToSave,
         pricePerKg: Number(pricePerKg) || 0,
         deliveryPrice: Number(deliveryPrice) || 0,
         companyId: companyId || null,
@@ -182,6 +185,7 @@ export const updateTariff = async (req: Request, res: Response) => {
     const id = req.params.id as string;
     const {
       city,
+      fromCity,
       pricePerKg,
       deliveryPrice,
       // 🆕 ТЗ v2
@@ -192,6 +196,7 @@ export const updateTariff = async (req: Request, res: Response) => {
 
     // Собираем только переданные поля (чтобы не затирать null'ами)
     const data: any = {};
+    if (fromCity !== undefined) data.fromCity = String(fromCity || '').trim() || 'Алматы';
 
     // 🆕 Если передан isPrivate — узнаём актуальное значение для расчёта city
     let isPrivateForCity: boolean | undefined = undefined;

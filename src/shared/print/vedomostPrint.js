@@ -45,9 +45,14 @@ const BASE_STYLE = `
 // ── ГРУЗОВАЯ ВЕДОМОСТЬ ──────────────────────────────────────
 // Строки по накладным. QR в правом верхнем углу, строка ИТОГО,
 // подписи «Выдал» / «Принял».
-export async function printCargoVedomost({ companyName = "", batchNumber = "", city = "", rows = [] }) {
+export async function printCargoVedomost({ companyName = "", batchNumber = "", city = "", rows = [], representativeName = "", representativePhone = "" }) {
   const { toDataURL } = await import("qrcode");
   const qrUrl = await toDataURL(`TASU-BATCH-${batchNumber}`, { width: 120, margin: 1 });
+
+  // ТЗ: контакт нашего представителя в грузовой ведомости (имя · телефон).
+  // Показываем строку только если что-то задано.
+  const repContact = [representativeName, representativePhone].map(s => String(s || "").trim()).filter(Boolean).join(" · ");
+  const repHtml = repContact ? `<div class="sub" style="margin-top:4px">Представитель: ${esc(repContact)}</div>` : "";
 
   let total = 0;
   const rowsHtml = rows.map((r, i) => {
@@ -71,6 +76,7 @@ export async function printCargoVedomost({ companyName = "", batchNumber = "", c
       <div>
         <h2>Грузовая ведомость</h2>
         <div class="sub">${esc(companyName)} &nbsp;&nbsp; Партия № ${esc(batchNumber)} &nbsp;&nbsp; Город: ${esc(city || "—")} &nbsp;&nbsp; Дата: ${today()}</div>
+        ${repHtml}
       </div>
       <img src="${qrUrl}" width="80" height="80" style="border:1px solid #ccc;padding:3px;"/>
     </div>

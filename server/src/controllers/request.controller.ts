@@ -1090,11 +1090,11 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       const existingDetails = safeParseDetails((existing as any).details);
       const { status, date, type, docNumber, companyId, totalSum, ...bodyFields } = req.body;
 
-      // Перевод заявки на другую компанию/ИП (упрощёнка ↔ НДС) разрешён только
-      // администратору и бухгалтеру. Номер (docNumber) при этом сохраняется —
-      // нумерация сквозная по всем компаниям, поэтому конфликта нет.
-      const canChangeCompany = ['ADMIN', 'ACCOUNTANT', 'ACCOUNTANT2'].includes(req.user?.role || '');
-      if (companyId !== undefined && companyId !== existing.companyId && !canChangeCompany) {
+      // Смену ИП через обычное редактирование НЕ делаем: старый номер не должен
+      // «переезжать» в новый ИП. Перевод — только через аннулирование + создание
+      // новой заявки (endpoint cancel-and-clone): старая → canceled, номер остаётся
+      // за ней; новая получает следующий номер целевого ИП.
+      if (companyId !== undefined && companyId !== existing.companyId) {
         throw new Error('CANNOT_CHANGE_COMPANY');
       }
 
@@ -1139,9 +1139,6 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
         docNumber: docNumber !== undefined ? docNumber : existing.docNumber,
         totalSum: totalSum !== undefined ? String(totalSum) : existing.totalSum,
         details: JSON.stringify(mergedDetails),
-        // Перевод на другую компанию — только для разрешённых ролей (см. canChangeCompany).
-        // Номер (docNumber выше) сохраняется, заявка не аннулируется.
-        companyId: (canChangeCompany && companyId !== undefined) ? companyId : existing.companyId,
       };
 
       if (wasFullyCompleted && isManagerEditing) {
@@ -1167,7 +1164,7 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Нельзя отправить заявку бухгалтеру до формирования СМР/ТТН/Склад' });
     }
     if (error.message === 'CANNOT_CHANGE_COMPANY') {
-      return res.status(403).json({ message: 'Менять компанию заявки может только администратор или бухгалтер.' });
+      return res.status(400).json({ message: 'Нельзя сменить ИП у существующей заявки. Используйте «Перевести на другой ИП»: старая аннулируется, в новом ИП создастся новая заявка со своим номером.' });
     }
     console.error('Update Request Error:', error);
     res.status(500).json({ message: 'Ошибка при обновлении заявки', details: error.message });
@@ -1182,7 +1179,7 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
 export const cancelAndClone = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { newCompanyId } = req.body || {};
+    const { newCompanyId, newDocNumber } = req.body || {};
 
     if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -1201,8 +1198,11 @@ export const cancelAndClone = async (req: AuthRequest, res: Response) => {
       const existingDetails = safeParseDetails((existing as any).details);
       const today = new Date().toISOString().split('T')[0];
 
-      // 🆕 Генерируем новый номер документа
-      const newDocNumber = generateClonedDocNumber(existing.docNumber);
+      // Номер новой заявки: если фронт прислал следующий номер целевого ИП
+      // (genNumber(targetCompany)) — используем его; иначе fallback на «-копия».
+      const docNumberFinal = (newDocNumber && String(newDocNumber).trim())
+        ? String(newDocNumber).trim()
+        : generateClonedDocNumber(existing.docNumber);
 
       // 🆕 Чистим details от служебных флагов чтоб клон был "свежим",
       // но сохраняем ВСЕ полезные данные (customer, receiver, route, cargo, services, etc.)
@@ -1222,7 +1222,7 @@ export const cancelAndClone = async (req: AuthRequest, res: Response) => {
         esfIssued: false,
         reEditedAfterCompletion: false,
         // 🆕 Дублируем docNumber внутри details чтоб фронт его подцепил
-        docNumber: newDocNumber,
+        docNumber: docNumberFinal,
       };
 
       const cloned = await tx.request.create({
@@ -1234,7 +1234,7 @@ export const cancelAndClone = async (req: AuthRequest, res: Response) => {
           type: existing.type,
           route: (existing as any).route,
           cargo: (existing as any).cargo,
-          docNumber: newDocNumber,                    // 🆕 теперь с номером
+          docNumber: docNumberFinal,                  // номер целевого ИП (или -копия fallback)
           totalSum: existing.totalSum,
           details: JSON.stringify(cleanDetails),
         } as any,
