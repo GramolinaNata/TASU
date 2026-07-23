@@ -32,7 +32,36 @@ export default function BookkeeperReportPage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [companyId, setCompanyId] = useState('all');
-  const [selected, setSelected] = useState([]); // отмеченные партии для печати
+  const [selected, setSelected] = useState([]); // отмеченные партии для печати/архива
+  const [tab, setTab] = useState('active'); // 'active' | 'archive'
+  const [sortBy, setSortBy] = useState("");
+  const [sortOrder, setSortOrder] = useState("asc");
+
+  const sortValue = (r, field) => {
+    const v = r[field];
+    return typeof v === "number" ? v : String(v || "").toLowerCase();
+  };
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder(o => (o === "asc" ? "desc" : "asc"));
+    else { setSortBy(field); setSortOrder("asc"); }
+  };
+  const sortArrow = (field) => sortBy !== field
+    ? <span style={{ color: "#bbb", marginLeft: 4 }}>⇅</span>
+    : <span style={{ color: "#2563eb", marginLeft: 4, fontWeight: 700 }}>{sortOrder === "asc" ? "↑" : "↓"}</span>;
+  const SortTh = ({ field, children, style }) => (
+    <th style={{ cursor: "pointer", userSelect: "none", ...style }} onClick={() => handleSort(field)} title="Клик для сортировки">
+      {children}{sortArrow(field)}
+    </th>
+  );
+  const sortRows = (list) => {
+    if (!sortBy) return list;
+    return [...list].sort((a, b) => {
+      const av = sortValue(a, sortBy), bv = sortValue(b, sortBy);
+      if (av < bv) return sortOrder === "asc" ? -1 : 1;
+      if (av > bv) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+  };
 
   const load = async () => {
     setLoading(true);
@@ -108,8 +137,11 @@ export default function BookkeeperReportPage() {
     const row = rows.find(r => r.batchId === batch.id);
     if (!row) return { carrierSum: 0, loaderSum: 0, representativeSum: 0 };
 
-    const representativeRate = Number(snapshot.representativeRate) || 0;
-    const representativeSum = Math.round((Number(row.weight) || 0) * representativeRate);
+    // Новые ведомости: сумма представителя сохранена в строке (ставка из тарифов).
+    // Старые: fallback на ручную ставку из snapshot × вес.
+    const representativeSum = row.representativeSum != null
+      ? Number(row.representativeSum) || 0
+      : Math.round((Number(row.weight) || 0) * (Number(snapshot.representativeRate) || 0));
 
     return {
       carrierSum: Number(row.carrierSum) || 0,
@@ -133,7 +165,9 @@ export default function BookkeeperReportPage() {
   const rows = useMemo(() => {
     return batches.filter(b => {
       let ok = true;
-      if (b.status === 'reported') return false; // проведённые в отчёте скрываем
+      // Архив: проведённые (status='reported') — в отдельной вкладке; текущие — в основной.
+      const isReported = b.status === 'reported';
+      if (tab === 'archive' ? !isReported : isReported) return false;
       if (companyId !== 'all') ok = ok && batchCompanyId(b) === companyId;
       if (dateFrom) ok = ok && new Date(b.createdAt) >= new Date(dateFrom);
       if (dateTo) ok = ok && new Date(b.createdAt) <= new Date(dateTo + "T23:59:59");
@@ -165,6 +199,7 @@ export default function BookkeeperReportPage() {
         id: b.id,
         name: `${b.number}`,
         hasVedomost: !!b.carrierVedomostId,
+        vedomostNumber: b.carrierVedomostId ? (carrierVedomosts.find(v => v.id === b.carrierVedomostId)?.number || "") : "",
         representative: repName(b.representativeId),
         carrier: carrierName(b.carrierId),
         loaders: b.loadersCount || 0,
@@ -182,7 +217,7 @@ export default function BookkeeperReportPage() {
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batches, requests, expenses, carriers, representatives, companies, carrierVedomosts, companyId, dateFrom, dateTo]);
+  }, [batches, requests, expenses, carriers, representatives, companies, carrierVedomosts, companyId, dateFrom, dateTo, tab]);
 
   // Если что-то отмечено — работаем только с отмеченными, иначе со всеми
   const activeRows = selected.length > 0 ? rows.filter(r => selected.includes(r.id)) : rows;
@@ -211,9 +246,9 @@ export default function BookkeeperReportPage() {
     const company = companies.find(c => c.id === companyId);
     const period = (dateFrom || dateTo) ? `${dateFrom || '...'} — ${dateTo || '...'}` : 'весь период';
 
-    const trs = activeRows.map((r, i) => `<tr>
+    const trs = sortRows(activeRows).map((r, i) => `<tr>
       <td style="text-align:center">${i + 1}</td>
-      <td>${r.name}${!r.hasVedomost ? " (нет ведомости)" : ""}</td>
+      <td>${r.name}${r.vedomostNumber ? ` <span style="color:#2563eb">(${r.vedomostNumber})</span>` : (!r.hasVedomost ? " (нет ведомости)" : "")}</td>
       <td>${r.representative}</td>
       <td>${r.carrier}</td>
       <td style="text-align:center">${r.loaders || '—'}</td>
@@ -276,6 +311,33 @@ export default function BookkeeperReportPage() {
     window.open(URL.createObjectURL(blob), "_blank");
   };
 
+  // Провести выбранные партии в архив (status='reported') — уходят из «Текущих».
+  const archiveSelected = async () => {
+    if (selected.length === 0) return;
+    if (!window.confirm(`Провести в архив выбранные партии (${selected.length})? Они перейдут во вкладку «Архив».`)) return;
+    try {
+      await Promise.all(selected.map(id => api.batches.update(id, { status: 'reported' })));
+      setSelected([]);
+      await load();
+    } catch (e) { alert('Ошибка при проведении: ' + (e.message || e)); }
+  };
+
+  // Вернуть выбранные партии из архива в «Текущие».
+  const unarchiveSelected = async () => {
+    if (selected.length === 0) return;
+    if (!window.confirm(`Вернуть выбранные партии (${selected.length}) из архива в «Текущие»?`)) return;
+    try {
+      await Promise.all(selected.map(id => api.batches.update(id, { status: 'formed' })));
+      setSelected([]);
+      await load();
+    } catch (e) { alert('Ошибка при возврате: ' + (e.message || e)); }
+  };
+
+  const archiveCount = batches.filter(b => b.status === 'reported').length;
+  const activeCount = batches.filter(b => b.status !== 'reported').length;
+
+  const switchTab = (t) => { setTab(t); setSelected([]); };
+
   return (
     <>
       <div className="navbar">
@@ -285,10 +347,28 @@ export default function BookkeeperReportPage() {
             <>
               <span style={{ fontSize: "0.85rem", color: "#0369a1" }}>Выбрано: {selected.length}</span>
               <button className="btn" onClick={() => setSelected([])}>Снять выбор</button>
+              {tab === 'active' ? (
+                <button className="btn btn--accent" style={{ background: "#6d28d9", borderColor: "#6d28d9" }} onClick={archiveSelected}>
+                  📦 Провести в архив ({selected.length})
+                </button>
+              ) : (
+                <button className="btn" onClick={unarchiveSelected}>
+                  ↩ Вернуть в текущие ({selected.length})
+                </button>
+              )}
             </>
           )}
           <button className="btn btn--accent" onClick={printReport}>🖨 Печать отчёта</button>
         </div>
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+        <button className={`btn ${tab === 'active' ? 'btn--accent' : ''}`} onClick={() => switchTab('active')}>
+          📋 Текущие <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({activeCount})</span>
+        </button>
+        <button className={`btn ${tab === 'archive' ? 'btn--accent' : ''}`} onClick={() => switchTab('archive')}>
+          📦 Архив <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({archiveCount})</span>
+        </button>
       </div>
       <div className="filter" style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ width: 200 }}>
@@ -344,32 +424,32 @@ export default function BookkeeperReportPage() {
                   <input type="checkbox" checked={selected.length === rows.length && rows.length > 0} onChange={toggleAll} />
                 </th>
                 <th style={{ width: 40 }}>№</th>
-                <th>Партия</th>
-                <th>Представитель</th>
-                <th>Перевозчик</th>
-                <th style={{ width: 70, textAlign: "center" }}>Грузчик</th>
-                <th style={{ width: 60, textAlign: "center" }}>Мест</th>
-                <th>Регион</th>
-                <th style={{ textAlign: "right" }}>Выручка</th>
-                <th style={{ textAlign: "right" }}>Расходы</th>
-                <th style={{ textAlign: "right" }}>Перевозчику</th>
-                <th style={{ textAlign: "right" }}>Грузчикам</th>
-                <th style={{ textAlign: "right" }}>Представителю</th>
-                <th style={{ textAlign: "right" }}>Налог</th>
-                <th style={{ textAlign: "right" }}>Прибыль</th>
+                <SortTh field="name">Партия</SortTh>
+                <SortTh field="representative">Представитель</SortTh>
+                <SortTh field="carrier">Перевозчик</SortTh>
+                <SortTh field="loaders" style={{ width: 70, textAlign: "center" }}>Грузчик</SortTh>
+                <SortTh field="seats" style={{ width: 60, textAlign: "center" }}>Мест</SortTh>
+                <SortTh field="region">Регион</SortTh>
+                <SortTh field="income" style={{ textAlign: "right" }}>Выручка</SortTh>
+                <SortTh field="expense" style={{ textAlign: "right" }}>Расходы</SortTh>
+                <SortTh field="carrierSum" style={{ textAlign: "right" }}>Перевозчику</SortTh>
+                <SortTh field="loaderSum" style={{ textAlign: "right" }}>Грузчикам</SortTh>
+                <SortTh field="representativeSum" style={{ textAlign: "right" }}>Представителю</SortTh>
+                <SortTh field="taxAmount" style={{ textAlign: "right" }}>Налог</SortTh>
+                <SortTh field="profit" style={{ textAlign: "right" }}>Прибыль</SortTh>
                 <th style={{ width: 90, textAlign: "center" }}></th>
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 ? (
                 <tr><td colSpan={15} className="muted" style={{ padding: 16 }}>Нет данных за выбранный период</td></tr>
-              ) : rows.map((r, i) => (
+              ) : sortRows(rows).map((r, i) => (
                 <tr key={r.id} style={{ background: selected.includes(r.id) ? "rgba(24,144,255,0.06)" : "" }}>
                   <td style={{ textAlign: "center" }}>
                     <input type="checkbox" checked={selected.includes(r.id)} onChange={() => toggleSelect(r.id)} />
                   </td>
                   <td>{i + 1}</td>
-                  <td style={{ fontWeight: 700 }}>{r.name}{!r.hasVedomost && <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#d46b08", background: "#fff7e6", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>⏳ нет ведомости</span>}</td>
+                  <td style={{ fontWeight: 700 }}>{r.name}{r.vedomostNumber ? <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#1d4ed8", background: "#eff6ff", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>🚚 {r.vedomostNumber}</span> : (!r.hasVedomost && <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#d46b08", background: "#fff7e6", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>⏳ нет ведомости</span>)}</td>
                   <td>{r.representative}</td>
                   <td>{r.carrier}</td>
                   <td style={{ textAlign: "center" }}>{r.loaders || '—'}</td>

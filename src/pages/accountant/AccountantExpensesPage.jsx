@@ -98,6 +98,39 @@ const formatRequest = (r) => {
 
 export default function AccountantExpensesPage() {
   const [expenses, setExpenses] = useState([]);
+  const [sortBy, setSortBy] = useState("");
+  const [sortOrder, setSortOrder] = useState("asc");
+  const expenseSortValue = (e, field) => {
+    switch (field) {
+      case "date": return String(e.date || "");
+      case "category": return String(e.category || "").toLowerCase();
+      case "description": return String(e.description || "").toLowerCase();
+      case "amount": return Number(e.amount) || 0;
+      default: return "";
+    }
+  };
+  const handleSort = (field) => {
+    if (sortBy === field) setSortOrder(o => (o === "asc" ? "desc" : "asc"));
+    else { setSortBy(field); setSortOrder("asc"); }
+  };
+  const sortArrow = (field) => sortBy !== field
+    ? <span style={{ color: "#bbb", marginLeft: 4 }}>⇅</span>
+    : <span style={{ color: "#2563eb", marginLeft: 4, fontWeight: 700 }}>{sortOrder === "asc" ? "↑" : "↓"}</span>;
+  const SortableTh = ({ field, children, style }) => (
+    <th style={{ cursor: "pointer", userSelect: "none", ...style }} onClick={() => handleSort(field)} title="Клик для сортировки">
+      {children}{sortArrow(field)}
+    </th>
+  );
+  const sortedExpenses = useMemo(() => {
+    if (!sortBy) return expenses;
+    return [...expenses].sort((a, b) => {
+      const av = expenseSortValue(a, sortBy), bv = expenseSortValue(b, sortBy);
+      if (av < bv) return sortOrder === "asc" ? -1 : 1;
+      if (av > bv) return sortOrder === "asc" ? 1 : -1;
+      return 0;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expenses, sortBy, sortOrder]);
   const [requests, setRequests] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -456,11 +489,11 @@ const total = expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
           <table className="table_fixed">
             <thead>
               <tr>
-                <th style={{ width: 110 }}>Дата</th>
-                <th style={{ width: 180 }}>Категория</th>
-                <th>Описание</th>
+                <SortableTh field="date" style={{ width: 110 }}>Дата</SortableTh>
+                <SortableTh field="category" style={{ width: 180 }}>Категория</SortableTh>
+                <SortableTh field="description">Описание</SortableTh>
                 <th style={{ width: 200 }}>Накладная</th>
-                <th style={{ width: 140 }}>Сумма</th>
+                <SortableTh field="amount" style={{ width: 140 }}>Сумма</SortableTh>
                 <th style={{ width: 60 }}></th>
               </tr>
             </thead>
@@ -468,7 +501,7 @@ const total = expenses.reduce((a, e) => a + (Number(e.amount) || 0), 0);
               {expenses.length === 0 ? (
                 <tr><td colSpan={6} className="muted" style={{ padding: 16 }}>Расходов пока нет.</td></tr>
               ) : (
-                expenses.map(e => {
+                sortedExpenses.map(e => {
                   const linkedRequest = e.requestId ? findRequest(e.requestId) : null;
                   return (
                     <tr key={e.id}>

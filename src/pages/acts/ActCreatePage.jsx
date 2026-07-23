@@ -1,6 +1,7 @@
-import React, { useMemo, useState, useEffect, useCallback } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
 import { calcDeliveryPrice } from "../../shared/tariff/calcTariff.js";
+import { upsertCounterparty } from "../../shared/counterparty/upsertCounterparty.js";
 import { api } from "../../shared/api/api.js";
 import {
   getSelectedCompanyId,
@@ -44,6 +45,14 @@ function toNum(val) {
   const n = parseFloat(val);
   return Number.isFinite(n) ? n : 0;
 }
+
+// Заказчик отключил доставку по городу (только по регионам). Логика/параметр
+// cityDelivery в движке сохранены — чтобы вернуть чекбокс, поставь true.
+const SHOW_CITY_DELIVERY = false;
+
+// Доплата за посёлок теперь автоматическая (посёлок = город назначения внутри
+// тарифа). Чекбокс «Доставка в регион» + список + автоподстановка скрыты; код цел.
+const SHOW_REGION_DELIVERY = false;
 
 function getTariffCategory(t) {
   const wr = t.weightRanges || {};
@@ -182,6 +191,12 @@ export default function ActCreatePage() {
   const [allTariffs, setAllTariffs] = useState([]);
   const [tariffTransport, setTariffTransport] = useState("auto");
   const [prrType, setPrrType] = useState("");
+  const [pallets, setPallets] = useState(""); // кол-во палет для ПРР «палетная»
+  const [storageMode, setStorageMode] = useState(""); // '' | 'weight' | 'cube'
+  const [storageDays, setStorageDays] = useState("");
+  const [cityDelivery, setCityDelivery] = useState(false); // доставка до адреса в городе
+  const [regionEnabled, setRegionEnabled] = useState(false);
+  const [regionDelivery, setRegionDelivery] = useState(""); // название посёлка (region_delivery)
 
   // ---------- UI: сворачиваемые карточки ----------
   const [showCompanyCard, setShowCompanyCard] = useState(false);
@@ -434,6 +449,11 @@ export default function ActCreatePage() {
       volumeM3: cargoVolumeM3,
       seats: cargoTotals.seats,
       prrType: prrType,
+      pallets: Number(pallets) || 0,
+      storageMode: storageMode,
+      storageDays: Number(storageDays) || 0,
+      cityDelivery: cityDelivery,
+      regionDelivery: regionEnabled ? regionDelivery : "",
       transport: tariffTransport, // авто/авиа — выбор рядом с кнопкой
       // category не ограничиваем: берётся legal или private (что найдётся).
       // Если юр НИКОГДА не должен ловить частный тариф — добавь: category: "legal",
@@ -449,7 +469,36 @@ export default function ActCreatePage() {
       return [...filtered, { id: safeUuid(), name: res.description, qty: 1, price: res.sum, total: res.sum }];
     });
     alert(`Добавлена услуга: ${res.description}\nСумма: ${res.sum.toLocaleString()} тг`);
-  }, [route.toCity, cargoVolumeM3, cargoWeightKg, allTariffs, tariffTransport, prrType]);
+  }, [route.toCity, cargoVolumeM3, cargoWeightKg, allTariffs, tariffTransport, prrType, pallets, storageMode, storageDays, cityDelivery, regionEnabled, regionDelivery]);
+
+  // Список посёлков для «Доставки в регион» — из тарифов категории region_delivery.
+  const regionOptions = useMemo(() => {
+    const set = new Set();
+    (allTariffs || []).forEach(t => {
+      if (getTariffCategory(t) === 'region_delivery') {
+        const name = String(t.city || '').replace(/__REGIONDELIVERY$/, '').trim();
+        if (name) set.add(name);
+      }
+    });
+    return [...set].sort();
+  }, [allTariffs]);
+
+  // Автоподстановка: если город назначения совпал с посёлком region_delivery —
+  // ставим галочку «Доставка в регион» и выбираем посёлок. Менеджер может снять
+  // (повторно не навязываем для того же города благодаря appliedRegionCity).
+  const appliedRegionCity = useRef(null);
+  useEffect(() => {
+    if (!SHOW_REGION_DELIVERY) return; // доплата за посёлок теперь автоматическая (движок)
+    const dest = (route.toCity || '').trim().toLowerCase();
+    if (appliedRegionCity.current && appliedRegionCity.current !== dest) appliedRegionCity.current = null;
+    if (!dest || appliedRegionCity.current === dest) return;
+    const match = regionOptions.find(n => n.trim().toLowerCase() === dest);
+    if (match) {
+      appliedRegionCity.current = dest;
+      setRegionEnabled(true);
+      setRegionDelivery(match);
+    }
+  }, [route.toCity, regionOptions]);
 
   // ============================================================
   // ОБРАБОТЧИКИ: строки груза
@@ -461,11 +510,14 @@ export default function ActCreatePage() {
         if (r.id !== rowId) return r;
         const next = { ...r, [field]: val };
 
-        if (["length", "width", "height"].includes(field)) {
+        // Объём и объёмный вес строки = Д×Ш×В × количество мест. Пересчитываем
+        // и при смене количества, и при смене размеров.
+        if (["length", "width", "height", "seats"].includes(field)) {
           const l = toNum(next.length);
           const w = toNum(next.width);
           const h = toNum(next.height);
-          const v = l * w * h;
+          const cnt = toNum(next.seats) || 0;
+          const v = l * w * h * cnt;
           const vw = v / 6000;
           next.volume = v > 0 ? parseFloat(v.toFixed(0)) : 0;
           next.volWeight = vw > 0 ? parseFloat(vw.toFixed(2)) : 0;
@@ -640,8 +692,22 @@ export default function ActCreatePage() {
     try {
       if (isEditMode) {
         const currentAct = await api.requests.get(id);
+        // Этап 8: при переводе документа между ИП СОХРАНЯЕМ исходный номер
+        // (раньше он перегенерировался под целевой ИП и исходный терялся).
+        // actData не содержит docNumber → update не меняет номер.
         if (currentAct && currentAct.companyId !== selectedCompanyId) {
-          actData.docNumber = await genNumber(company);
+          const keepNumber = currentAct.docNumber || currentAct.number || "";
+          // Защита: если номер уже занят другим документом — предупредить, а не молча.
+          try {
+            const all = await api.requests.list();
+            const clash = (all || []).find(
+              (x) => String(x.id) !== String(id) &&
+                String(x.docNumber || x.number || "") === String(keepNumber)
+            );
+            if (clash && !window.confirm(`Номер ${keepNumber} уже занят другим документом. Перевести в другой ИП всё равно (номера совпадут)?`)) {
+              return; // внешний finally сбросит loading
+            }
+          } catch { /* проверка коллизии не критична */ }
         }
         await api.requests.update(id, actData);
       } else {
@@ -649,12 +715,15 @@ export default function ActCreatePage() {
         await api.requests.create({ docNumber, ...actData });
       }
 
-      if (!isEditMode) {
+      if (!isEditMode && (saveAsCpCustomer || saveAsCpReceiver)) {
+        // Дедуп по телефону: тот же телефон → обновляем, а не плодим копии.
+        let cpList = [];
+        try { cpList = await api.counterparties.list(selectedCompanyId); } catch { /* ignore */ }
         if (saveAsCpCustomer && customer.fio) {
-          await api.counterparties.create({ ...customer, companyId: selectedCompanyId, name: customer.fio });
+          await upsertCounterparty({ ...customer, companyId: selectedCompanyId, name: customer.fio }, cpList);
         }
         if (saveAsCpReceiver && receiver.fio) {
-          await api.counterparties.create({ ...receiver, companyId: selectedCompanyId, name: receiver.fio });
+          await upsertCounterparty({ ...receiver, companyId: selectedCompanyId, name: receiver.fio }, cpList);
         }
       }
 
@@ -1105,10 +1174,10 @@ export default function ActCreatePage() {
                     <th style={{ width: 40 }}>№</th>
                     <th>Название</th>
                     <th>Кол-во</th>
+                    <th>Вес (кг)</th>
                     <th>Длина (см)</th>
                     <th>Ширина (см)</th>
                     <th>Высота (см)</th>
-                    <th>Вес (кг)</th>
                     <th>Объем (см³)</th>
                     <th>Об. вес (кг)</th>
                     <th style={{ width: 80 }} />
@@ -1125,6 +1194,9 @@ export default function ActCreatePage() {
                         <input type="number" className="cell_input" value={r.seats} onChange={(e) => updateCargoRow(r.id, "seats", e.target.value)} />
                       </td>
                       <td>
+                        <input type="number" className="cell_input" value={r.weight} onChange={(e) => updateCargoRow(r.id, "weight", e.target.value)} />
+                      </td>
+                      <td>
                         <input type="number" className="cell_input" value={r.length} onChange={(e) => updateCargoRow(r.id, "length", e.target.value)} />
                       </td>
                       <td>
@@ -1132,9 +1204,6 @@ export default function ActCreatePage() {
                       </td>
                       <td>
                         <input type="number" className="cell_input" value={r.height} onChange={(e) => updateCargoRow(r.id, "height", e.target.value)} />
-                      </td>
-                      <td>
-                        <input type="number" className="cell_input" value={r.weight} onChange={(e) => updateCargoRow(r.id, "weight", e.target.value)} />
                       </td>
                       <td>{r.volume}</td>
                       <td>{r.volWeight}</td>
@@ -1202,7 +1271,61 @@ export default function ActCreatePage() {
                   <option value="pallet">Палетная</option>
                   <option value="manual">Ручная</option>
                 </select>
+                {prrType === 'pallet' && (
+                  <div style={{ marginTop: 8 }}>
+                    <div className="label">Количество палет</div>
+                    <input type="number" min="0" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0" />
+                  </div>
+                )}
               </div>
+
+              <div className="field" style={{ maxWidth: 320, marginBottom: 12 }}>
+                <div className="label">Хранение</div>
+                <select value={storageMode} onChange={e => setStorageMode(e.target.value)}>
+                  <option value="">Без хранения</option>
+                  <option value="weight">По весу</option>
+                  <option value="cube">По кубам</option>
+                </select>
+                {storageMode && (
+                  <div style={{ marginTop: 8 }}>
+                    <div className="label">Количество дней хранения</div>
+                    <input type="number" min="0" value={storageDays} onChange={e => setStorageDays(e.target.value)} placeholder="0" />
+                  </div>
+                )}
+              </div>
+
+              {(SHOW_CITY_DELIVERY || SHOW_REGION_DELIVERY) && (
+              <div className="field" style={{ maxWidth: 320, marginBottom: 12 }}>
+                <div className="label">Дополнительная доставка</div>
+                {SHOW_CITY_DELIVERY && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 6 }}>
+                    <input type="checkbox" checked={cityDelivery} onChange={e => setCityDelivery(e.target.checked)} />
+                    <span>Доставка до адреса в городе</span>
+                  </label>
+                )}
+                {SHOW_REGION_DELIVERY && (
+                  <>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={regionEnabled} onChange={e => setRegionEnabled(e.target.checked)} />
+                      <span>Доставка в регион (посёлок)</span>
+                    </label>
+                    {regionEnabled && (
+                      <div style={{ marginTop: 8 }}>
+                        <select value={regionDelivery} onChange={e => setRegionDelivery(e.target.value)}>
+                          <option value="">— выберите посёлок —</option>
+                          {regionOptions.map(name => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                        {regionOptions.length === 0 && (
+                          <div className="muted" style={{ fontSize: '0.7rem', marginTop: 4 }}>
+                            Нет тарифов «Доставка по регионам». Заведите их во вкладке Тарифы.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              )}
 
               <div className="table_wrap">
                 <table className="table_fixed">
@@ -1210,7 +1333,7 @@ export default function ActCreatePage() {
                     <tr>
                       <th style={{ width: 40 }}>№</th>
                       <th style={{ minWidth: 300 }}>Наименование услуги</th>
-                      <th style={{ width: 100 }}>Кол-во</th>
+                      <th style={{ width: 100 }} title="Количество услуг (не мест). Места и вес уже учтены в сумме по тарифу.">Кол-во услуг</th>
                       <th style={{ width: 120 }}>Цена</th>
                       <th style={{ width: 120 }}>Сумма</th>
                       <th style={{ width: 50 }} />
@@ -1260,6 +1383,9 @@ export default function ActCreatePage() {
                   <button className="btn" type="button" onClick={addServiceRow}>
                     + Добавить услугу
                   </button>
+                </div>
+                <div className="muted" style={{ fontSize: '0.72rem', marginTop: 8, padding: '0 4px' }}>
+                  «Кол-во услуг» — это количество оказанных услуг, а не мест. Места и вес уже учтены в расчёте по тарифу (например, выгрузка 3 места × ставку).
                 </div>
               </div>
             </div>

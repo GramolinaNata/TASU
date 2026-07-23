@@ -6,6 +6,7 @@ import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import Loader from "../../shared/components/Loader";
+import { printCargoVedomost, printCarrierVedomost } from "../../shared/print/vedomostPrint.js";
 
 function formatDate(val) {
   if (!val) return "—";
@@ -94,6 +95,10 @@ export default function BatchesPage() {
   const [carriers, setCarriers] = useState([]);
   const [representatives, setRepresentatives] = useState([]);
 
+  // Ведомости перевозчика (для вкладки-группировки по номеру)
+  const [carrierVedomosts, setCarrierVedomosts] = useState([]);
+  const [expandedVedomost, setExpandedVedomost] = useState(null);
+
   const [tab, setTab] = useState('active');
 
   const [sortBy, setSortBy] = useState('date');
@@ -159,8 +164,8 @@ export default function BatchesPage() {
   const tabCounts = useMemo(() => ({
     active: batches.filter(b => !b.isFormed).length,
     formed: batches.filter(b => !!b.isFormed && !b.carrierVedomostId).length,
-    vedomost: batches.filter(b => !!b.carrierVedomostId).length,
-  }), [batches]);
+    vedomost: carrierVedomosts.length,
+  }), [batches, carrierVedomosts]);
 
   useEffect(() => {
     return subscribeSelectedCompany(c => setCompany(c));
@@ -190,13 +195,62 @@ export default function BatchesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const list = await api.batches.list(company?.id);
+      const [list, cvs] = await Promise.all([
+        api.batches.list(company?.id),
+        api.carrierVedomosts.list(company?.id).catch(() => []),
+      ]);
       if (Array.isArray(list)) setBatches(list);
+      setCarrierVedomosts(Array.isArray(cvs) ? cvs : []);
     } catch(e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
+  };
+
+  const parseJson = (s) => { try { return typeof s === 'string' ? JSON.parse(s) : (s || {}); } catch { return {}; } };
+
+  const vedomostSortValue = (v, field) => {
+    switch (field) {
+      case 'number': return String(v.number || '').toLowerCase();
+      case 'date': return String(v.createdAt || '');
+      case 'vedCount': {
+        let cnt = 0;
+        try { const ids = JSON.parse(v.batchIds || "[]"); if (Array.isArray(ids)) cnt = ids.length; } catch { /* ignore */ }
+        return cnt;
+      }
+      case 'totalWeight': return Number(v.totalWeight) || 0;
+      case 'carrierSum': return Number(v.carrierSum) || 0;
+      default: return String(v.createdAt || '');
+    }
+  };
+  const sortedVedomosts = useMemo(() => {
+    const arr = [...carrierVedomosts];
+    // По умолчанию — новые сверху; при клике по колонке — по выбранному полю.
+    if (!sortBy) return arr.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+    return arr.sort((a, b) => {
+      const av = vedomostSortValue(a, sortBy), bv = vedomostSortValue(b, sortBy);
+      if (av < bv) return sortOrder === 'asc' ? -1 : 1;
+      if (av > bv) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrierVedomosts, sortBy, sortOrder]);
+
+  // Печать ведомости с её уровня — из сохранённого snapshot (единый эталон).
+  const printCarrierVedomostRecord = (v) => {
+    const snap = parseJson(v.data);
+    printCarrierVedomost({
+      companyName: snap.companyName || company?.name || "",
+      vedomostNumber: v.number,
+      rows: Array.isArray(snap.rows) ? snap.rows : [],
+      totals: {
+        totalWeight: v.totalWeight,
+        carrierSum: v.carrierSum,
+        representativeRate: snap.representativeRate,
+        representativeSum: v.representativeSum,
+      },
+    });
   };
 
   // Загрузка свободных накладных: статус act, ещё не в какой-либо партии.
@@ -390,80 +444,37 @@ export default function BatchesPage() {
 
   const printVedomost = async (batch) => {
     let requestIds = [];
-    try { requestIds = JSON.parse(batch.requestIds || "[]"); } catch(e) {}
+    try { requestIds = JSON.parse(batch.requestIds || "[]"); } catch { /* ignore */ }
 
     let reqs = [];
     if (requestIds.length > 0) {
-      reqs = await Promise.all(
-        requestIds.map(rid => api.requests.get(rid).catch(() => null))
-      );
+      reqs = await Promise.all(requestIds.map(rid => api.requests.get(rid).catch(() => null)));
       reqs = reqs.filter(Boolean);
     }
 
-    const { toDataURL } = await import("qrcode");
-    const qrUrl = await toDataURL(`TASU-BATCH-${batch.number}`, { width: 100, margin: 1 });
+    const rows = reqs.map((r) => {
+      let d = {};
+      try { d = JSON.parse(r.details || "{}"); } catch { /* ignore */ }
+      const recv = d.receiver || {};
+      const route = d.route || {};
+      const totals = d.totals || {};
+      return {
+        docNumber: r.docNumber || d.docNumber || r.id || "—",
+        receiver: recv.fio || recv.companyName || "—",
+        phone: recv.phone || "—",
+        seats: totals.seats || "",
+        weight: totals.weight || "",
+        city: route.toCity || batch.city || "—",
+        sum: Number(d.totalSum ?? r.totalSum) || null,
+      };
+    });
 
-    const rows = reqs.map((r, i) => {
-      let details = {};
-      try { details = JSON.parse(r.details || "{}"); } catch (e) {}
-      const recv = details.receiver || {};
-      const route = details.route || {};
-      const totals = details.totals || {};
-      return `<tr>
-        <td style="text-align:center">${i + 1}</td>
-        <td>${r.docNumber || details.docNumber || r.id || "—"}</td>
-        <td>${recv.fio || "—"}</td>
-        <td>${recv.phone || "—"}</td>
-        <td style="text-align:center">${totals.seats || "—"}</td>
-        <td style="text-align:center">${totals.weight ? totals.weight + " кг" : "—"}</td>
-        <td>${route.toCity || batch.city || "—"}</td>
-      </tr>`;
-    }).join("");
-
-    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Грузовая ведомость ${batch.number}</title>
-    <style>
-      body { font-family: Arial, sans-serif; font-size: 12px; padding: 20px; }
-      .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #000; }
-      h2 { margin: 0; font-size: 20px; font-weight: 900; text-transform: uppercase; }
-      .sub { color: #333; font-size: 11px; margin-top: 4px; }
-      table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 11px; }
-      th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
-      th { background: #f3f4f6; font-weight: 700; text-align: center; }
-      .signatures { margin-top: 50px; display: flex; justify-content: space-between; gap: 40px; }
-      .sig { flex: 1; }
-      .sig-line { border-bottom: 1px solid #000; margin-bottom: 5px; height: 28px; }
-      .sig-label { font-size: 10px; color: #333; text-align: center; }
-    </style></head><body>
-    <div class="header">
-      <div>
-        <h2>Грузовая ведомость</h2>
-        <div class="sub">${company?.name || ""} &nbsp;&nbsp; Партия № ${batch.number} &nbsp;&nbsp; Город: ${batch.city || "—"} &nbsp;&nbsp; Дата: ${new Date().toLocaleDateString("ru")}</div>
-      </div>
-      <img src="${qrUrl}" width="80" height="80" style="border:1px solid #ccc;padding:3px;"/>
-    </div>
-    ${rows ? `<table>
-      <thead>
-        <tr>
-          <th style="width:30px">№</th>
-          <th>Номер накладной</th>
-          <th>Получатель</th>
-          <th style="width:130px">Номер телефона</th>
-          <th style="width:50px">Мест</th>
-          <th style="width:60px">Вес</th>
-          <th style="width:90px">Город</th>
-        </tr>
-      </thead>
-      <tbody>${rows}</tbody>
-    </table>` : '<div style="color:#888;font-style:italic;margin-top:16px;">В партии нет накладных</div>'}
-    <div class="signatures">
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Выдал (ФИО, подпись)</div></div>
-      <div class="sig"><div class="sig-line"></div><div class="sig-label">Принял (ФИО, подпись)</div></div>
-    </div>
-    <script>window.onload=function(){window.print();}</script>
-    </body></html>`;
-
-    const blob = new Blob([html], { type: "text/html; charset=utf-8" });
-    window.open(URL.createObjectURL(blob), "_blank");
+    await printCargoVedomost({
+      companyName: company?.name || "",
+      batchNumber: batch.number,
+      city: batch.city,
+      rows,
+    });
   };
 
   return (
@@ -636,11 +647,94 @@ export default function BatchesPage() {
       )}
 
       <div style={{ marginTop: 12, padding: '8px 12px', background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6, fontSize: '0.85rem', color: '#854d0e' }}>
-        💡 Кликни по строке партии, чтобы открыть её детали и список накладных
+        {tab === 'vedomost'
+          ? '💡 Кликни по ведомости, чтобы раскрыть список партий внутри неё. Печать — с уровня ведомости.'
+          : '💡 Кликни по строке партии, чтобы открыть её детали и список накладных'}
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
-        {loading ? <Loader /> : (
+        {loading ? <Loader /> : tab === 'vedomost' ? (
+          <table className="table_fixed">
+            <thead>
+              <tr>
+                <SortableTh field="number" style={{ width: 150 }}>№ ведомости</SortableTh>
+                <SortableTh field="date" style={{ width: 110 }}>Дата</SortableTh>
+                <SortableTh field="vedCount" style={{ width: 90, textAlign: 'center' }}>Партий</SortableTh>
+                <SortableTh field="totalWeight" style={{ width: 120, textAlign: 'center' }}>Общий вес</SortableTh>
+                <SortableTh field="carrierSum" style={{ width: 170, textAlign: 'right' }}>Сумма перевозчику</SortableTh>
+                <th style={{ width: 140 }}>Действия</th>
+              </tr>
+            </thead>
+            <tbody>
+              {sortedVedomosts.length === 0 ? (
+                <tr><td colSpan={6} className="muted" style={{ padding: 16 }}>
+                  {!company ? "Выберите компанию." : "Нет ведомостей перевозчика"}
+                </td></tr>
+              ) : (
+                sortedVedomosts.map(v => {
+                  const snap = parseJson(v.data);
+                  const rows = Array.isArray(snap.rows) ? snap.rows : [];
+                  let cnt = rows.length;
+                  try { const ids = JSON.parse(v.batchIds || "[]"); if (Array.isArray(ids) && ids.length) cnt = ids.length; } catch { /* ignore */ }
+                  const open = expandedVedomost === v.id;
+                  return (
+                    <React.Fragment key={v.id}>
+                      <tr
+                        onClick={() => setExpandedVedomost(open ? null : v.id)}
+                        style={{ cursor: 'pointer', background: open ? '#eff6ff' : '' }}
+                      >
+                        <td style={{ fontWeight: 700 }}>{open ? '▾' : '▸'} {v.number}</td>
+                        <td>{formatDate(v.createdAt)}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{cnt}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 600 }}>{Number(v.totalWeight || 0).toLocaleString()} кг</td>
+                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{Number(v.carrierSum || 0).toLocaleString()} тг</td>
+                        <td className="actions-cell" onClick={e => e.stopPropagation()}>
+                          <button className="btn btn--sm" onClick={() => printCarrierVedomostRecord(v)} title="Печать ведомости перевозчика" style={{ fontSize: 11 }}>
+                            🖨 Печать
+                          </button>
+                        </td>
+                      </tr>
+                      {open && (
+                        <tr>
+                          <td colSpan={6} style={{ background: '#f8fafc', padding: 8 }}>
+                            <table className="table" style={{ margin: 0, width: '100%', fontSize: '0.85rem' }}>
+                              <thead>
+                                <tr>
+                                  <th style={{ width: 30 }}>№</th>
+                                  <th>Партия</th>
+                                  <th>Город</th>
+                                  <th style={{ textAlign: 'center' }}>Вес</th>
+                                  <th>Перевозчик</th>
+                                  <th style={{ textAlign: 'right' }}>Сумма перевозчику</th>
+                                  <th>Представитель</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {rows.length === 0 ? (
+                                  <tr><td colSpan={7} className="muted" style={{ padding: 10 }}>Нет данных по партиям</td></tr>
+                                ) : rows.map((r, i) => (
+                                  <tr key={i}>
+                                    <td>{i + 1}</td>
+                                    <td style={{ fontWeight: 600 }}>{r.number}</td>
+                                    <td>{r.city}</td>
+                                    <td style={{ textAlign: 'center' }}>{Number(r.weight || 0).toLocaleString()} кг</td>
+                                    <td>{r.carrierId ? (carriers.find(c => c.id === r.carrierId)?.name || r.carrierName || "—") : (r.carrierName || "—")}</td>
+                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{Number(r.carrierSum || 0).toLocaleString()} тг</td>
+                                    <td>{r.representativeId ? (representatives.find(x => x.id === r.representativeId)?.name || r.representativeName || "—") : (r.representativeName || "—")}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        ) : (
           <table className="table_fixed">
             <thead>
               <tr>

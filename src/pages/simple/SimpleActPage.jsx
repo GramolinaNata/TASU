@@ -1,9 +1,46 @@
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
-import { calcDeliveryPrice, findDeliveryTariff, cleanCityName } from "../../shared/tariff/calcTariff.js";
+import { upsertCounterparty, phoneDigits } from "../../shared/counterparty/upsertCounterparty.js";
+
+// Подсказки контрагентов: поиск по ФИО или телефону, клик подставляет поля.
+function ContactSuggest({ items, query, onPick }) {
+  const q = String(query || "").trim().toLowerCase();
+  if (q.length < 2) return null;
+  const qd = phoneDigits(q);
+  const matches = (items || []).filter(c => {
+    const nameHit = String(c.name || "").toLowerCase().includes(q);
+    const phoneHit = qd && phoneDigits(c.phone).includes(qd);
+    return nameHit || phoneHit;
+  }).slice(0, 6);
+  if (!matches.length) return null;
+  return (
+    <div style={{ position: "absolute", zIndex: 30, background: "#fff", border: "1px solid #d1d5db", borderRadius: 6, boxShadow: "0 4px 12px rgba(0,0,0,0.12)", width: "100%", maxHeight: 200, overflowY: "auto", marginTop: 2 }}>
+      {matches.map(c => (
+        <div
+          key={c.id}
+          onMouseDown={() => onPick(c)}
+          style={{ padding: "6px 10px", cursor: "pointer", fontSize: "0.85rem", borderBottom: "1px solid #f1f5f9" }}
+          onMouseEnter={e => e.currentTarget.style.background = "#f0f9ff"}
+          onMouseLeave={e => e.currentTarget.style.background = ""}
+        >
+          <strong>{c.name}</strong>{c.phone ? ` · ${c.phone}` : ""}{c.companyName ? ` · ${c.companyName}` : ""}
+        </div>
+      ))}
+    </div>
+  );
+}
+import { calcDeliveryPrice, findDeliveryTariff, cleanCityName, getTariffCategory } from "../../shared/tariff/calcTariff.js";
+
+// Заказчик отключил доставку по городу (только по регионам). Логика/параметр
+// cityDelivery в движке сохранены — чтобы вернуть чекбокс, поставь true.
+const SHOW_CITY_DELIVERY = false;
+
+// Доплата за посёлок теперь автоматическая (посёлок = город назначения внутри
+// тарифа). Чекбокс «Доставка в регион» + список + автоподстановка скрыты; код цел.
+const SHOW_REGION_DELIVERY = false;
 
 const TRANSPORT_TYPES = [
   { value: "auto_console", label: "Авто-консолидация" },
@@ -126,6 +163,8 @@ async function genNextSimpleNumber() {
 export default function SimpleActPage() {
   const navigate = useNavigate();
   const [saving, setSaving] = useState(false);
+  const [counterparties, setCounterparties] = useState([]);
+  const [focusedField, setFocusedField] = useState(""); // какое поле активно (для показа подсказок)
   const [saveAndNext, setSaveAndNext] = useState(false);
   const [company, setCompany] = useState(null);
   const [tariffs, setTariffs] = useState([]);
@@ -142,7 +181,17 @@ export default function SimpleActPage() {
     toCity: "",
     seats: "",
     prrType: "",
+    pallets: "",
+    storageMode: "",
+    storageDays: "",
+    cityDelivery: false,
+    regionEnabled: false,
+    regionDelivery: "",
     weight: "",
+    length: "",
+    width: "",
+    height: "",
+    sizeCategory: "",
     cargoText: "",
     transportType: "auto_console",
     totalSum: "",
@@ -151,17 +200,27 @@ export default function SimpleActPage() {
   useEffect(() => {
     const c = getSelectedCompany();
     setCompany(c);
+    // Город отправителя по умолчанию: из настройки компании (если появится), иначе «Алматы».
+    setForm(prev => ({ ...prev, fromCity: prev.fromCity || c?.city || "Алматы" }));
     api.tariffs.list().then(data => {
       if (Array.isArray(data)) setTariffs(data);
+    }).catch(() => {});
+    api.counterparties.list(c?.id).then(data => {
+      if (Array.isArray(data)) setCounterparties(data);
     }).catch(() => {});
     // 🆕 Последовательная нумерация вместо рандомного timestamp
     genNextSimpleNumber().then(setDocNumber);
   }, []);
 
+  // Объём груза (м³) = Д×Ш×В × количество мест: см³ / 1 000 000 = м³.
+  const volumeM3 = useMemo(() => {
+    const l = Number(form.length) || 0, w = Number(form.width) || 0, h = Number(form.height) || 0;
+    const cnt = Number(form.seats) || 0;
+    return (l * w * h * cnt) / 1_000_000;
+  }, [form.length, form.width, form.height, form.seats]);
+
   // 🆕 Автоподсчёт суммы через единый движок calcTariff (категория "private").
-  // Считается по правилам частных лиц: ступени до 10/20/30, свыше 30 × ставку,
-  // max(вес, куб), + доставка, + доп. сумма (extraSum). Куб для частных = 0
-  // (нет габаритов), поэтому идёт чистый расчёт по весу.
+  // Считается по правилам частных лиц + max(вес, куб) по кубатуре из габаритов.
   useEffect(() => {
     if (!form.toCity || !form.weight) {
       setAutoCalc(false);
@@ -171,9 +230,15 @@ export default function SimpleActPage() {
       tariffs,
       city: form.toCity,
       weightKg: Number(form.weight) || 0,
-      volumeM3: 0,
+      volumeM3: volumeM3,
       seats: Number(form.seats) || 0,
       prrType: form.prrType || "",
+      pallets: Number(form.pallets) || 0,
+      storageMode: form.storageMode || "",
+      storageDays: Number(form.storageDays) || 0,
+      cityDelivery: !!form.cityDelivery,
+      regionDelivery: form.regionEnabled ? (form.regionDelivery || "") : "",
+      sizeCategory: form.sizeCategory || "",
       category: "private",
       transport: form.transportType === "avia_console" ? "avia" : "auto",
     });
@@ -183,24 +248,64 @@ export default function SimpleActPage() {
     } else {
       setAutoCalc(false);
     }
-  }, [form.toCity, form.weight, form.transportType, tariffs]);
+  }, [form.toCity, form.weight, form.transportType, form.seats, form.prrType, form.pallets, form.storageMode, form.storageDays, form.cityDelivery, form.regionEnabled, form.regionDelivery, form.sizeCategory, volumeM3, tariffs]);
 
-  const resetForm = async () => {
-    setForm({
-      senderName: "",
-      senderPhone: "",
+  // Список посёлков для «Доставки в регион» — из тарифов категории region_delivery.
+  const regionOptions = useMemo(() => {
+    const set = new Set();
+    (tariffs || []).forEach(t => {
+      if (getTariffCategory(t) === 'region_delivery') {
+        const name = String(t.city || '').replace(/__REGIONDELIVERY$/, '').trim();
+        if (name) set.add(name);
+      }
+    });
+    return [...set].sort();
+  }, [tariffs]);
+
+  // Автоподстановка: если город назначения совпал с посёлком region_delivery —
+  // ставим галочку «Доставка в регион» и выбираем посёлок. Менеджер может снять
+  // (повторно не навязываем для того же города благодаря appliedRegionCity).
+  const appliedRegionCity = useRef(null);
+  useEffect(() => {
+    if (!SHOW_REGION_DELIVERY) return; // доплата за посёлок теперь автоматическая (движок)
+    const dest = (form.toCity || '').trim().toLowerCase();
+    if (appliedRegionCity.current && appliedRegionCity.current !== dest) appliedRegionCity.current = null;
+    if (!dest || appliedRegionCity.current === dest) return;
+    const match = regionOptions.find(n => n.trim().toLowerCase() === dest);
+    if (match) {
+      appliedRegionCity.current = dest;
+      setForm(prev => ({ ...prev, regionEnabled: true, regionDelivery: match }));
+    }
+  }, [form.toCity, regionOptions]);
+
+  // keepSender=true — оставляем данные отправителя (ФИО, телефон, город),
+  // очищаем получателя, груз, вес, места (для «Сохранить и добавить ещё»).
+  const resetForm = async (keepSender = false) => {
+    setForm(prev => ({
+      senderName: keepSender ? prev.senderName : "",
+      senderPhone: keepSender ? prev.senderPhone : "",
+      fromCity: keepSender ? prev.fromCity : (company?.city || "Алматы"),
       receiverName: "",
       receiverCompany: "",
       receiverPhone: "",
-      fromCity: "",
       toCity: "",
       seats: "",
-    prrType: "",
+      prrType: "",
+      pallets: "",
+      storageMode: "",
+      storageDays: "",
+      cityDelivery: false,
+      regionEnabled: false,
+      regionDelivery: "",
       weight: "",
+      length: "",
+      width: "",
+      height: "",
+      sizeCategory: "",
       cargoText: "",
       transportType: "auto_console",
       totalSum: "",
-    });
+    }));
     setSaved(false);
     setAutoCalc(false);
     const next = await genNextSimpleNumber();
@@ -235,6 +340,14 @@ export default function SimpleActPage() {
           docNumber: docNumber,
         }),
       });
+
+      // Сохраняем отправителя/получателя в справочник (дедуп по телефону).
+      try {
+        await upsertCounterparty({ companyId: company.id, name: form.senderName, phone: form.senderPhone }, counterparties);
+        await upsertCounterparty({ companyId: company.id, name: form.receiverName, phone: form.receiverPhone, companyName: form.receiverCompany }, counterparties);
+        const fresh = await api.counterparties.list(company.id);
+        if (Array.isArray(fresh)) setCounterparties(fresh);
+      } catch { /* справочник не критичен для сохранения накладной */ }
 
       const qrData = `TASU-${docNumber}-${form.toCity}-${form.receiverName}`;
       const { toDataURL } = await import("qrcode");
@@ -335,7 +448,7 @@ export default function SimpleActPage() {
 
       if (saveAndNext) {
         setSaved(true);
-        await resetForm();
+        await resetForm(true); // отправитель остаётся, остальное очищается
       } else {
         navigate("/simple", { state: { refresh: Date.now() } });
       }
@@ -379,11 +492,27 @@ export default function SimpleActPage() {
             <div className="form_grid">
               <div className="field">
                 <div className="label">ФИО отправителя *</div>
-                <input value={form.senderName} onChange={e => setForm({...form, senderName: e.target.value})} placeholder="Иванов Иван Иванович" required />
+                <div style={{ position: 'relative' }}>
+                  <input value={form.senderName} onChange={e => setForm({...form, senderName: e.target.value})}
+                    onFocus={() => setFocusedField('senderName')} onBlur={() => setFocusedField('')}
+                    placeholder="Иванов Иван Иванович" required />
+                  {focusedField === 'senderName' && (
+                    <ContactSuggest items={counterparties} query={form.senderName}
+                      onPick={c => setForm(f => ({ ...f, senderName: c.name || f.senderName, senderPhone: c.phone || f.senderPhone }))} />
+                  )}
+                </div>
               </div>
               <div className="field">
                 <div className="label">Телефон отправителя</div>
-                <input value={form.senderPhone} onChange={e => setForm({...form, senderPhone: e.target.value})} placeholder="+7 (777) 123-45-67" />
+                <div style={{ position: 'relative' }}>
+                  <input value={form.senderPhone} onChange={e => setForm({...form, senderPhone: e.target.value})}
+                    onFocus={() => setFocusedField('senderPhone')} onBlur={() => setFocusedField('')}
+                    placeholder="+7 (777) 123-45-67" />
+                  {focusedField === 'senderPhone' && (
+                    <ContactSuggest items={counterparties} query={form.senderPhone}
+                      onPick={c => setForm(f => ({ ...f, senderName: c.name || f.senderName, senderPhone: c.phone || f.senderPhone }))} />
+                  )}
+                </div>
               </div>
               <div className="field">
                 <div className="label">Город отправителя</div>
@@ -399,7 +528,15 @@ export default function SimpleActPage() {
             <div className="form_grid">
               <div className="field">
                 <div className="label">ФИО получателя *</div>
-                <input value={form.receiverName} onChange={e => setForm({...form, receiverName: e.target.value})} placeholder="Петров Пётр Петрович" required />
+                <div style={{ position: 'relative' }}>
+                  <input value={form.receiverName} onChange={e => setForm({...form, receiverName: e.target.value})}
+                    onFocus={() => setFocusedField('receiverName')} onBlur={() => setFocusedField('')}
+                    placeholder="Петров Пётр Петрович" required />
+                  {focusedField === 'receiverName' && (
+                    <ContactSuggest items={counterparties} query={form.receiverName}
+                      onPick={c => setForm(f => ({ ...f, receiverName: c.name || f.receiverName, receiverPhone: c.phone || f.receiverPhone, receiverCompany: c.companyName || f.receiverCompany }))} />
+                  )}
+                </div>
               </div>
               <div className="field">
                 <div className="label">Компания получателя</div>
@@ -407,7 +544,15 @@ export default function SimpleActPage() {
               </div>
               <div className="field">
                 <div className="label">Телефон получателя</div>
-                <input value={form.receiverPhone} onChange={e => setForm({...form, receiverPhone: e.target.value})} placeholder="+7 (777) 765-43-21" />
+                <div style={{ position: 'relative' }}>
+                  <input value={form.receiverPhone} onChange={e => setForm({...form, receiverPhone: e.target.value})}
+                    onFocus={() => setFocusedField('receiverPhone')} onBlur={() => setFocusedField('')}
+                    placeholder="+7 (777) 765-43-21" />
+                  {focusedField === 'receiverPhone' && (
+                    <ContactSuggest items={counterparties} query={form.receiverPhone}
+                      onPick={c => setForm(f => ({ ...f, receiverName: c.name || f.receiverName, receiverPhone: c.phone || f.receiverPhone, receiverCompany: c.companyName || f.receiverCompany }))} />
+                  )}
+                </div>
               </div>
               <div className="field">
                 <div className="label">Город назначения *</div>
@@ -448,17 +593,99 @@ export default function SimpleActPage() {
                 <input type="number" value={form.seats} onChange={e => setForm({...form, seats: e.target.value})} placeholder="0" />
               </div>
               <div className="field">
+                <div className="label">Вес (кг)</div>
+                <input type="number" value={form.weight} onChange={e => setForm({...form, weight: e.target.value})} placeholder="0" />
+              </div>
+              <div className="field">
+                <div className="label">Размеры груза (см) — для расчёта по кубам</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <input type="number" min="0" value={form.length} onChange={e => setForm({...form, length: e.target.value})} placeholder="Длина" style={{ flex: 1 }} />
+                  <span style={{ color: '#999' }}>×</span>
+                  <input type="number" min="0" value={form.width} onChange={e => setForm({...form, width: e.target.value})} placeholder="Ширина" style={{ flex: 1 }} />
+                  <span style={{ color: '#999' }}>×</span>
+                  <input type="number" min="0" value={form.height} onChange={e => setForm({...form, height: e.target.value})} placeholder="Высота" style={{ flex: 1 }} />
+                </div>
+                <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>
+                  Объём: <strong>{volumeM3.toFixed(4)} м³</strong>
+                  <span style={{ color: '#aaa', marginLeft: 4 }}>(сравнивается с весом — берётся большая сумма)</span>
+                </div>
+              </div>
+              <div className="field">
+                <div className="label">Категория габарита</div>
+                <select value={form.sizeCategory || ""} onChange={e => setForm({...form, sizeCategory: e.target.value})}>
+                  <option value="">Маленькая (тариф как есть)</option>
+                  <option value="medium">Средняя (+надбавка)</option>
+                  <option value="large">Большая (+надбавка)</option>
+                </select>
+                <div className="muted" style={{ fontSize: '0.7rem', marginTop: 4 }}>
+                  Надбавки задаются в тарифе. Маленькая — без надбавки.
+                </div>
+              </div>
+              <div className="field">
                 <div className="label">ПРР (погрузка-разгрузка)</div>
                 <select value={form.prrType || ""} onChange={e => setForm({...form, prrType: e.target.value})}>
                   <option value="">Нет ПРР</option>
                   <option value="pallet">Палетная</option>
                   <option value="manual">Ручная</option>
                 </select>
+                {form.prrType === 'pallet' && (
+                  <div style={{ marginTop: 8 }}>
+                    <div className="label">Количество палет</div>
+                    <input type="number" min="0" value={form.pallets} onChange={e => setForm({...form, pallets: e.target.value})} placeholder="0" />
+                  </div>
+                )}
               </div>
               <div className="field">
-                <div className="label">Вес (кг)</div>
-                <input type="number" value={form.weight} onChange={e => setForm({...form, weight: e.target.value})} placeholder="0" />
+                <div className="label">Хранение</div>
+                <select value={form.storageMode || ""} onChange={e => setForm({...form, storageMode: e.target.value})}>
+                  <option value="">Без хранения</option>
+                  <option value="weight">По весу</option>
+                  <option value="cube">По кубам</option>
+                </select>
+                {form.storageMode === 'cube' && (
+                  <div className="muted" style={{ fontSize: '0.7rem', marginTop: 4 }}>
+                    Считается по объёму из габаритов ниже (Д×Ш×В).
+                  </div>
+                )}
+                {form.storageMode && (
+                  <div style={{ marginTop: 8 }}>
+                    <div className="label">Количество дней хранения</div>
+                    <input type="number" min="0" value={form.storageDays} onChange={e => setForm({...form, storageDays: e.target.value})} placeholder="0" />
+                  </div>
+                )}
               </div>
+              {(SHOW_CITY_DELIVERY || SHOW_REGION_DELIVERY) && (
+              <div className="field">
+                <div className="label">Дополнительная доставка</div>
+                {SHOW_CITY_DELIVERY && (
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 6 }}>
+                    <input type="checkbox" checked={!!form.cityDelivery} onChange={e => setForm({...form, cityDelivery: e.target.checked})} />
+                    <span>Доставка до адреса в городе</span>
+                  </label>
+                )}
+                {SHOW_REGION_DELIVERY && (
+                  <>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                      <input type="checkbox" checked={!!form.regionEnabled} onChange={e => setForm({...form, regionEnabled: e.target.checked})} />
+                      <span>Доставка в регион (посёлок)</span>
+                    </label>
+                    {form.regionEnabled && (
+                      <div style={{ marginTop: 8 }}>
+                        <select value={form.regionDelivery || ""} onChange={e => setForm({...form, regionDelivery: e.target.value})}>
+                          <option value="">— выберите посёлок —</option>
+                          {regionOptions.map(name => <option key={name} value={name}>{name}</option>)}
+                        </select>
+                        {regionOptions.length === 0 && (
+                          <div className="muted" style={{ fontSize: '0.7rem', marginTop: 4 }}>
+                            Нет тарифов «Доставка по регионам». Заведите их во вкладке Тарифы.
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              )}
               <div className="field">
                 <div className="label">Характер груза</div>
                 <input value={form.cargoText} onChange={e => setForm({...form, cargoText: e.target.value})} placeholder="Одежда, электроника..." />
@@ -484,8 +711,9 @@ export default function SimpleActPage() {
           <button className="btn btn--accent" type="submit" disabled={saving} onClick={() => setSaveAndNext(false)}>
             {saving && !saveAndNext ? "Сохранение..." : "💾 Сохранить"}
           </button>
-          <button className="btn btn--accent" type="submit" disabled={saving} onClick={() => setSaveAndNext(true)} style={{ background: "#52c41a", borderColor: "#52c41a" }}>
-            {saving && saveAndNext ? "Сохранение..." : "➕ Сохранить и добавить следующую"}
+          <button className="btn btn--accent" type="submit" disabled={saving} onClick={() => setSaveAndNext(true)} style={{ background: "#52c41a", borderColor: "#52c41a" }}
+            title="Сохранить накладную и начать новую — отправитель останется, получатель и груз очистятся">
+            {saving && saveAndNext ? "Сохранение..." : "➕ Сохранить и добавить ещё"}
           </button>
         </div>
       </form>

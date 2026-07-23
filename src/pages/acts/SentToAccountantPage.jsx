@@ -6,7 +6,7 @@ import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/stora
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 
-function formatDisplayDate(val) {
+function formatDisplayDate(val) { 
   if (!val) return "—";
   const d = new Date(val);
   if (isNaN(d.getTime())) return val;
@@ -77,7 +77,7 @@ export default function SentToAccountantPage() {
   const filtered = useMemo(() => {
     let list = acts.filter(a => !!a.readyForAccountant);
 
-    list = list.filter(a => a.status !== "canceled");
+    // ТЗ: аннулированные НЕ убираем из списка — показываем серым (см. рендер строки).
     if (tab === "completed") list = list.filter(a => a.isProcessedByAccountant === true);
     else list = list.filter(a => a.isProcessedByAccountant !== true);
 
@@ -338,10 +338,11 @@ export default function SentToAccountantPage() {
                 filtered.map((a) => {
                   const customerFio = a.customer?.fio || "—";
                   const customerCompany = a.customer?.companyName || "—";
+                  const isCanceled = a.status === "canceled";
                   return (
-                    <tr key={a.id}>
+                    <tr key={a.id} style={{ opacity: isCanceled ? 0.55 : 1, background: isCanceled ? "#f5f5f5" : "" }}>
                       <td className="num">
-                        <Link to={`/sent/${a.id}`}>{a.docNumber || a.number}</Link>
+                        <Link to={`/sent/${a.id}`} style={{ textDecoration: isCanceled ? "line-through" : "none" }}>{a.docNumber || a.number}</Link>
                       </td>
                       <td>{formatDisplayDate(a.createdAt || a.date)}</td>
                       <td>
@@ -382,7 +383,9 @@ export default function SentToAccountantPage() {
                         )}
                       </td>
                       <td style={{ textAlign: "center" }}>
-                        {a.isProcessedByAccountant ? (
+                        {isCanceled ? (
+                          <span className="badge" style={{ background: '#fff1f0', color: '#cf1322', fontWeight: 700 }}>Аннулирована</span>
+                        ) : a.isProcessedByAccountant ? (
                           <span className="badge" style={{ background: '#f6ffed', color: '#52c41a', fontWeight: 700 }}>Отработано</span>
                         ) : a.isViewedByAccountant ? (
                           <span className="badge" style={{ background: '#fffbe6', color: '#faad14' }}>В работе</span>
@@ -400,20 +403,24 @@ export default function SentToAccountantPage() {
                               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                               Просмотр
                             </Link>
-                            {(!isAccountant || isAdmin) && (
-                              <button className="actions-item danger" onClick={() => handleReturn(a.id)}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
-                                Вернуть в работу
-                              </button>
+                            {!isCanceled && (
+                              <>
+                                {(!isAccountant || isAdmin) && (
+                                  <button className="actions-item danger" onClick={() => handleReturn(a.id)}>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                                    Вернуть в работу
+                                  </button>
+                                )}
+                                <button className="actions-item" onClick={() => handleDefer(a.id)}>
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                  В отложенные
+                                </button>
+                                <button className="actions-item danger" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
+                                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                                  Аннулировать
+                                </button>
+                              </>
                             )}
-                            <button className="actions-item" onClick={() => handleDefer(a.id)}>
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                              В отложенные
-                            </button>
-                            <button className="actions-item danger" onClick={() => handleAnnul(a.id, a.docNumber || a.number)}>
-                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                              Аннулировать
-                            </button>
                           </div>
                         </details>
                       </td>
