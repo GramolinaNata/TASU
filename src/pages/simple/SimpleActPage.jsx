@@ -32,7 +32,7 @@ function ContactSuggest({ items, query, onPick }) {
     </div>
   );
 }
-import { calcDeliveryPrice, findDeliveryTariff, cleanCityName, getTariffCategory } from "../../shared/tariff/calcTariff.js";
+import { calcDeliveryPrice, findDeliveryTariff, cleanCityName, getTariffCategory, getDeliveryDestinations, getTariffOrigins } from "../../shared/tariff/calcTariff.js";
 
 // Заказчик отключил доставку по городу (только по регионам). Логика/параметр
 // cityDelivery в движке сохранены — чтобы вернуть чекбокс, поставь true.
@@ -463,6 +463,10 @@ export default function SimpleActPage() {
   // Совпадение частного тарифа для подсказки под полем города (учитываем направление)
   const matchedTariff = findDeliveryTariff(tariffs, form.toCity, "private", undefined, form.fromCity);
 
+  // Подсказки городов: назначения — частные тарифы + посёлки; отправления — fromCity тарифов.
+  const destinationCities = useMemo(() => getDeliveryDestinations(tariffs, "private"), [tariffs]);
+  const originCities = useMemo(() => getTariffOrigins(tariffs), [tariffs]);
+
   return (
     <>
       <div className="navbar">
@@ -517,7 +521,10 @@ export default function SimpleActPage() {
               </div>
               <div className="field">
                 <div className="label">Город отправителя</div>
-                <input value={form.fromCity} onChange={e => setForm({...form, fromCity: e.target.value})} placeholder="Алматы" />
+                <input value={form.fromCity} onChange={e => setForm({...form, fromCity: e.target.value})} placeholder="Алматы" list="origins-list" />
+                <datalist id="origins-list">
+                  {originCities.map((city, i) => <option key={i} value={city} />)}
+                </datalist>
               </div>
             </div>
           </div>
@@ -559,21 +566,9 @@ export default function SimpleActPage() {
                 <div className="label">Город назначения *</div>
                 <input value={form.toCity} onChange={e => setForm({...form, toCity: e.target.value})} placeholder="Астана" required list="cities-list" />
                 <datalist id="cities-list">
-                  {[...new Set(
-                    tariffs
-                      .filter(t => {
-                        const wr = t.weightRanges && typeof t.weightRanges === 'object' ? t.weightRanges : {};
-                        const cat = wr._category || (t.isPrivate ? 'private' : 'legal');
-                        return cat === 'private';
-                      })
-                      .map(t => (t.city || "")
-                        .replace(/__LOADERS$/, "")
-                        .replace(/__CARRIERS$/, "")
-                        .replace(/__PRIVATE$/, "")
-                        .replace(/__AVIA$/, "")
-                        .trim())
-                      .filter(Boolean)
-                  )].map((city, i) => <option key={i} value={city} />)}
+                  {destinationCities.map((d) => (
+                    <option key={d.city} value={d.city}>{d.hint || undefined}</option>
+                  ))}
                 </datalist>
                 {matchedTariff && (
                   <div style={{ marginTop: 4, fontSize: "0.8rem", color: "#389e0d" }}>

@@ -40,6 +40,70 @@ export function cleanCityName(city) {
     .toLowerCase();
 }
 
+// Отображаемое имя города: убираем служебные суффиксы, регистр СОХРАНЯЕМ
+// (в отличие от cleanCityName, который ещё и в нижний регистр приводит).
+export function cityDisplayName(city) {
+  return String(city || "")
+    .replace(/__PRIVATE$/, "")
+    .replace(/__LOADERS$/, "")
+    .replace(/__CARRIERS$/, "")
+    .replace(/__REPRESENTATIVES$/, "")
+    .replace(/__CITYDELIVERY$/, "")
+    .replace(/__REGIONDELIVERY$/, "")
+    .replace(/__AVIA$/, "")
+    .trim();
+}
+
+// Список направлений-назначений для подсказок в формах накладной/заявки.
+// Возвращает [{ city, hint }]: города тарифов нужной категории + ПОСЁЛКИ из
+// _regionalDeliveries (Жанаозен, Кулсары…). Посёлок приоритетнее одноимённого
+// прямого тарифа (как и в расчёте) и помечается «посёлок · РодительскийГород».
+// category: 'legal' | 'private' | undefined (обе категории доставки).
+export function getDeliveryDestinations(tariffs, category) {
+  const inCat = (t) => {
+    const cat = getTariffCategory(t);
+    if (cat !== "legal" && cat !== "private") return false;
+    if (category && cat !== category) return false;
+    return true;
+  };
+  const byClean = new Map(); // cleanCityName -> { city, hint }
+
+  // 1) Посёлки из _regionalDeliveries — приоритетнее (расчёт так и считает).
+  (tariffs || []).forEach((t) => {
+    if (!inCat(t)) return;
+    const wr = t.weightRanges && typeof t.weightRanges === "object" ? t.weightRanges : {};
+    (Array.isArray(wr._regionalDeliveries) ? wr._regionalDeliveries : []).forEach((r) => {
+      if (!r || !r.region) return;
+      const clean = cleanCityName(r.region);
+      if (!clean) return;
+      byClean.set(clean, { city: cityDisplayName(r.region), hint: `посёлок · ${cityDisplayName(t.city)}` });
+    });
+  });
+
+  // 2) Прямые города — если это имя ещё не занято посёлком.
+  (tariffs || []).forEach((t) => {
+    if (!inCat(t)) return;
+    const clean = cleanCityName(t.city);
+    if (!clean || byClean.has(clean)) return;
+    byClean.set(clean, { city: cityDisplayName(t.city), hint: "" });
+  });
+
+  return [...byClean.values()].sort((a, b) => a.city.localeCompare(b.city, "ru"));
+}
+
+// Список городов ОТПРАВЛЕНИЯ (fromCity) из тарифов доставки — для подсказок.
+export function getTariffOrigins(tariffs) {
+  const set = new Set();
+  (tariffs || []).forEach((t) => {
+    const cat = getTariffCategory(t);
+    if (cat !== "legal" && cat !== "private") return;
+    const from = cityDisplayName(t.fromCity || DEFAULT_FROM_CITY) || DEFAULT_FROM_CITY;
+    if (from) set.add(from);
+  });
+  if (set.size === 0) set.add(DEFAULT_FROM_CITY);
+  return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+}
+
 // Категория тарифа: приоритет weightRanges._category, иначе по isPrivate.
 export function getTariffCategory(t) {
   const wr = t && t.weightRanges && typeof t.weightRanges === "object" ? t.weightRanges : {};

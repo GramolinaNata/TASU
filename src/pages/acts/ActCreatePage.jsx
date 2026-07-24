@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { calcDeliveryPrice } from "../../shared/tariff/calcTariff.js";
+import { calcDeliveryPrice, getDeliveryDestinations, getTariffOrigins } from "../../shared/tariff/calcTariff.js";
 import { upsertCounterparty } from "../../shared/counterparty/upsertCounterparty.js";
 import { api } from "../../shared/api/api.js";
 import {
@@ -306,23 +306,11 @@ export default function ActCreatePage() {
     );
   }, [allCounterparties, cpSearchQuery]);
 
-  // ТЗ: подсказка городов из справочника Тарифы, чтобы город в заявке
-  // точно совпадал с городом в тарифе (иначе расчёт по тарифу не находит совпадение)
-  const tariffCities = useMemo(() => {
-    const set = new Set();
-    allTariffs.forEach((t) => {
-      const category = getTariffCategory(t);
-      if (category !== "legal" && category !== "private") return; // тарифы доставки, не грузчики/перевозчики
-      const clean = (t.city || "")
-        .replace(/__PRIVATE$/, "")
-        .replace(/__LOADERS$/, "")
-        .replace(/__CARRIERS$/, "")
-        .replace(/__AVIA$/, "")
-        .trim();
-      if (clean) set.add(clean);
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "ru"));
-  }, [allTariffs]);
+  // ТЗ: подсказки городов из справочника Тарифы, чтобы город в заявке точно совпадал
+  // с тарифом (иначе расчёт не находит совпадение). Назначения = города тарифов +
+  // ПОСЁЛКИ из _regionalDeliveries (с пометкой «посёлок · Родитель»). Отправления = fromCity.
+  const destinationCities = useMemo(() => getDeliveryDestinations(allTariffs), [allTariffs]);
+  const originCities = useMemo(() => getTariffOrigins(allTariffs), [allTariffs]);
 
   // ============================================================
   // ЗАГРУЗКА ДАННЫХ
@@ -1215,7 +1203,7 @@ export default function ActCreatePage() {
                   value={route.fromCity}
                   onChange={(e) => setRoute({ ...route, fromCity: e.target.value })}
                   placeholder="Алматы"
-                  list="tariff-cities-list"
+                  list="tariff-origins-list"
                 />
               </div>
               <div className="field">
@@ -1224,9 +1212,9 @@ export default function ActCreatePage() {
                   value={route.toCity}
                   onChange={(e) => setRoute({ ...route, toCity: e.target.value })}
                   placeholder="Астана"
-                  list="tariff-cities-list"
+                  list="tariff-destinations-list"
                 />
-                {tariffCities.length === 0 && (
+                {destinationCities.length === 0 && (
                   <div style={{ fontSize: "0.75rem", color: "#dc2626", marginTop: 4 }}>
                     ⚠ Тарифы не загружены или пусты. Проверьте раздел Тарифы.
                   </div>
@@ -1665,8 +1653,13 @@ export default function ActCreatePage() {
         </button>
       </div>
 
-      <datalist id="tariff-cities-list">
-        {tariffCities.map((city) => (
+      <datalist id="tariff-destinations-list">
+        {destinationCities.map((d) => (
+          <option key={d.city} value={d.city}>{d.hint || undefined}</option>
+        ))}
+      </datalist>
+      <datalist id="tariff-origins-list">
+        {originCities.map((city) => (
           <option key={city} value={city} />
         ))}
       </datalist>

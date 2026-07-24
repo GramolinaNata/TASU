@@ -2,7 +2,7 @@
 // Без внешних зависимостей — только node:assert. Фикстуры повторяют реальные тарифы из базы
 // (Актау / Жанаозен-посёлок / Астана), чтобы зафиксировать поведение и не допустить регрессий.
 import assert from "node:assert";
-import { calcDeliveryPrice, findDeliveryTariff, findRegionalTariff } from "./calcTariff.js";
+import { calcDeliveryPrice, findDeliveryTariff, findRegionalTariff, getDeliveryDestinations, getTariffOrigins } from "./calcTariff.js";
 
 // ── Фикстуры (срез реальных данных) ─────────────────────────────
 const ЖАНАОЗЕН_РЕГИОН = {
@@ -140,6 +140,33 @@ test("Одинаковое назначение, разное отправлен
 test("Пустое отправление трактуется как «Алматы» (обратная совместимость)", () => {
   const r = calcDeliveryPrice({ tariffs: TARIFFS, city: "Актау", fromCity: "", weightKg: 25, category: "private" });
   assert.strictEqual(r.sum, 4300, `по умолчанию из Алматы, получено ${r.sum}`);
+});
+
+// ── 7. Подсказки городов (назначения с посёлками, отправления) ──
+test("getDeliveryDestinations(private): Актау + Жанаозен как посёлок · Актау", () => {
+  const dst = getDeliveryDestinations(TARIFFS, "private");
+  const jan = dst.find(d => d.city === "Жанаозен");
+  const akt = dst.find(d => d.city === "Актау");
+  assert.ok(jan, "Жанаозен должен быть в списке");
+  assert.strictEqual(jan.hint, "посёлок · Актау", `hint неверный: ${jan && jan.hint}`);
+  assert.ok(akt && akt.hint === "", "Актау — прямой город без пометки");
+});
+test("Посёлок приоритетнее одноимённого standalone-тарифа в подсказке", () => {
+  // Жанаозен есть и как standalone (ЖАНАОЗЕН_STANDALONE), и как посёлок в Актау →
+  // в подсказке должен быть ОДИН Жанаозен, помеченный как посёлок.
+  const dst = getDeliveryDestinations(TARIFFS, "private");
+  const jans = dst.filter(d => d.city === "Жанаозен");
+  assert.strictEqual(jans.length, 1, "Жанаозен должен быть один");
+  assert.strictEqual(jans[0].hint, "посёлок · Актау");
+});
+test("getDeliveryDestinations(legal): Астана и Алматы, без посёлков", () => {
+  const dst = getDeliveryDestinations(TARIFFS, "legal").map(d => d.city);
+  assert.ok(dst.includes("Астана") && dst.includes("Алматы"), `получено: ${dst.join(", ")}`);
+  assert.ok(!dst.includes("Жанаозен"), "Жанаозен — только в private");
+});
+test("getTariffOrigins: Алматы и Караганда", () => {
+  const origins = getTariffOrigins(TARIFFS);
+  assert.deepStrictEqual(origins, ["Алматы", "Караганда"], `получено: ${origins.join(", ")}`);
 });
 
 // ── Итог ────────────────────────────────────────────────────────
