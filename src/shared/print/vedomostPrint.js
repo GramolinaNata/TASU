@@ -113,6 +113,7 @@ export function printCarrierVedomost({ companyName = "", vedomostNumber = "", ro
     <td style="text-align:center">${i + 1}</td>
     <td>${esc(r.number)}</td>
     <td>${esc(r.city)}</td>
+    <td style="text-align:center">${r.seats != null && r.seats !== "" ? esc(String(r.seats)) : "—"}</td>
     <td style="text-align:center">${fmt(r.weight)} кг</td>
     <td>${esc(r.carrierName || "—")}</td>
     <td style="text-align:center">${fmt(r.carrierRate)} тг/кг</td>
@@ -133,6 +134,7 @@ export function printCarrierVedomost({ companyName = "", vedomostNumber = "", ro
         <th style="width:24px">№</th>
         <th>Партия</th>
         <th>Город</th>
+        <th style="width:45px">Мест</th>
         <th style="width:60px">Вес</th>
         <th>Перевозчик</th>
         <th style="width:70px">Тариф</th>
@@ -142,6 +144,7 @@ export function printCarrierVedomost({ companyName = "", vedomostNumber = "", ro
       <tbody>${rowsHtml}</tbody>
     </table>
     <div class="totals">
+      <div>Всего мест: ${totals.totalSeats != null ? fmt(totals.totalSeats) : "—"}</div>
       <div>Общий вес: ${fmt(totals.totalWeight)} кг</div>
       <div>Сумма перевозчику: ${fmt(totals.carrierSum)} тг</div>
       <div>Сумма представителю: ${fmt(totals.representativeSum)} тг</div>

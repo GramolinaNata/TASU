@@ -230,6 +230,10 @@ model CarrierVedomost {
   carrierSum        Float    @default(0)
   loaderSum         Float    @default(0)
   representativeSum Float    @default(0)
+  // ТЗ: ведомость нельзя удалять — только аннулировать. Партии при этом
+  // освобождаются (Batch.carrierVedomostId = null), номер ведомости сохраняется.
+  annulled          Boolean  @default(false)
+  annulledAt        DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }

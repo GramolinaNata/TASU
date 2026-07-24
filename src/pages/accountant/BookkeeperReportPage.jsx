@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../shared/api/api.js";
+import { activeRequestIds, batchTotalsExcludingCanceled } from "../../shared/batch/batchTotals.js";
 
 const parseDetails = (raw) => {
   if (!raw) return {};
@@ -17,6 +18,13 @@ const parseJson = (raw) => {
 
 function fmt(n) {
   return Number(n || 0).toLocaleString();
+}
+
+// Дата формирования партии (то же поле createdAt, по которому работает фильтр дат).
+function formatDate(v) {
+  if (!v) return "—";
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? "—" : d.toLocaleDateString("ru");
 }
 
 export default function BookkeeperReportPage() {
@@ -94,25 +102,20 @@ export default function BookkeeperReportPage() {
   const carrierName = (id) => carriers.find(c => c.id === id)?.name || "—";
   const repName = (id) => representatives.find(r => r.id === id)?.name || "—";
 
-  // Сумма накладных партии (доход)
-  const batchIncome = (batch) => {
-    let ids = [];
-    try { ids = JSON.parse(batch.requestIds || "[]"); } catch (e) {}
-    let sum = 0;
-    ids.forEach(rid => {
-      const r = requests.find(rr => rr.id === rid);
-      if (r) {
-        const d = parseDetails(r.details);
-        sum += Number(r.totalSum || d.totalSum || 0) || 0;
-      }
-    });
-    return sum;
-  };
+  // Быстрый доступ к накладной по id (для хелперов агрегации из shared/batch).
+  const getRequest = (rid) => requests.find(rr => rr.id === rid);
+  const batchIds = (batch) => { try { return JSON.parse(batch.requestIds || "[]"); } catch (e) { return []; } };
 
-  // Расходы, привязанные к накладным партии (ручной ввод бухгалтера)
+  // Активные накладные партии = requestIds, КРОМЕ аннулированных (status='canceled').
+  // Аннулированные не должны попадать в цифры отчёта (выручка, места, расходы, налог).
+  const batchActiveIds = (batch) => activeRequestIds(batchIds(batch), getRequest);
+
+  // Сумма накладных партии (доход) — без аннулированных
+  const batchIncome = (batch) => batchTotalsExcludingCanceled(batchIds(batch), getRequest).income;
+
+  // Расходы, привязанные к накладным партии (ручной ввод бухгалтера) — без аннулированных
   const batchExpenses = (batch) => {
-    let ids = [];
-    try { ids = JSON.parse(batch.requestIds || "[]"); } catch (e) {}
+    const ids = batchActiveIds(batch);
     let sum = 0;
     expenses.forEach(ex => {
       if (ex.requestId && ids.includes(ex.requestId)) {
@@ -155,29 +158,17 @@ export default function BookkeeperReportPage() {
     };
   };
 
-  // Мест в партии — сумма по накладным из requestIds (поле totalSeats не заполняется).
+  // Мест в партии — сумма по накладным из requestIds (без аннулированных).
   // Fallback на сохранённое totalSeats, если накладные не подтянулись.
   const batchSeats = (batch) => {
-    let ids = [];
-    try { ids = JSON.parse(batch.requestIds || "[]"); } catch (e) {}
-    let seats = 0;
-    ids.forEach(rid => {
-      const r = requests.find(rr => rr.id === rid);
-      if (r) {
-        const d = parseDetails(r.details);
-        seats += Number(d.totals?.seats) || 0;
-      }
-    });
-    if (!seats) seats = Number(batch.totalSeats) || 0;
-    return seats;
+    const seats = batchTotalsExcludingCanceled(batchIds(batch), getRequest).seats;
+    return seats || Number(batch.totalSeats) || 0;
   };
 
-  // Компания партии = компания её накладных (у самих партий companyId пустой)
+  // Компания партии = компания её накладных (у самих партий companyId пустой), без аннулированных
   const batchCompanyId = (batch) => {
     if (batch.companyId) return batch.companyId;
-    let ids = [];
-    try { ids = JSON.parse(batch.requestIds || "[]"); } catch (e) {}
-    for (const rid of ids) {
+    for (const rid of batchActiveIds(batch)) {
       const r = requests.find(rr => rr.id === rid);
       if (r && r.companyId) return r.companyId;
     }
@@ -231,6 +222,7 @@ export default function BookkeeperReportPage() {
       return {
         id: b.id,
         name: `${b.number}`,
+        createdAt: b.createdAt,
         hasVedomost: !!b.carrierVedomostId,
         vedomostNumber: b.carrierVedomostId ? (carrierVedomosts.find(v => v.id === b.carrierVedomostId)?.number || "") : "",
         representative,
@@ -275,13 +267,32 @@ export default function BookkeeperReportPage() {
     profit: activeRows.reduce((a, r) => a + r.profit, 0),
   }), [activeRows]);
 
-  const printReport = () => {
+  const printReport = async () => {
+    if (activeRows.length === 0) {
+      alert('Нет партий для отчёта за выбранный период.');
+      return;
+    }
+
+    // ТЗ п.4: печать с вкладки «Текущие» = формирование отчёта → партии уходят в архив.
+    // С вкладки «Архив» — просто повторная печать (партии уже проведены).
+    const isActiveTab = tab === 'active';
+    const idsToArchive = activeRows.map(r => r.id);
+    if (isActiveTab) {
+      const ok = window.confirm(
+        `Отчёт по ${idsToArchive.length} партиям будет сформирован и напечатан.\n\n` +
+        `После печати эти партии уйдут в архив «Проведённые» — оттуда их можно перепечатать ` +
+        `или вернуть в «Текущие», если провели по ошибке.\n\nПродолжить?`
+      );
+      if (!ok) return;
+    }
+
     const company = companies.find(c => c.id === companyId);
     const period = (dateFrom || dateTo) ? `${dateFrom || '...'} — ${dateTo || '...'}` : 'весь период';
 
     const trs = sortRows(activeRows).map((r, i) => `<tr>
       <td style="text-align:center">${i + 1}</td>
       <td>${r.name}${r.vedomostNumber ? ` <span style="color:#2563eb">(${r.vedomostNumber})</span>` : (!r.hasVedomost ? " (нет ведомости)" : "")}</td>
+      <td style="text-align:center">${formatDate(r.createdAt)}</td>
       <td>${r.representative}</td>
       <td>${r.carrier}</td>
       <td style="text-align:center">${r.loaders || '—'}</td>
@@ -312,6 +323,7 @@ export default function BookkeeperReportPage() {
       <thead><tr>
         <th style="width:26px">№</th>
         <th>Партия</th>
+        <th style="width:66px">Дата</th>
         <th>Представитель</th>
         <th>Перевозчик</th>
         <th style="width:50px">Грузчик</th>
@@ -327,7 +339,7 @@ export default function BookkeeperReportPage() {
       </tr></thead>
       <tbody>${trs}</tbody>
       <tfoot><tr>
-        <td colspan="7" style="text-align:right">ИТОГО:</td>
+        <td colspan="8" style="text-align:right">ИТОГО:</td>
         <td style="text-align:right">${fmt(totals.income)} тг</td>
         <td style="text-align:right">${fmt(totals.expense)} тг</td>
         <td style="text-align:right">${fmt(totals.carrierSum)} тг</td>
@@ -342,17 +354,20 @@ export default function BookkeeperReportPage() {
 
     const blob = new Blob([html], { type: "text/html; charset=utf-8" });
     window.open(URL.createObjectURL(blob), "_blank");
-  };
 
-  // Провести выбранные партии в архив (status='reported') — уходят из «Текущих».
-  const archiveSelected = async () => {
-    if (selected.length === 0) return;
-    if (!window.confirm(`Провести в архив выбранные партии (${selected.length})? Они перейдут во вкладку «Архив».`)) return;
-    try {
-      await Promise.all(selected.map(id => api.batches.update(id, { status: 'reported' })));
-      setSelected([]);
-      await load();
-    } catch (e) { alert('Ошибка при проведении: ' + (e.message || e)); }
+    // Авто-проведение в архив только с вкладки «Текущие». Делаем ПОСЛЕ открытия печати —
+    // окно печати уже содержит снимок данных, поэтому перезагрузка списка ему не мешает.
+    // Браузер не сообщает, реально ли напечатали, поэтому проводим по факту формирования;
+    // при ошибочном проведении партию можно вернуть в «Текущие».
+    if (isActiveTab) {
+      try {
+        await Promise.all(idsToArchive.map(id => api.batches.update(id, { status: 'reported' })));
+        setSelected([]);
+        await load();
+      } catch (e) {
+        alert('Отчёт напечатан, но не удалось провести партии в архив: ' + (e.message || e));
+      }
+    }
   };
 
   // Вернуть выбранные партии из архива в «Текущие».
@@ -380,18 +395,16 @@ export default function BookkeeperReportPage() {
             <>
               <span style={{ fontSize: "0.85rem", color: "#0369a1" }}>Выбрано: {selected.length}</span>
               <button className="btn" onClick={() => setSelected([])}>Снять выбор</button>
-              {tab === 'active' ? (
-                <button className="btn btn--accent" style={{ background: "#6d28d9", borderColor: "#6d28d9" }} onClick={archiveSelected}>
-                  📦 Провести в архив ({selected.length})
-                </button>
-              ) : (
+              {tab === 'archive' && (
                 <button className="btn" onClick={unarchiveSelected}>
                   ↩ Вернуть в текущие ({selected.length})
                 </button>
               )}
             </>
           )}
-          <button className="btn btn--accent" onClick={printReport}>🖨 Печать отчёта</button>
+          <button className="btn btn--accent" onClick={printReport}>
+            🖨 {tab === 'active' ? 'Печать отчёта (→ в архив)' : 'Печать отчёта'}
+          </button>
         </div>
       </div>
 
@@ -402,6 +415,12 @@ export default function BookkeeperReportPage() {
         <button className={`btn ${tab === 'archive' ? 'btn--accent' : ''}`} onClick={() => switchTab('archive')}>
           📦 Архив <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({archiveCount})</span>
         </button>
+      </div>
+
+      <div style={{ marginTop: 12, padding: '8px 12px', background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6, fontSize: '0.85rem', color: '#854d0e' }}>
+        {tab === 'active'
+          ? '💡 Отберите партии (фильтром по датам и/или галочками) и нажмите «Печать отчёта» — отчёт напечатается, а партии уйдут в архив «Проведённые». Если галочки не стоят, проводится весь список по фильтру.'
+          : '💡 Архив проведённых партий. Можно отфильтровать по периоду и распечатать отчёт заново, либо вернуть партии в «Текущие».'}
       </div>
       <div className="filter" style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ width: 200 }}>
@@ -424,29 +443,7 @@ export default function BookkeeperReportPage() {
         )}
       </div>
 
-      <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap" }}>
-        <div style={{ padding: "10px 16px", background: "#f0f9ff", borderRadius: 8, border: "1px solid #bae6fd" }}>
-          Выручка: <strong>{fmt(totals.income)} тг</strong>
-        </div>
-        <div style={{ padding: "10px 16px", background: "#fef2f2", borderRadius: 8, border: "1px solid #fecaca" }}>
-          Расходы: <strong>{fmt(totals.expense)} тг</strong>
-        </div>
-        <div style={{ padding: "10px 16px", background: "#fefce8", borderRadius: 8, border: "1px solid #fde047" }}>
-          Перевозчику: <strong>{fmt(totals.carrierSum)} тг</strong>
-        </div>
-        <div style={{ padding: "10px 16px", background: "#fefce8", borderRadius: 8, border: "1px solid #fde047" }}>
-          Грузчикам: <strong>{fmt(totals.loaderSum)} тг</strong>
-        </div>
-        <div style={{ padding: "10px 16px", background: "#fefce8", borderRadius: 8, border: "1px solid #fde047" }}>
-          Представителю: <strong>{fmt(totals.representativeSum)} тг</strong>
-        </div>
-        <div style={{ padding: "10px 16px", background: "#f5f3ff", borderRadius: 8, border: "1px solid #ddd6fe" }}>
-          Налог: <strong>{fmt(totals.taxAmount)} тг</strong>
-        </div>
-        <div style={{ padding: "10px 16px", background: "#f0fdf4", borderRadius: 8, border: "1px solid #bbf7d0" }}>
-          Итоговая прибыль: <strong>{fmt(totals.profit)} тг</strong>
-        </div>
-      </div>
+      {/* ТЗ п.3: цветные плашки-счётчики над таблицей убраны — итоги печатаются в таблице отчёта */}
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
         {loading ? <div style={{ padding: 16 }}>Загрузка...</div> : (
@@ -458,6 +455,7 @@ export default function BookkeeperReportPage() {
                 </th>
                 <th style={{ width: 40 }}>№</th>
                 <SortTh field="name">Партия</SortTh>
+                <SortTh field="createdAt" style={{ width: 100 }}>Дата</SortTh>
                 <SortTh field="representative">Представитель</SortTh>
                 <SortTh field="carrier">Перевозчик</SortTh>
                 <SortTh field="loaders" style={{ width: 70, textAlign: "center" }}>Грузчик</SortTh>
@@ -475,7 +473,7 @@ export default function BookkeeperReportPage() {
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={15} className="muted" style={{ padding: 16 }}>Нет данных за выбранный период</td></tr>
+                <tr><td colSpan={16} className="muted" style={{ padding: 16 }}>Нет данных за выбранный период</td></tr>
               ) : sortRows(rows).map((r, i) => (
                 <tr key={r.id} style={{ background: selected.includes(r.id) ? "rgba(24,144,255,0.06)" : "" }}>
                   <td style={{ textAlign: "center" }}>
@@ -483,6 +481,7 @@ export default function BookkeeperReportPage() {
                   </td>
                   <td>{i + 1}</td>
                   <td style={{ fontWeight: 700 }}>{r.name}{r.vedomostNumber ? <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#1d4ed8", background: "#eff6ff", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>🚚 {r.vedomostNumber}</span> : (!r.hasVedomost && <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#d46b08", background: "#fff7e6", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>⏳ нет ведомости</span>)}</td>
+                  <td>{formatDate(r.createdAt)}</td>
                   <td>{r.representative}</td>
                   <td>{r.carrier}</td>
                   <td style={{ textAlign: "center" }}>{r.loaders || '—'}</td>

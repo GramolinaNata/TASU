@@ -47,6 +47,9 @@ export default function BatchDetailPage() {
         }
       }
 
+      // Аннулированные накладные исключаем: не показываем и не считаем в вес/места/сумму.
+      reqs = reqs.filter(r => r && r.status !== 'canceled');
+
       // Парсим details у накладных
       const parsed = reqs.map((r) => {
         let details = {};
@@ -87,10 +90,12 @@ export default function BatchDetailPage() {
 
     const carrierRate = Number(my.carrierRate) || 0;
     const representativeRate = Number(snap.representativeRate) || 0;
-    // Вес партии считаем из накладных (как грузовая); fallback — из снапшота.
+    // Вес и места партии считаем из накладных (как грузовая); fallback — из снапшота.
     const requests = Array.isArray(batch.requests) ? batch.requests : [];
     let weight = requests.reduce((acc, req) => acc + (Number((req.details || {}).totals?.weight) || 0), 0);
     if (!weight) weight = Number(my.weight) || 0;
+    let seats = requests.reduce((acc, req) => acc + (Number((req.details || {}).totals?.seats) || 0), 0);
+    if (!seats) seats = Number(my.seats) || 0;
     const carrierSum = Math.round(weight * carrierRate);
     const representativeSum = Math.round(weight * representativeRate);
 
@@ -101,13 +106,14 @@ export default function BatchDetailPage() {
       rows: [{
         number: batch.number || "—",
         city: batch.city || "—",
+        seats,
         weight,
         carrierName: my.carrierName || "—",
         carrierRate,
         carrierSum,
         representativeName: my.representativeName || "—",
       }],
-      totals: { totalWeight: weight, carrierSum, representativeRate, representativeSum },
+      totals: { totalSeats: seats, totalWeight: weight, carrierSum, representativeRate, representativeSum },
     });
   };
 

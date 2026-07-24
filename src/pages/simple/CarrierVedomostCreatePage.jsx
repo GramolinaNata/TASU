@@ -124,23 +124,26 @@ export default function CarrierVedomostCreatePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [company]);
 
-  // Реальный вес партии считаем из накладных (как грузовая ведомость): поле
-  // totalWeight у партии часто не заполнено. Грузим накладные по requestIds и суммируем.
+  // Реальный вес и МЕСТА партии считаем из накладных (как грузовая ведомость):
+  // поля totalWeight/totalSeats у партии часто не заполнены. Грузим накладные и суммируем.
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const entries = await Promise.all((batches || []).map(async (b) => {
         let ids = [];
         try { ids = JSON.parse(b.requestIds || "[]"); } catch { /* ignore */ }
-        if (!ids.length) return [b.id, toNum(b.totalWeight)];
+        if (!ids.length) return [b.id, { weight: toNum(b.totalWeight), seats: toNum(b.totalSeats) }];
         const reqs = await Promise.all(ids.map(id => api.requests.get(id).catch(() => null)));
-        let w = 0;
-        reqs.filter(Boolean).forEach(r => {
+        let w = 0, s = 0;
+        // Аннулированные накладные не считаем в вес/места ведомости перевозчика.
+        reqs.filter(r => r && r.status !== 'canceled').forEach(r => {
           let d = {};
           try { d = JSON.parse(r.details || "{}"); } catch { /* ignore */ }
-          w += Number(d && d.totals ? d.totals.weight : 0) || 0;
+          const t = (d && d.totals) ? d.totals : {};
+          w += Number(t.weight) || 0;
+          s += Number(t.seats) || 0;
         });
-        return [b.id, w];
+        return [b.id, { weight: w, seats: s }];
       }));
       if (!cancelled) setBatchWeights(Object.fromEntries(entries));
     })();
@@ -175,8 +178,10 @@ export default function CarrierVedomostCreatePage() {
   // Разбивка по каждой выбранной партии + итоги — единая точка расчёта
   const breakdown = useMemo(() => {
     const rows = selectedBatches.map(b => {
-      // Вес из накладных (batchWeights); fallback на поле партии, пока грузится.
-      const weight = batchWeights[b.id] != null ? batchWeights[b.id] : toNum(b.totalWeight);
+      // Вес и места из накладных (batchWeights); fallback на поля партии, пока грузятся.
+      const bt = batchWeights[b.id];
+      const weight = bt != null ? bt.weight : toNum(b.totalWeight);
+      const seats = bt != null ? bt.seats : toNum(b.totalSeats);
 
       // Перевозчик: оверрайд из формы, иначе назначенный в партии. Имя — вживую из справочника.
       const carrierId = rowCarrier[b.id] !== undefined ? rowCarrier[b.id] : (b.carrierId || "");
@@ -202,6 +207,7 @@ export default function CarrierVedomostCreatePage() {
         number: b.number,
         city: b.city,
         weight,
+        seats,
         carrierId,
         carrierName,
         carrierRate,
@@ -220,11 +226,12 @@ export default function CarrierVedomostCreatePage() {
     });
 
     const totalWeight = rows.reduce((acc, r) => acc + r.weight, 0);
+    const totalSeats = rows.reduce((acc, r) => acc + r.seats, 0);
     const carrierSum = rows.reduce((acc, r) => acc + r.carrierSum, 0);
     const loaderSum = rows.reduce((acc, r) => acc + r.loaderSum, 0);
     const representativeSum = rows.reduce((acc, r) => acc + r.representativeSum, 0);
 
-    return { rows, totalWeight, carrierSum, loaderSum, representativeSum };
+    return { rows, totalWeight, totalSeats, carrierSum, loaderSum, representativeSum };
   }, [selectedBatches, tariffs, carriers, representatives, rowCarrier, rowRep, batchWeights]);
 
   const hasMissingTariffs = breakdown.rows.some(r => r.carrierMissing || r.loaderMissing || r.repMissing);
@@ -238,6 +245,7 @@ export default function CarrierVedomostCreatePage() {
       vedomostNumber,
       rows: snapshot.rows || [],
       totals: {
+        totalSeats: snapshot.totalSeats,
         totalWeight: snapshot.totalWeight,
         carrierSum: snapshot.carrierSum,
         representativeRate: snapshot.representativeRate,
@@ -263,6 +271,7 @@ export default function CarrierVedomostCreatePage() {
       const snapshot = {
         rows: breakdown.rows,
         companyName: company?.name || "",
+        totalSeats: breakdown.totalSeats,
         totalWeight: breakdown.totalWeight,
         carrierSum: breakdown.carrierSum,
         loaderSum: breakdown.loaderSum,
@@ -346,13 +355,14 @@ export default function CarrierVedomostCreatePage() {
                 <th style={{ width: 40 }}></th>
                 <th style={{ width: 120 }}>Номер</th>
                 <th>Город</th>
+                <th style={{ width: 90, textAlign: 'center' }}>Мест</th>
                 <th style={{ width: 100, textAlign: 'center' }}>Вес (кг)</th>
                 <th style={{ width: 100, textAlign: 'center' }}>Грузчиков</th>
               </tr>
             </thead>
             <tbody>
               {batches.length === 0 ? (
-                <tr><td colSpan={5} className="muted" style={{ padding: 16 }}>
+                <tr><td colSpan={6} className="muted" style={{ padding: 16 }}>
                   Нет доступных сформированных партий.
                 </td></tr>
               ) : batches.map(b => (
@@ -362,7 +372,8 @@ export default function CarrierVedomostCreatePage() {
                   </td>
                   <td style={{ fontWeight: 700 }}>{b.number}</td>
                   <td>{b.city}</td>
-                  <td style={{ textAlign: 'center' }}>{batchWeights[b.id] != null ? batchWeights[b.id] : (b.totalWeight || 0)}</td>
+                  <td style={{ textAlign: 'center' }}>{batchWeights[b.id] != null ? batchWeights[b.id].seats : (b.totalSeats || 0)}</td>
+                  <td style={{ textAlign: 'center' }}>{batchWeights[b.id] != null ? batchWeights[b.id].weight : (b.totalWeight || 0)}</td>
                   <td style={{ textAlign: 'center' }}>{b.loadersCount || 0}</td>
                 </tr>
               ))}
@@ -386,6 +397,7 @@ export default function CarrierVedomostCreatePage() {
                 <tr>
                   <th>Партия</th>
                   <th>Город</th>
+                  <th style={{ textAlign: 'center' }}>Мест</th>
                   <th style={{ textAlign: 'center' }}>Вес</th>
                   <th>Перевозчик</th>
                   <th style={{ textAlign: 'center' }}>Тариф</th>
@@ -399,6 +411,7 @@ export default function CarrierVedomostCreatePage() {
                   <tr key={r.batchId}>
                     <td style={{ fontWeight: 600 }}>{r.number}</td>
                     <td>{r.city}</td>
+                    <td style={{ textAlign: 'center' }}>{r.seats}</td>
                     <td style={{ textAlign: 'center' }}>{r.weight} кг</td>
                     <td>
                       <select value={r.carrierId || ""} onChange={e => setRowCarrier(prev => ({ ...prev, [r.batchId]: e.target.value }))}>
@@ -425,6 +438,9 @@ export default function CarrierVedomostCreatePage() {
             </table>
 
             <div style={{ marginTop: 16, display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ padding: '8px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
+                Всего мест: <strong>{breakdown.totalSeats.toLocaleString()}</strong>
+              </div>
               <div style={{ padding: '8px 16px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 Общий вес: <strong>{breakdown.totalWeight.toLocaleString()} кг</strong>
               </div>

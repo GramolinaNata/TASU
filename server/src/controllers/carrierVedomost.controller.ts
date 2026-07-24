@@ -106,6 +106,37 @@ export const createCarrierVedomost = async (req: AuthRequest, res: Response) => 
   }
 };
 
+// ТЗ: аннулирование ведомости (удалять нельзя). Ведомость помечается annulled=true,
+// номер сохраняется за ней, а входившие партии освобождаются (carrierVedomostId=null)
+// и возвращаются в раздел «Сформированные» для сборки в новую ведомость.
+export const annulCarrierVedomost = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const result = await prisma.$transaction(async (tx) => {
+      const ved = await tx.carrierVedomost.findUnique({ where: { id: id as string } });
+      if (!ved) throw new Error('NOT_FOUND');
+
+      // Освобождаем партии этой ведомости
+      await tx.batch.updateMany({
+        where: { carrierVedomostId: id as string } as any,
+        data: { carrierVedomostId: null } as any,
+      });
+
+      // Помечаем аннулированной (НЕ удаляем — номер остаётся за ней)
+      const updated = await tx.carrierVedomost.update({
+        where: { id: id as string },
+        data: { annulled: true, annulledAt: new Date() } as any,
+      });
+      return updated;
+    });
+    res.json(result);
+  } catch (error: any) {
+    if (error.message === 'NOT_FOUND') return res.status(404).json({ message: 'Ведомость перевозчика не найдена' });
+    console.error('Annul carrier vedomost error:', error);
+    res.status(500).json({ message: 'Ошибка при аннулировании ведомости', details: error.message });
+  }
+};
+
 export const deleteCarrierVedomost = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;

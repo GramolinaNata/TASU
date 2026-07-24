@@ -214,24 +214,30 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
   const cityClean = cleanCityName(city);
   if (!cityClean) return { ok: false, error: "Не указан город получателя" };
 
-  let tariff = findDeliveryTariff(tariffs, city, category, transport, fromCity);
+  let tariff = null;
   let regionalExtra = 0;
   let regionLabel = "";
   let regionParent = "";  // город-родитель, если база взята из посёлка внутри тарифа
   let hubPoselok = "";    // посёлок, база которого взята из опорного города (fallback)
   let hubCityName = "";   // название опорного города (для описания)
 
-  // ПРИОРИТЕТ: город назначения — посёлок ВНУТРИ тарифа (_regionalDeliveries).
+  // ПРИОРИТЕТ (ТЗ): если город назначения заведён как посёлок ВНУТРИ какого-то
+  // тарифа (_regionalDeliveries) — считаем «родительский город + доплата за посёлок».
+  // Это ВАЖНЕЕ одноимённого отдельного тарифа: посёлок настроен явно как доплата к
+  // городу, поэтому он перекрывает случайный/устаревший standalone-тариф того же имени.
   // База берётся из тарифа-города, доплата — из диапазонов посёлка. Категория
-  // (юр/частный) определяется автоматически тем, в тарифе какой категории найден посёлок.
+  // (юр/частный) определяется тем, в тарифе какой категории найден посёлок.
+  const regional = findRegionalTariff(tariffs, city, weightKg, category, transport, fromCity);
+  if (regional) {
+    tariff = regional.tariff;
+    regionalExtra = regional.regionalExtra;
+    regionLabel = regional.regionLabel;
+    regionParent = regional.parentCity;
+  }
+
+  // Иначе — прямой тариф по городу назначения.
   if (!tariff) {
-    const regional = findRegionalTariff(tariffs, city, weightKg, category, transport, fromCity);
-    if (regional) {
-      tariff = regional.tariff;
-      regionalExtra = regional.regionalExtra;
-      regionLabel = regional.regionLabel;
-      regionParent = regional.parentCity;
-    }
+    tariff = findDeliveryTariff(tariffs, city, category, transport, fromCity);
   }
 
   // FALLBACK (legacy): отдельный тариф region_delivery с опорным городом (_hubCity).

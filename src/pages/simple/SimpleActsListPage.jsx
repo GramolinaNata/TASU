@@ -244,7 +244,9 @@ export default function SimpleActsListPage() {
   // водитель/телефон/авто — пустые (дописываются позже в разделе Партии).
   const createBatchAndPrint = async () => {
     if (selected.length === 0) return alert("Выберите накладные");
-    const selectedActs = filtered.filter(a => selected.includes(a.id));
+    // Аннулированные накладные в партию не берём (даже если отмечены на вкладке «Аннулированные»).
+    const selectedActs = filtered.filter(a => selected.includes(a.id) && a.status !== 'canceled');
+    if (selectedActs.length === 0) return alert("Выбраны только аннулированные накладные — их нельзя добавить в партию.");
 
     // Город назначения — из накладных. Все должны быть в один город.
     const cities = [...new Set(selectedActs.map(a => (a.route?.toCity || "").trim()).filter(Boolean))];
@@ -261,7 +263,11 @@ export default function SimpleActsListPage() {
     try {
       const number = await genNextBatchNumberSimple(company);
       const batchData = { number, city, driverName: "", driverPhone: "", carNumber: "", deliveryCost: "" };
-      await api.batches.create({ ...batchData, companyId: company?.id, requestIds: selected });
+      // В партию — ТОЛЬКО реально отмеченные и видимые накладные (selectedActs =
+      // filtered ∩ selected). Раньше писали сырой `selected`, куда мог попасть id,
+      // скрытый текущим фильтром/вкладкой, — из-за этого в партию лезла лишняя накладная.
+      const ids = selectedActs.map(a => a.id);
+      await api.batches.create({ ...batchData, companyId: company?.id, requestIds: ids });
       await printVedomost(selectedActs, batchData);
       setSelected([]);
     } catch (e) {

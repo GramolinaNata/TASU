@@ -7,6 +7,7 @@ import { useAuth } from "../../shared/auth/AuthContext";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import Loader from "../../shared/components/Loader";
 import { printCargoVedomost, printCarrierVedomost } from "../../shared/print/vedomostPrint.js";
+import { buildActiveTotalsMap } from "../../shared/batch/batchTotals.js";
 
 function formatDate(val) {
   if (!val) return "—";
@@ -228,15 +229,9 @@ export default function BatchesPage() {
       if (Array.isArray(list)) setBatches(list);
       setCarrierVedomosts(Array.isArray(cvs) ? cvs : []);
 
-      // Карта итогов по накладным: id -> { seats, weight }
-      const reqMap = {};
-      (Array.isArray(reqs) ? reqs : []).forEach(r => {
-        let d = {};
-        try { d = typeof r.details === "string" ? JSON.parse(r.details) : (r.details || {}); } catch (e) { d = {}; }
-        const t = d.totals || {};
-        reqMap[r.id] = { seats: Number(t.seats) || 0, weight: Number(t.weight) || 0 };
-      });
-      setReqTotals(reqMap);
+      // Карта итогов по накладным: id -> { seats, weight }, БЕЗ аннулированных
+      // (общий хелпер, покрыт тестами в shared/batch/batchTotals.test.mjs).
+      setReqTotals(buildActiveTotalsMap(Array.isArray(reqs) ? reqs : []));
     } catch(e) {
       console.error(e);
     } finally {
@@ -273,6 +268,22 @@ export default function BatchesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrierVedomosts, sortBy, sortOrder]);
 
+  // ТЗ: аннулирование ведомости перевозчика (удалять нельзя). Партии освобождаются
+  // и возвращаются в «Сформированные»; номер ведомости сохраняется, строка серая.
+  const handleAnnulVedomost = async (v) => {
+    if (!window.confirm(
+      `Аннулировать ведомость перевозчика №${v.number}?\n\n` +
+      `Партии освободятся и вернутся в раздел «Сформированные» — их можно будет собрать в новую ведомость. ` +
+      `Номер ${v.number} сохранится за этой ведомостью. Удаление невозможно.`
+    )) return;
+    try {
+      await api.carrierVedomosts.annul(v.id);
+      load();
+    } catch (e) {
+      alert("Ошибка при аннулировании: " + (e.message || e));
+    }
+  };
+
   // Печать ведомости с её уровня — из сохранённого snapshot (единый эталон).
   const printCarrierVedomostRecord = (v) => {
     const snap = parseJson(v.data);
@@ -281,6 +292,7 @@ export default function BatchesPage() {
       vedomostNumber: v.number,
       rows: Array.isArray(snap.rows) ? snap.rows : [],
       totals: {
+        totalSeats: snap.totalSeats,
         totalWeight: v.totalWeight,
         carrierSum: v.carrierSum,
         representativeRate: snap.representativeRate,
@@ -347,12 +359,34 @@ export default function BatchesPage() {
     return freeRequests.filter(r => (r.city || "").trim().toLowerCase() === cityClean);
   }, [freeRequests, form.city]);
 
-  // Автоподсчёт веса/мест из накладных города
+  // Автоподсчёт веса/мест из накладных города (для создания)
   const selectedTotals = useMemo(() => {
     let seats = 0, weight = 0;
     cityRequests.forEach(r => { seats += r.seats; weight += r.weight; });
     return { seats, weight };
   }, [cityRequests]);
+
+  // ── Редактирование состава партии (ТЗ п.5) ──
+  // Чеклист = свободные накладные + свои (loadFreeRequests их включает), того же города партии.
+  const editInvoices = useMemo(() => {
+    const cityClean = (form.city || "").trim().toLowerCase();
+    if (!cityClean) return freeRequests;
+    return freeRequests.filter(r => (r.city || "").trim().toLowerCase() === cityClean);
+  }, [freeRequests, form.city]);
+
+  const toggleReqInBatch = (id) => {
+    setSelectedReqIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  // Итоги по ОТМЕЧЕННЫМ накладным (режим редактирования)
+  const editSelectedTotals = useMemo(() => {
+    let seats = 0, weight = 0;
+    freeRequests.forEach(r => { if (selectedReqIds.includes(r.id)) { seats += r.seats; weight += r.weight; } });
+    return { seats, weight };
+  }, [freeRequests, selectedReqIds]);
+
+  // Итоги, отображаемые в форме: редактирование → по отмеченным, создание → по городу.
+  const formTotals = editBatch ? editSelectedTotals : selectedTotals;
 
   const openCreate = async () => {
     setEditBatch(null);
@@ -361,6 +395,7 @@ export default function BatchesPage() {
     setSelectedReqIds([]);
     await loadFreeRequests([]);
     setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const openEdit = (batch) => {
@@ -385,20 +420,21 @@ export default function BatchesPage() {
       loadersCount: batch.loadersCount || "",
     });
     setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleSave = async () => {
     if (!form.number || !form.city) return alert("Укажите номер и город");
     try {
-      // 🆕 При создании — фиксируем все накладные города; при редактировании оставляем прежние
-      const ids = editBatch
-        ? (() => { try { return JSON.parse(editBatch.requestIds || "[]"); } catch (e) { return []; } })()
-        : cityRequests.map(r => r.id);
+      // Создание — все свободные накладные города; редактирование — ТОЛЬКО отмеченные
+      // галочками (selectedReqIds), состав меняется прямо в форме (ТЗ п.5).
+      const ids = editBatch ? selectedReqIds : cityRequests.map(r => r.id);
+      const totals = editBatch ? editSelectedTotals : selectedTotals;
 
       const payload = {
         ...form,
-        totalSeats: selectedTotals.seats,
-        totalWeight: selectedTotals.weight,
+        totalSeats: totals.seats,
+        totalWeight: totals.weight,
         requestIds: JSON.stringify(ids),
         carrierId: form.needCarrier ? (form.carrierId || null) : null,
         representativeId: form.needRepresentative ? (form.representativeId || null) : null,
@@ -485,7 +521,8 @@ export default function BatchesPage() {
     let reqs = [];
     if (requestIds.length > 0) {
       reqs = await Promise.all(requestIds.map(rid => api.requests.get(rid).catch(() => null)));
-      reqs = reqs.filter(Boolean);
+      // Аннулированные накладные в грузовую ведомость не попадают.
+      reqs = reqs.filter(r => r && r.status !== 'canceled');
     }
 
     const rows = reqs.map((r) => {
@@ -563,9 +600,12 @@ export default function BatchesPage() {
       )}
 
       {showForm && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <div style={{ background: "var(--card)", borderRadius: 12, padding: 24, width: 520, maxWidth: "95vw", maxHeight: '90vh', overflowY: 'auto' }}>
-            <h2 style={{ margin: "0 0 16px" }}>{editBatch ? "Редактировать партию" : "Новая партия"}</h2>
+        <div className="card" style={{ marginTop: 16, background: "var(--card)", borderRadius: 12, padding: 24 }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: "0 0 16px" }}>
+              <h2 style={{ margin: 0 }}>{editBatch ? `Редактировать партию № ${form.number}` : "Новая партия"}</h2>
+              <button className="btn" onClick={() => setShowForm(false)}>✕ Закрыть</button>
+            </div>
             <div className="form_grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="field">
                 <div className="label">Номер партии *</div>
@@ -592,32 +632,63 @@ export default function BatchesPage() {
                 <input type="number" value={form.deliveryCost} onChange={e => setForm({ ...form, deliveryCost: e.target.value })} placeholder="0" />
               </div>
               <div className="field">
-                <div className="label">Количество мест <span style={{ color: '#94a3b8', fontWeight: 400 }}>(из накладных города)</span></div>
-                <input type="number" value={selectedTotals.seats} readOnly style={{ background: '#f1f5f9', cursor: 'not-allowed' }} />
+                <div className="label">Количество мест <span style={{ color: '#94a3b8', fontWeight: 400 }}>({editBatch ? 'из отмеченных' : 'из накладных города'})</span></div>
+                <input type="number" value={formTotals.seats} readOnly style={{ background: '#f1f5f9', cursor: 'not-allowed' }} />
               </div>
               <div className="field">
-                <div className="label">Общий вес, кг <span style={{ color: '#94a3b8', fontWeight: 400 }}>(из накладных города)</span></div>
-                <input type="number" value={selectedTotals.weight} readOnly style={{ background: '#f1f5f9', cursor: 'not-allowed' }} />
+                <div className="label">Общий вес, кг <span style={{ color: '#94a3b8', fontWeight: 400 }}>({editBatch ? 'из отмеченных' : 'из накладных города'})</span></div>
+                <input type="number" value={formTotals.weight} readOnly style={{ background: '#f1f5f9', cursor: 'not-allowed' }} />
               </div>
             </div>
 
-            {/* 🆕 ТЗ: выбор накладных убран — партия автоматически собирает все свободные накладные города */}
-            <div style={{ marginTop: 16, padding: 14, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8 }}>
-              {!form.city ? (
-                <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
-                  Укажите город назначения — партия автоматически соберёт все свободные накладные этого города.
+            {editBatch ? (
+              /* ТЗ п.5: редактирование состава — накладные с галочками (в партии / свободные того же города) */
+              <div style={{ marginTop: 16 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', marginBottom: 8 }}>
+                  Накладные партии <span style={{ fontWeight: 400, textTransform: 'none', color: '#94a3b8' }}>— снимите галочку, чтобы убрать; поставьте, чтобы добавить свободную того же города</span>
                 </div>
-              ) : cityRequests.length === 0 ? (
-                <div style={{ fontSize: '0.85rem', color: '#dc2626' }}>
-                  Нет свободных накладных на «{form.city}». Создайте накладную на этот город — она войдёт в партию.
+                {editInvoices.length === 0 ? (
+                  <div style={{ fontSize: '0.85rem', color: '#dc2626', padding: 12, background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8 }}>
+                    Нет накладных города «{form.city}».
+                  </div>
+                ) : (
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 8, maxHeight: 260, overflowY: 'auto' }}>
+                    {editInvoices.map(r => {
+                      const checked = selectedReqIds.includes(r.id);
+                      return (
+                        <label key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer', background: checked ? '#f0fdf4' : '' }}>
+                          <input type="checkbox" checked={checked} onChange={() => toggleReqInBatch(r.id)} />
+                          <span style={{ fontWeight: 600, minWidth: 90 }}>{r.number}</span>
+                          <span style={{ flex: 1, color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.receiver}</span>
+                          <span style={{ fontSize: '0.8rem', color: '#64748b', whiteSpace: 'nowrap' }}>{r.seats} мест · {r.weight} кг</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <div style={{ marginTop: 8, fontSize: '0.9rem', color: '#0369a1' }}>
+                  Отмечено: <strong>{selectedReqIds.length}</strong> накладных &nbsp;·&nbsp; {editSelectedTotals.weight} кг &nbsp;·&nbsp; {editSelectedTotals.seats} мест.
                 </div>
-              ) : (
-                <div style={{ fontSize: '0.9rem', color: '#0369a1' }}>
-                  В партию войдёт <strong>{cityRequests.length}</strong> накладных города «{form.city}»
-                  &nbsp;·&nbsp; {selectedTotals.weight} кг &nbsp;·&nbsp; {selectedTotals.seats} мест.
-                </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              /* Создание — партия автоматически собирает все свободные накладные города */
+              <div style={{ marginTop: 16, padding: 14, background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8 }}>
+                {!form.city ? (
+                  <div style={{ fontSize: '0.85rem', color: '#64748b' }}>
+                    Укажите город назначения — партия автоматически соберёт все свободные накладные этого города.
+                  </div>
+                ) : cityRequests.length === 0 ? (
+                  <div style={{ fontSize: '0.85rem', color: '#dc2626' }}>
+                    Нет свободных накладных на «{form.city}». Создайте накладную на этот город — она войдёт в партию.
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '0.9rem', color: '#0369a1' }}>
+                    В партию войдёт <strong>{cityRequests.length}</strong> накладных города «{form.city}»
+                    &nbsp;·&nbsp; {selectedTotals.weight} кг &nbsp;·&nbsp; {selectedTotals.seats} мест.
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Перевозчик / представитель / грузчики */}
             <div style={{ marginTop: 16, padding: 14, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 8, display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -722,17 +793,31 @@ export default function BatchesPage() {
                     <React.Fragment key={v.id}>
                       <tr
                         onClick={() => setExpandedVedomost(open ? null : v.id)}
-                        style={{ cursor: 'pointer', background: open ? '#eff6ff' : '' }}
+                        style={{ cursor: 'pointer', background: open ? '#eff6ff' : '', color: v.annulled ? '#94a3b8' : undefined, opacity: v.annulled ? 0.75 : 1 }}
                       >
-                        <td style={{ fontWeight: 700 }}>{open ? '▾' : '▸'} {v.number}</td>
+                        <td style={{ fontWeight: 700 }}>
+                          {open ? '▾' : '▸'} {v.number}
+                          {v.annulled && (
+                            <span style={{ marginLeft: 8, fontSize: '0.65rem', padding: '1px 6px', borderRadius: 4, background: '#f1f5f9', color: '#64748b', fontWeight: 700, textTransform: 'uppercase' }}>
+                              аннулирована
+                            </span>
+                          )}
+                        </td>
                         <td>{formatDate(v.createdAt)}</td>
                         <td style={{ textAlign: 'center', fontWeight: 600 }}>{cnt}</td>
                         <td style={{ textAlign: 'center', fontWeight: 600 }}>{Number(v.totalWeight || 0).toLocaleString()} кг</td>
                         <td style={{ textAlign: 'right', fontWeight: 700 }}>{Number(v.carrierSum || 0).toLocaleString()} тг</td>
                         <td className="actions-cell" onClick={e => e.stopPropagation()}>
-                          <button className="btn btn--sm" onClick={() => printCarrierVedomostRecord(v)} title="Печать ведомости перевозчика" style={{ fontSize: 11 }}>
-                            🖨 Печать
-                          </button>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            <button className="btn btn--sm" onClick={() => printCarrierVedomostRecord(v)} title="Печать ведомости перевозчика" style={{ fontSize: 11 }}>
+                              🖨 Печать
+                            </button>
+                            {!v.annulled && (
+                              <button className="btn btn--sm" onClick={() => handleAnnulVedomost(v)} title="Аннулировать ведомость (партии освободятся)" style={{ fontSize: 11, color: '#dc2626', borderColor: '#fecaca' }}>
+                                ⊘ Аннулировать
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                       {open && (
@@ -744,6 +829,7 @@ export default function BatchesPage() {
                                   <th style={{ width: 30 }}>№</th>
                                   <th>Партия</th>
                                   <th>Город</th>
+                                  <th style={{ textAlign: 'center' }}>Мест</th>
                                   <th style={{ textAlign: 'center' }}>Вес</th>
                                   <th>Перевозчик</th>
                                   <th style={{ textAlign: 'right' }}>Сумма перевозчику</th>
@@ -752,12 +838,13 @@ export default function BatchesPage() {
                               </thead>
                               <tbody>
                                 {rows.length === 0 ? (
-                                  <tr><td colSpan={7} className="muted" style={{ padding: 10 }}>Нет данных по партиям</td></tr>
+                                  <tr><td colSpan={8} className="muted" style={{ padding: 10 }}>Нет данных по партиям</td></tr>
                                 ) : rows.map((r, i) => (
                                   <tr key={i}>
                                     <td>{i + 1}</td>
                                     <td style={{ fontWeight: 600 }}>{r.number}</td>
                                     <td>{r.city}</td>
+                                    <td style={{ textAlign: 'center' }}>{r.seats != null ? Number(r.seats).toLocaleString() : "—"}</td>
                                     <td style={{ textAlign: 'center' }}>{Number(r.weight || 0).toLocaleString()} кг</td>
                                     <td>{r.carrierId ? (carriers.find(c => c.id === r.carrierId)?.name || r.carrierName || "—") : (r.carrierName || "—")}</td>
                                     <td style={{ textAlign: 'right', fontWeight: 600 }}>{Number(r.carrierSum || 0).toLocaleString()} тг</td>
