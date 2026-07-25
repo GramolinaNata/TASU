@@ -33,6 +33,10 @@ function ContactSuggest({ items, query, onPick }) {
   );
 }
 import { calcDeliveryPrice, findDeliveryTariff, cleanCityName, getTariffCategory, getDeliveryDestinations, getTariffOrigins } from "../../shared/tariff/calcTariff.js";
+import {
+  emptyDimGroup, groupVolumeM3, groupsVolumeM3, groupsSeats,
+  sizeSurcharge, sizeSurchargeParts, serializeDimGroups,
+} from "../../shared/dims/dimGroups.js";
 
 // Заказчик отключил доставку по городу (только по регионам). Логика/параметр
 // cityDelivery в движке сохранены — чтобы вернуть чекбокс, поставь true.
@@ -41,6 +45,12 @@ const SHOW_CITY_DELIVERY = false;
 // Доплата за посёлок теперь автоматическая (посёлок = город назначения внутри
 // тарифа). Чекбокс «Доставка в регион» + список + автоподстановка скрыты; код цел.
 const SHOW_REGION_DELIVERY = false;
+
+// ТЗ: у частных лиц ПРР (погрузка-разгрузка) и хранение НЕ используются —
+// это только функционал юрлиц (ActCreatePage). Скрыт ТОЛЬКО ввод: поля формы,
+// параметры calcDeliveryPrice и вся логика движка целы, поэтому старые накладные
+// с заполненными prrType/storageMode считаются как раньше. Вернуть — поставь true.
+const SHOW_PRR_STORAGE = false;
 
 const TRANSPORT_TYPES = [
   { value: "auto_console", label: "Авто-консолидация" },
@@ -188,10 +198,9 @@ export default function SimpleActPage() {
     regionEnabled: false,
     regionDelivery: "",
     weight: "",
-    length: "",
-    width: "",
-    height: "",
-    sizeCategory: "",
+    // Группы размеров: у каждой свои Д×Ш×В, свои места и своя категория габарита.
+    // Старые одиночные поля length/width/height/sizeCategory больше не используются.
+    dimGroups: [emptyDimGroup()],
     cargoText: "",
     transportType: "auto_console",
     totalSum: "",
@@ -212,18 +221,43 @@ export default function SimpleActPage() {
     genNextSimpleNumber().then(setDocNumber);
   }, []);
 
-  // Объём груза (м³) = Д×Ш×В × количество мест: см³ / 1 000 000 = м³.
-  const volumeM3 = useMemo(() => {
-    const l = Number(form.length) || 0, w = Number(form.width) || 0, h = Number(form.height) || 0;
-    const cnt = Number(form.seats) || 0;
-    return (l * w * h * cnt) / 1_000_000;
-  }, [form.length, form.width, form.height, form.seats]);
+  // Объём груза (м³) = Σ(Д×Ш×В×мест_i) / 1 000 000 по всем группам размеров.
+  const volumeM3 = useMemo(() => groupsVolumeM3(form.dimGroups), [form.dimGroups]);
+
+  // Количество мест — автосумма по группам. Отдельного ручного поля больше нет:
+  // именно эта сумма уходит в totals.seats, в наклейку, в чек и в расчёт.
+  const seatsTotal = useMemo(() => groupsSeats(form.dimGroups), [form.dimGroups]);
+
+  // form.seats держим в синхроне с суммой по группам — на него завязаны
+  // наклейка (печать), чек и payload накладной.
+  useEffect(() => {
+    setForm(prev => (String(prev.seats) === String(seatsTotal) ? prev : { ...prev, seats: seatsTotal }));
+  }, [seatsTotal]);
+
+  // ── Операции над группами размеров ──
+  const addDimGroup = () => setForm(f => ({ ...f, dimGroups: [...f.dimGroups, emptyDimGroup()] }));
+  const removeDimGroup = (idx) => setForm(f => ({
+    ...f,
+    // Минимум одна группа всегда остаётся — её просто очищаем.
+    dimGroups: f.dimGroups.length <= 1 ? [emptyDimGroup()] : f.dimGroups.filter((_, i) => i !== idx),
+  }));
+  const setDimGroup = (idx, patch) => setForm(f => ({
+    ...f,
+    dimGroups: f.dimGroups.map((g, i) => (i === idx ? { ...g, ...patch } : g)),
+  }));
 
   // 🆕 Автоподсчёт суммы через единый движок calcTariff (категория "private").
   // Считается по правилам частных лиц + max(вес, куб) по кубатуре из габаритов.
+  //
+  // Категория габарита теперь задаётся ПО КАЖДОЙ ГРУППЕ, а движок умеет только
+  // одну надбавку на заявку. Поэтому движку передаём sizeCategory пустым, а
+  // надбавку Σ(ставка_i × мест_i) считаем по группам и прибавляем сверху.
+  // Сам движок при этом не меняется.
+  const [sizeExtra, setSizeExtra] = useState(0);
   useEffect(() => {
     if (!form.toCity || !form.weight) {
       setAutoCalc(false);
+      setSizeExtra(0);
       return;
     }
     const res = calcDeliveryPrice({
@@ -232,24 +266,27 @@ export default function SimpleActPage() {
       fromCity: form.fromCity,
       weightKg: Number(form.weight) || 0,
       volumeM3: volumeM3,
-      seats: Number(form.seats) || 0,
+      seats: seatsTotal,
       prrType: form.prrType || "",
       pallets: Number(form.pallets) || 0,
       storageMode: form.storageMode || "",
       storageDays: Number(form.storageDays) || 0,
       cityDelivery: !!form.cityDelivery,
       regionDelivery: form.regionEnabled ? (form.regionDelivery || "") : "",
-      sizeCategory: form.sizeCategory || "",
+      sizeCategory: "",
       category: "private",
       transport: form.transportType === "avia_console" ? "avia" : "auto",
     });
     if (res.ok) {
-      setForm(prev => ({ ...prev, totalSum: String(res.sum) }));
+      const extra = sizeSurcharge(form.dimGroups, res.tariff);
+      setSizeExtra(extra);
+      setForm(prev => ({ ...prev, totalSum: String(res.sum + extra) }));
       setAutoCalc(true);
     } else {
       setAutoCalc(false);
+      setSizeExtra(0);
     }
-  }, [form.toCity, form.weight, form.transportType, form.seats, form.prrType, form.pallets, form.storageMode, form.storageDays, form.cityDelivery, form.regionEnabled, form.regionDelivery, form.sizeCategory, volumeM3, tariffs]);
+  }, [form.toCity, form.fromCity, form.weight, form.transportType, form.prrType, form.pallets, form.storageMode, form.storageDays, form.cityDelivery, form.regionEnabled, form.regionDelivery, form.dimGroups, volumeM3, seatsTotal, tariffs]);
 
   // Список посёлков для «Доставки в регион» — из тарифов категории region_delivery.
   const regionOptions = useMemo(() => {
@@ -299,10 +336,7 @@ export default function SimpleActPage() {
       regionEnabled: false,
       regionDelivery: "",
       weight: "",
-      length: "",
-      width: "",
-      height: "",
-      sizeCategory: "",
+      dimGroups: [emptyDimGroup()],
       cargoText: "",
       transportType: "auto_console",
       totalSum: "",
@@ -336,7 +370,12 @@ export default function SimpleActPage() {
           },
           route: { fromCity: form.fromCity || company?.name || "", toCity: form.toCity },
           cargoText: form.cargoText,
-          totals: { seats: Number(form.seats), weight: Number(form.weight) },
+          // Мест — сумма по группам размеров (ручного поля больше нет).
+          totals: { seats: seatsTotal, weight: Number(form.weight) },
+          // Габариты теперь СОХРАНЯЕМ: раньше они жили только в форме и терялись,
+          // из-за чего сумму, посчитанную по кубам, нельзя было пересчитать позже.
+          dims: serializeDimGroups(form.dimGroups),
+          volumeM3,
           totalSum: form.totalSum,
           docNumber: docNumber,
         }),
@@ -586,37 +625,70 @@ export default function SimpleActPage() {
             <div className="form_grid">
               <div className="field">
                 <div className="label">Количество мест</div>
-                <input type="number" value={form.seats} onChange={e => setForm({...form, seats: e.target.value})} placeholder="0" />
+                <input type="number" value={seatsTotal} readOnly disabled
+                  style={{ background: '#f1f5f9', cursor: 'not-allowed', fontWeight: 700 }} />
+                <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>
+                  Сумма по группам размеров
+                </div>
               </div>
               <div className="field">
                 <div className="label">Вес (кг)</div>
                 <input type="number" value={form.weight} onChange={e => setForm({...form, weight: e.target.value})} placeholder="0" />
               </div>
-              <div className="field">
+
+              {/* Группы размеров: 10 мест могут быть 5 одних габаритов + 5 других.
+                  У каждой группы свои Д×Ш×В, свои места и своя категория габарита. */}
+              <div className="field" style={{ gridColumn: '1 / -1' }}>
                 <div className="label">Размеры груза (см) — для расчёта по кубам</div>
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <input type="number" min="0" value={form.length} onChange={e => setForm({...form, length: e.target.value})} placeholder="Длина" style={{ flex: 1 }} />
-                  <span style={{ color: '#999' }}>×</span>
-                  <input type="number" min="0" value={form.width} onChange={e => setForm({...form, width: e.target.value})} placeholder="Ширина" style={{ flex: 1 }} />
-                  <span style={{ color: '#999' }}>×</span>
-                  <input type="number" min="0" value={form.height} onChange={e => setForm({...form, height: e.target.value})} placeholder="Высота" style={{ flex: 1 }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {form.dimGroups.map((g, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', padding: 8, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                      <span className="muted" style={{ fontSize: '0.75rem', minWidth: 62, fontWeight: 700 }}>Группа {idx + 1}</span>
+                      <input type="number" min="0" value={g.length} placeholder="Длина" style={{ width: 82 }}
+                        onChange={e => setDimGroup(idx, { length: e.target.value })} />
+                      <span style={{ color: '#999' }}>×</span>
+                      <input type="number" min="0" value={g.width} placeholder="Ширина" style={{ width: 82 }}
+                        onChange={e => setDimGroup(idx, { width: e.target.value })} />
+                      <span style={{ color: '#999' }}>×</span>
+                      <input type="number" min="0" value={g.height} placeholder="Высота" style={{ width: 82 }}
+                        onChange={e => setDimGroup(idx, { height: e.target.value })} />
+                      <input type="number" min="0" value={g.seats} placeholder="Мест" style={{ width: 70 }}
+                        onChange={e => setDimGroup(idx, { seats: e.target.value })} />
+                      <select value={g.sizeCategory || ""} style={{ width: 150 }}
+                        onChange={e => setDimGroup(idx, { sizeCategory: e.target.value })}>
+                        <option value="">Маленькая</option>
+                        <option value="medium">Средняя (+надбавка)</option>
+                        <option value="large">Большая (+надбавка)</option>
+                      </select>
+                      <span className="muted" style={{ fontSize: '0.72rem' }}>
+                        {groupVolumeM3(g) > 0 ? `${groupVolumeM3(g).toFixed(4)} м³` : "—"}
+                      </span>
+                      <button type="button" className="btn btn--sm" title="Удалить группу"
+                        style={{ marginLeft: 'auto', color: '#dc2626', borderColor: '#fecaca' }}
+                        onClick={() => removeDimGroup(idx)}>×</button>
+                    </div>
+                  ))}
                 </div>
-                <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>
-                  Объём: <strong>{volumeM3.toFixed(4)} м³</strong>
-                  <span style={{ color: '#aaa', marginLeft: 4 }}>(сравнивается с весом — берётся большая сумма)</span>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 8, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn--sm" onClick={addDimGroup}>+ Добавить группу размеров</button>
+                  <span className="muted" style={{ fontSize: '0.78rem' }}>
+                    Всего мест: <strong>{seatsTotal}</strong>
+                    &nbsp;·&nbsp; Объём: <strong>{volumeM3.toFixed(4)} м³</strong>
+                    <span style={{ color: '#aaa', marginLeft: 4 }}>(сравнивается с весом — берётся большая сумма)</span>
+                  </span>
                 </div>
-              </div>
-              <div className="field">
-                <div className="label">Категория габарита</div>
-                <select value={form.sizeCategory || ""} onChange={e => setForm({...form, sizeCategory: e.target.value})}>
-                  <option value="">Маленькая (тариф как есть)</option>
-                  <option value="medium">Средняя (+надбавка)</option>
-                  <option value="large">Большая (+надбавка)</option>
-                </select>
+                {sizeExtra > 0 && (
+                  <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>
+                    Надбавка за габариты: <strong>{sizeExtra.toLocaleString()} тг</strong>
+                    {" "}({sizeSurchargeParts(form.dimGroups, matchedTariff)
+                      .map(p => `${p.label} ${p.rate.toLocaleString()}×${p.seats}`).join(" + ")})
+                  </div>
+                )}
                 <div className="muted" style={{ fontSize: '0.7rem', marginTop: 4 }}>
-                  Надбавки задаются в тарифе. Маленькая — без надбавки.
+                  Надбавки за категорию задаются в тарифе и считаются на каждое место своей группы. Маленькая — без надбавки.
                 </div>
               </div>
+              {SHOW_PRR_STORAGE && (
               <div className="field">
                 <div className="label">ПРР (погрузка-разгрузка)</div>
                 <select value={form.prrType || ""} onChange={e => setForm({...form, prrType: e.target.value})}>
@@ -631,6 +703,8 @@ export default function SimpleActPage() {
                   </div>
                 )}
               </div>
+              )}
+              {SHOW_PRR_STORAGE && (
               <div className="field">
                 <div className="label">Хранение</div>
                 <select value={form.storageMode || ""} onChange={e => setForm({...form, storageMode: e.target.value})}>
@@ -650,6 +724,7 @@ export default function SimpleActPage() {
                   </div>
                 )}
               </div>
+              )}
               {(SHOW_CITY_DELIVERY || SHOW_REGION_DELIVERY) && (
               <div className="field">
                 <div className="label">Дополнительная доставка</div>

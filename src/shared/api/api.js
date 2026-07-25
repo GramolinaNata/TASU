@@ -334,6 +334,9 @@ export const api = {
     list: (companyId) => request(`/carrier-vedomosts${companyId ? `?companyId=${companyId}` : ''}`),
     get: (id) => request(`/carrier-vedomosts/${id}`),
     create: (data) => request('/carrier-vedomosts', { method: 'POST', body: JSON.stringify(data) }),
+    // Правка строк ведомости и «мягкое» удаление строки (партия освобождается,
+    // номер ведомости остаётся закреплён). Добавлять партии этим методом нельзя.
+    update: (id, data) => request(`/carrier-vedomosts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
     annul: (id) => request(`/carrier-vedomosts/${id}/annul`, { method: 'POST' }),
     delete: (id) => request(`/carrier-vedomosts/${id}`, { method: 'DELETE' }),
   },

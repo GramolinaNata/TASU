@@ -2,12 +2,21 @@ import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../shared/api/api.js";
 import Loader from "../../shared/components/Loader";
 import Modal from "../../shared/ui/Modal.jsx";
+import CitiesMultiSelect from "../../shared/directory/CitiesMultiSelect.jsx";
+import { entityCities } from "../../shared/directory/byCity.js";
+import { getDeliveryDestinations } from "../../shared/tariff/calcTariff.js";
+
+// Города обслуживания одной строкой — для поиска и сортировки.
+// Читает новый список cities с fallback на старое одиночное city.
+function citiesText(c) {
+  return entityCities(c).join(', ');
+}
 
 function getSortValue(c, field) {
   switch (field) {
     case 'name':  return (c.name || '').toString().toLowerCase();
     case 'phone': return (c.phone || '').toString().toLowerCase();
-    case 'city':  return (c.city || '').toString().toLowerCase();
+    case 'city':  return citiesText(c).toLowerCase();
     default:      return '';
   }
 }
@@ -19,7 +28,15 @@ export default function CarriersPage() {
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
 
-  const [formData, setFormData] = useState({ name: "", phone: "", city: "" });
+  // cities — массив городов обслуживания (на сервер уходит массивом).
+  const [formData, setFormData] = useState({ name: "", phone: "", cities: [] });
+  const [tariffs, setTariffs] = useState([]);
+
+  // Подсказки городов — из тарифов (те же направления, что в формах накладной).
+  const cityOptions = useMemo(
+    () => getDeliveryDestinations(tariffs).map(d => d.city),
+    [tariffs]
+  );
 
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState('asc');
@@ -62,6 +79,7 @@ export default function CarriersPage() {
 
   useEffect(() => {
     loadData();
+    api.tariffs.list().then(d => { if (Array.isArray(d)) setTariffs(d); }).catch(() => {});
   }, []);
 
   const filtered = useMemo(() => {
@@ -71,7 +89,7 @@ export default function CarriersPage() {
       list = list.filter(c =>
         c.name?.toLowerCase().includes(s) ||
         c.phone?.toLowerCase().includes(s) ||
-        c.city?.toLowerCase().includes(s)
+        citiesText(c).toLowerCase().includes(s)
       );
     }
     const sorted = [...list].sort((a, b) => {
@@ -86,13 +104,14 @@ export default function CarriersPage() {
 
   const handleEdit = (c) => {
     setEditing(c);
-    setFormData({ name: c.name || "", phone: c.phone || "", city: c.city || "" });
+    // Старые записи: cities пустое → показываем город из city (обратная совместимость).
+    setFormData({ name: c.name || "", phone: c.phone || "", cities: entityCities(c) });
     setShowModal(true);
   };
 
   const handleNew = () => {
     setEditing(null);
-    setFormData({ name: "", phone: "", city: "" });
+    setFormData({ name: "", phone: "", cities: [] });
     setShowModal(true);
   };
 
@@ -146,7 +165,7 @@ export default function CarriersPage() {
               <tr>
                 <SortableTh field="name">Наименование / ФИО</SortableTh>
                 <SortableTh field="phone">Телефон</SortableTh>
-                <SortableTh field="city">Город</SortableTh>
+                <SortableTh field="city">Города обслуживания</SortableTh>
                 <th style={{ width: 120 }}>Действия</th>
               </tr>
             </thead>
@@ -157,7 +176,17 @@ export default function CarriersPage() {
                 <tr key={c.id}>
                   <td><strong>{c.name}</strong></td>
                   <td>{c.phone || "—"}</td>
-                  <td>{c.city || "—"}</td>
+                  <td>
+                    {entityCities(c).length === 0 ? "—" : (
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                        {entityCities(c).map(city => (
+                          <span key={city} style={{ background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1d4ed8', borderRadius: 999, padding: '1px 8px', fontSize: '0.78rem', fontWeight: 600 }}>
+                            {city}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </td>
                   <td style={{ textAlign: "right" }}>
                     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                       <button className="btn btn--sm" onClick={() => handleEdit(c)}>ред.</button>
@@ -182,9 +211,13 @@ export default function CarriersPage() {
               <div className="label">Телефон</div>
               <input value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} placeholder="+7 (777) 123-45-67" />
             </div>
-            <div className="field">
-              <div className="label">Город</div>
-              <input value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
+            <div className="field" style={{ gridColumn: 'span 2' }}>
+              <div className="label">Города обслуживания</div>
+              <CitiesMultiSelect
+                value={formData.cities}
+                onChange={cities => setFormData({ ...formData, cities })}
+                options={cityOptions}
+              />
             </div>
             <div style={{ gridColumn: 'span 2', marginTop: 16, display: 'flex', gap: 12 }}>
               <button className="btn btn--accent" type="submit" style={{ flex: 1 }}>Сохранить</button>

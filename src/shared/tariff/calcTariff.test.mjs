@@ -169,6 +169,45 @@ test("getTariffOrigins: Алматы и Караганда", () => {
   assert.deepStrictEqual(origins, ["Алматы", "Караганда"], `получено: ${origins.join(", ")}`);
 });
 
+// ── 8. Частные: ПРР/хранение убраны из формы, но движок их ещё считает ──
+// ТЗ: из формы частных лиц ввод ПРР и хранения убран (SHOW_PRR_STORAGE=false в
+// SimpleActPage). Поля движка обязаны продолжать работать — иначе старые накладные
+// частных с заполненными prrType/storageMode пересчитались бы иначе.
+const АКТАУ_PRIVATE_PRR = {
+  ...АКТАУ_PRIVATE,
+  weightRanges: {
+    ...АКТАУ_PRIVATE.weightRanges,
+    _prrManual: 20,        // тг/кг
+    _prrPallet: 5000,      // тг за палету
+    _storagePerKg: 10,     // тг/кг в день
+    _storagePerCubic: 800, // тг/м³ в день
+  },
+};
+const PRR_TARIFFS = [АКТАУ_PRIVATE_PRR];
+const prrCalc = (opts) => calcDeliveryPrice({ tariffs: PRR_TARIFFS, city: "Актау", fromCity: "Алматы", category: "private", ...opts });
+
+test("Частные без ПРР/хранения (новая форма) = чистая база 25 кг → 4300", () => {
+  const r = prrCalc({ weightKg: 25 });
+  assert.strictEqual(r.sum, 4300, `ожидалось 4300, получено ${r.sum}`);
+  assert.ok(!/ПРР|хранение/.test(r.description), `в описании не должно быть ПРР/хранения: ${r.description}`);
+});
+test("Старая накладная частного с ПРР ручной считается как раньше (4300+20×25=4800)", () => {
+  const r = prrCalc({ weightKg: 25, prrType: "manual" });
+  assert.strictEqual(r.sum, 4800, `ожидалось 4800, получено ${r.sum}`);
+});
+test("Старая накладная частного с ПРР палетной считается как раньше (4300+5000×2=14300)", () => {
+  const r = prrCalc({ weightKg: 25, prrType: "pallet", pallets: 2 });
+  assert.strictEqual(r.sum, 14300, `ожидалось 14300, получено ${r.sum}`);
+});
+test("Старая накладная частного с хранением по весу (4300+10×25×3=5050)", () => {
+  const r = prrCalc({ weightKg: 25, storageMode: "weight", storageDays: 3 });
+  assert.strictEqual(r.sum, 5050, `ожидалось 5050, получено ${r.sum}`);
+});
+test("Старая накладная частного с хранением по кубам (4300+800×0.5×2=5100)", () => {
+  const r = prrCalc({ weightKg: 25, volumeM3: 0.5, storageMode: "cube", storageDays: 2 });
+  assert.strictEqual(r.sum, 5100, `ожидалось 5100, получено ${r.sum}`);
+});
+
 // ── Итог ────────────────────────────────────────────────────────
 console.log(`\nИтого (движок): ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

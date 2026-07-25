@@ -430,8 +430,15 @@ const tabCounts = useMemo(() => ({
 
       // _ranges — источник правды для юр., частных и доставочных категорий.
       // Старые rN/dN и _pricePerKgOver20 для них больше не пишем (миграция при сохранении).
+      // Перевозчики и представители: диапазоны по весу — необязательные. Пишем их
+      // ТОЛЬКО если реально заполнены, иначе тариф остаётся плоским (pricePerKg),
+      // и расчёт по нему не меняется ни на тенге (см. calcCarrierPrice).
       if (['legal', 'private', 'city_delivery', 'region_delivery'].includes(form.category)) {
         wrWithExtras._ranges = rangesCleaned;
+      } else if (['carriers', 'representatives'].includes(form.category)) {
+        if (Array.isArray(rangesCleaned) && rangesCleaned.length > 0) {
+          wrWithExtras._ranges = rangesCleaned;
+        }
       }
 
       // Опорный город — только для тарифов доставки по региону (Вариант 2).
@@ -639,7 +646,11 @@ const tabCounts = useMemo(() => ({
                         <>
                           <td>
                             {(tab === 'loaders' || tab === 'carriers' || tab === 'representatives') ? (
-                              Number(t.pricePerKg) > 0 ? (
+                              // У перевозчика/представителя могут быть диапазоны — тогда
+                              // показываем их, а не плоскую ставку (по ним и считается).
+                              (Array.isArray(wr._ranges) && wr._ranges.length > 0) ? (
+                                <RangeChips wr={wr} />
+                              ) : Number(t.pricePerKg) > 0 ? (
                                 <span style={{ padding: '2px 8px', background: '#eef2ff', color: '#3730a3', borderRadius: 4, fontSize: '0.8rem', fontWeight: 700 }}>
                                   {Number(t.pricePerKg).toLocaleString()} тг/кг
                                 </span>
@@ -838,6 +849,30 @@ const tabCounts = useMemo(() => ({
                     onChange={e => setForm({ ...form, pricePerKg: e.target.value })}
                     placeholder={form.category === 'loaders' ? '10' : form.category === 'carriers' ? '65' : '10'}
                   />
+                  {(form.category === 'carriers' || form.category === 'representatives') && (
+                    <div className="muted" style={{ fontSize: '0.7rem', marginTop: 6 }}>
+                      Используется, пока не заданы диапазоны по весу ниже. Если добавить хотя бы один диапазон — считать будет по ним.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Диапазоны по весу для перевозчика и представителя — необязательные.
+                  Пусто = старая плоская ставка выше, расчёт прежний. Тот же RangesEditor,
+                  что у частных и юрлиц; сам компонент не менялся. */}
+              {(form.category === 'carriers' || form.category === 'representatives') && (
+                <div style={{ marginBottom: 16 }}>
+                  <div className="label" style={{ marginBottom: 8 }}>
+                    Диапазоны по весу — необязательно
+                    <span style={{ marginLeft: 6, fontSize: '0.7rem', color: '#64748b' }}>
+                      (если заданы, ставка за кг выше не применяется)
+                    </span>
+                  </div>
+                  <RangesEditor rows={form.ranges} onUpdate={updateRange} onAdd={addRange} onRemove={removeRange} />
+                  <div className="muted" style={{ fontSize: '0.7rem', marginTop: 8 }}>
+                    «Фикс.» — сумма целиком за партию этого веса, «За кг» — умножается на вес партии.
+                    Верхний диапазон без порога = «свыше». Оставьте список пустым, чтобы считать по плоской ставке.
+                  </div>
                 </div>
               )}
 

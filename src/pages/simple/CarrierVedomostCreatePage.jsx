@@ -46,6 +46,9 @@ function findLoaderPricePerPerson(tariff, weight) {
 
 import { useAuth } from "../../shared/auth/AuthContext";
 import { printCarrierVedomost as printCarrierDoc } from "../../shared/print/vedomostPrint.js";
+import CityFilteredSelect from "../../shared/directory/CityFilteredSelect.jsx";
+import { calcCarrierPrice } from "../../shared/tariff/calcCarrierPrice.js";
+import { filterByCity } from "../../shared/directory/byCity.js";
 
 export default function CarrierVedomostCreatePage() {
   const nav = useNavigate();
@@ -183,11 +186,22 @@ export default function CarrierVedomostCreatePage() {
       const weight = bt != null ? bt.weight : toNum(b.totalWeight);
       const seats = bt != null ? bt.seats : toNum(b.totalSeats);
 
-      // Перевозчик: оверрайд из формы, иначе назначенный в партии. Имя — вживую из справочника.
-      const carrierId = rowCarrier[b.id] !== undefined ? rowCarrier[b.id] : (b.carrierId || "");
+      // Перевозчик. Приоритет (согласован с заказчиком):
+      //   ручной выбор в этой форме → назначенный в партии → автоподстановка по городу.
+      // Автоподстановка срабатывает ТОЛЬКО когда за городом закреплён ровно один
+      // перевозчик и в партии никто не выбран: осознанный выбор человека в партии
+      // она не перебивает. Имя — вживую из справочника.
+      const carrierAuto = filterByCity(carriers, b.city).autoPick;
+      const carrierId = rowCarrier[b.id] !== undefined
+        ? rowCarrier[b.id]
+        : (b.carrierId || (carrierAuto ? carrierAuto.id : ""));
+      // Расчёт по диапазонам веса, если они заданы в тарифе; иначе — старая
+      // плоская ставка × вес (до копейки как раньше). Движок частных/юрлиц не задет.
       const carrierTariff = findCarrierTariff(b.city);
-      const carrierRate = carrierTariff ? toNum(carrierTariff.pricePerKg) : 0;
-      const carrierSum = Math.round(weight * carrierRate);
+      const carrierCalc = calcCarrierPrice(carrierTariff, weight);
+      const carrierRate = carrierCalc.rate;      // эффективная ставка — идёт в снапшот
+      const carrierRateLabel = carrierCalc.label;
+      const carrierSum = carrierCalc.sum;
       const carrierName = carrierId ? (carriers.find(c => c.id === carrierId)?.name || "—") : "—";
 
       const loadersCount = toNum(b.loadersCount);
@@ -195,12 +209,18 @@ export default function CarrierVedomostCreatePage() {
       const loaderRate = loaderTariff ? toNum(loaderTariff.pricePerKg) : 0;
       const loaderSum = Math.round(weight * loaderRate);
 
-      // Представитель: оверрайд/из партии; ставка — из тарифов по городу.
-      const representativeId = rowRep[b.id] !== undefined ? rowRep[b.id] : (b.representativeId || "");
+      // Представитель — тот же приоритет: ручной → партия → город (один закреплённый).
+      // Ставка — из тарифов по городу, к привязке отношения не имеет.
+      const repAuto = filterByCity(representatives, b.city).autoPick;
+      const representativeId = rowRep[b.id] !== undefined
+        ? rowRep[b.id]
+        : (b.representativeId || (repAuto ? repAuto.id : ""));
       const representativeName = representativeId ? (representatives.find(r => r.id === representativeId)?.name || "—") : "—";
       const repTariff = findRepresentativeTariff(b.city);
-      const representativeRate = repTariff ? toNum(repTariff.pricePerKg) : 0;
-      const representativeSum = Math.round(weight * representativeRate);
+      const repCalc = calcCarrierPrice(repTariff, weight);
+      const representativeRate = repCalc.rate;
+      const representativeRateLabel = repCalc.label;
+      const representativeSum = repCalc.sum;
 
       return {
         batchId: b.id,
@@ -211,6 +231,7 @@ export default function CarrierVedomostCreatePage() {
         carrierId,
         carrierName,
         carrierRate,
+        carrierRateLabel,
         carrierSum,
         carrierMissing: !carrierTariff,
         loadersCount,
@@ -220,6 +241,7 @@ export default function CarrierVedomostCreatePage() {
         representativeId,
         representativeName,
         representativeRate,
+        representativeRateLabel,
         representativeSum,
         repMissing: !repTariff,
       };
@@ -414,20 +436,30 @@ export default function CarrierVedomostCreatePage() {
                     <td style={{ textAlign: 'center' }}>{r.seats}</td>
                     <td style={{ textAlign: 'center' }}>{r.weight} кг</td>
                     <td>
-                      <select value={r.carrierId || ""} onChange={e => setRowCarrier(prev => ({ ...prev, [r.batchId]: e.target.value }))}>
-                        <option value="">— выберите —</option>
-                        {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                      </select>
+                      <CityFilteredSelect
+                        items={carriers}
+                        city={r.city}
+                        value={r.carrierId || ""}
+                        onChange={val => setRowCarrier(prev => ({ ...prev, [r.batchId]: val }))}
+                        kindPlural="перевозчики"
+                        kindSingle="перевозчик"
+                        compact
+                      />
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      {r.carrierMissing ? <span style={{ color: '#dc2626' }}>тариф не найден</span> : `${r.carrierRate} тг/кг`}
+                      {r.carrierMissing ? <span style={{ color: '#dc2626' }}>тариф не найден</span> : r.carrierRateLabel}
                     </td>
                     <td style={{ textAlign: 'center', fontWeight: 700 }}>{r.carrierSum.toLocaleString()} тг</td>
                     <td>
-                      <select value={r.representativeId || ""} onChange={e => setRowRep(prev => ({ ...prev, [r.batchId]: e.target.value }))}>
-                        <option value="">— выберите —</option>
-                        {representatives.map(rep => <option key={rep.id} value={rep.id}>{rep.name}</option>)}
-                      </select>
+                      <CityFilteredSelect
+                        items={representatives}
+                        city={r.city}
+                        value={r.representativeId || ""}
+                        onChange={val => setRowRep(prev => ({ ...prev, [r.batchId]: val }))}
+                        kindPlural="представители"
+                        kindSingle="представитель"
+                        compact
+                      />
                     </td>
                     <td style={{ textAlign: 'center', fontWeight: 700 }}>
                       {r.repMissing ? <span style={{ color: '#dc2626' }}>тариф не найден</span> : `${r.representativeSum.toLocaleString()} тг`}

@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';
+import { normalizeCities, primaryCity } from '../lib/cities';
 
 export const getRepresentatives = async (req: AuthRequest, res: Response) => {
   try {
@@ -26,14 +27,17 @@ export const getRepresentative = async (req: AuthRequest, res: Response) => {
 
 export const createRepresentative = async (req: AuthRequest, res: Response) => {
   try {
-    const { name, phone, city } = req.body;
+    const { name, phone, city, cities } = req.body;
     if (!name) return res.status(400).json({ message: 'name is required' });
 
+    // Города обслуживания — списком; city держим в синхроне (см. carrier.controller).
+    const citiesJson = normalizeCities(cities);
     const rep = await prisma.representative.create({
       data: {
         name,
         phone: phone || '',
-        city: city || '',
+        city: citiesJson !== undefined ? (primaryCity(citiesJson) || '') : (city || ''),
+        cities: citiesJson || '',
       },
     });
     res.status(201).json(rep);
@@ -46,12 +50,18 @@ export const createRepresentative = async (req: AuthRequest, res: Response) => {
 export const updateRepresentative = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, phone, city } = req.body;
+    const { name, phone, city, cities } = req.body;
 
     const updateData: any = {};
     if (name !== undefined) updateData.name = name;
     if (phone !== undefined) updateData.phone = phone;
     if (city !== undefined) updateData.city = city;
+
+    const citiesJson = normalizeCities(cities);
+    if (citiesJson !== undefined) {
+      updateData.cities = citiesJson;
+      updateData.city = primaryCity(citiesJson) || '';
+    }
 
     const updated = await prisma.representative.update({
       where: { id: id as string },

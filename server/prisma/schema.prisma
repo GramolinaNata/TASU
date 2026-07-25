@@ -201,7 +201,12 @@ model Carrier {
   id        String   @id @default(uuid())
   name      String
   phone     String   @default("")
+  // Старое одиночное поле — НЕ удаляем: по нему читаются записи, заведённые до
+  // появления списка городов (fallback cities ?? [city]).
   city      String   @default("")
+  // Города обслуживания — JSON-массив строк. Один перевозчик может работать
+  // по нескольким городам; по нему сужается выбор в ведомости и в форме партии.
+  cities    String   @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
@@ -210,7 +215,10 @@ model Representative {
   id        String   @id @default(uuid())
   name      String
   phone     String   @default("")
+  // Старое одиночное поле — оставлено для обратной совместимости (см. Carrier).
   city      String   @default("")
+  // Города обслуживания — JSON-массив строк.
+  cities    String   @default("")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

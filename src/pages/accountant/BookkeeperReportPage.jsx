@@ -273,14 +273,18 @@ export default function BookkeeperReportPage() {
       return;
     }
 
-    // ТЗ п.4: печать с вкладки «Текущие» = формирование отчёта → партии уходят в архив.
-    // С вкладки «Архив» — просто повторная печать (партии уже проведены).
+    // Архивация только по ЯВНО выделенным партиям и только с вкладки «Текущие».
+    // Без выделения печать ничего не проводит: раньше пустой selected давал fallback
+    // на весь список (activeRows), и одно нажатие «Печать» уводило в архив ВСЕ
+    // текущие партии — накладные потом «пропадали» из отчёта.
     const isActiveTab = tab === 'active';
-    const idsToArchive = activeRows.map(r => r.id);
-    if (isActiveTab) {
+    const idsToArchive = (isActiveTab && selected.length > 0) ? activeRows.map(r => r.id) : [];
+    if (idsToArchive.length > 0) {
+      const names = sortRows(activeRows).map(r => r.name).join(', ');
       const ok = window.confirm(
-        `Отчёт по ${idsToArchive.length} партиям будет сформирован и напечатан.\n\n` +
-        `После печати эти партии уйдут в архив «Проведённые» — оттуда их можно перепечатать ` +
+        `Отчёт по ${idsToArchive.length} выделенным партиям будет напечатан.\n\n` +
+        `Партии: ${names}\n\n` +
+        `После печати они уйдут в архив «Проведённые» — оттуда можно перепечатать ` +
         `или вернуть в «Текущие», если провели по ошибке.\n\nПродолжить?`
       );
       if (!ok) return;
@@ -355,11 +359,12 @@ export default function BookkeeperReportPage() {
     const blob = new Blob([html], { type: "text/html; charset=utf-8" });
     window.open(URL.createObjectURL(blob), "_blank");
 
-    // Авто-проведение в архив только с вкладки «Текущие». Делаем ПОСЛЕ открытия печати —
-    // окно печати уже содержит снимок данных, поэтому перезагрузка списка ему не мешает.
-    // Браузер не сообщает, реально ли напечатали, поэтому проводим по факту формирования;
-    // при ошибочном проведении партию можно вернуть в «Текущие».
-    if (isActiveTab) {
+    // Авто-проведение в архив — только по выделенным (idsToArchive пуст, если галочек нет).
+    // Делаем ПОСЛЕ открытия печати: окно печати уже содержит снимок данных, поэтому
+    // перезагрузка списка ему не мешает. Браузер не сообщает, реально ли напечатали,
+    // поэтому проводим по факту формирования; ошибочно проведённую партию можно
+    // вернуть в «Текущие» кнопкой в архиве.
+    if (idsToArchive.length > 0) {
       try {
         await Promise.all(idsToArchive.map(id => api.batches.update(id, { status: 'reported' })));
         setSelected([]);
@@ -402,8 +407,16 @@ export default function BookkeeperReportPage() {
               )}
             </>
           )}
-          <button className="btn btn--accent" onClick={printReport}>
-            🖨 {tab === 'active' ? 'Печать отчёта (→ в архив)' : 'Печать отчёта'}
+          <button
+            className="btn btn--accent"
+            onClick={printReport}
+            title={tab === 'active' && selected.length > 0
+              ? 'Печать выделенных партий и проведение их в архив'
+              : 'Печать без проведения в архив'}
+          >
+            🖨 {tab === 'active' && selected.length > 0
+              ? `Печать выделенных (${selected.length}) → в архив`
+              : 'Печать отчёта'}
           </button>
         </div>
       </div>
@@ -419,7 +432,7 @@ export default function BookkeeperReportPage() {
 
       <div style={{ marginTop: 12, padding: '8px 12px', background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6, fontSize: '0.85rem', color: '#854d0e' }}>
         {tab === 'active'
-          ? '💡 Отберите партии (фильтром по датам и/или галочками) и нажмите «Печать отчёта» — отчёт напечатается, а партии уйдут в архив «Проведённые». Если галочки не стоят, проводится весь список по фильтру.'
+          ? '💡 Отметьте партии галочками и нажмите «Печать» — они напечатаются и уйдут в архив «Проведённые» (вернуть можно из архива). Без галочек печатается весь список по фильтру, и в архив НИЧЕГО не уходит.'
           : '💡 Архив проведённых партий. Можно отфильтровать по периоду и распечатать отчёт заново, либо вернуть партии в «Текущие».'}
       </div>
       <div className="filter" style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>

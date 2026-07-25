@@ -1090,6 +1090,18 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       const existingDetails = safeParseDetails((existing as any).details);
       const { status, date, type, docNumber, companyId, totalSum, ...bodyFields } = req.body;
 
+      // details может прийти ОБЪЕКТОМ (ActCreatePage шлёт поля плоско) либо СТРОКОЙ
+      // JSON (форма редактирования частной накладной). Раньше строка молча терялась:
+      // сырой ключ details подмешивался внутрь самих details, а слияние пропускалось
+      // по typeof !== 'object' — правки (вес, места) не сохранялись, ответ был 200.
+      // Теперь строку парсим, а сырой ключ из bodyFields убираем, чтобы он не попал
+      // внутрь details мусором.
+      const incomingDetails: Record<string, any> | null =
+        typeof req.body.details === 'string'
+          ? safeParseDetails(req.body.details)
+          : (req.body.details && typeof req.body.details === 'object' ? req.body.details : null);
+      delete (bodyFields as any).details;
+
       // Смену ИП через обычное редактирование НЕ делаем: старый номер не должен
       // «переезжать» в новый ИП. Перевод — только через аннулирование + создание
       // новой заявки (endpoint cancel-and-clone): старая → canceled, номер остаётся
@@ -1098,15 +1110,17 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
         throw new Error('CANNOT_CHANGE_COMPANY');
       }
 
+      // Проверка «отправить бухгалтеру» смотрит и на details-строку тоже — иначе
+      // такой клиент проскочил бы мимо hasFormedDocument.
       const willSetReadyForAccountant =
         bodyFields.readyForAccountant === true ||
-        (req.body.details && typeof req.body.details === 'object' && req.body.details.readyForAccountant === true);
+        (incomingDetails !== null && incomingDetails.readyForAccountant === true);
 
       if (willSetReadyForAccountant && !existingDetails.readyForAccountant) {
         const mergedPreview = {
           ...existingDetails,
           ...bodyFields,
-          ...(req.body.details && typeof req.body.details === 'object' ? req.body.details : {}),
+          ...(incomingDetails || {}),
         };
         if (!hasFormedDocument({ ...existing, type: type !== undefined ? type : existing.type }, mergedPreview)) {
           throw new Error('DOCUMENT_NOT_FORMED');
@@ -1114,12 +1128,19 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       }
 
       const mergedDetails: Record<string, any> = { ...existingDetails, ...bodyFields };
-      if (req.body.details && typeof req.body.details === 'object') {
-        Object.assign(mergedDetails, req.body.details);
+      if (incomingDetails) {
+        Object.assign(mergedDetails, incomingDetails);
       }
 
-      const route = req.body.route !== undefined ? req.body.route : existingDetails.route;
-      const cargo = req.body.cargo !== undefined ? req.body.cargo : existingDetails.cargo;
+      // Денормализованные колонки route/cargo: берём из плоского поля, иначе из
+      // присланных details (клиент со строкой details меняет город именно там),
+      // иначе оставляем прежнее значение.
+      const route = req.body.route !== undefined
+        ? req.body.route
+        : (incomingDetails && incomingDetails.route !== undefined ? incomingDetails.route : existingDetails.route);
+      const cargo = req.body.cargo !== undefined
+        ? req.body.cargo
+        : (incomingDetails && incomingDetails.cargo !== undefined ? incomingDetails.cargo : existingDetails.cargo);
 
       let routeStr: string | undefined;
       if (route) routeStr = typeof route === 'object' ? `${route.fromCity || ''} -> ${route.toCity || ''}` : route;

@@ -347,9 +347,14 @@
 // }
 
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
+import { calcDeliveryPrice } from "../../shared/tariff/calcTariff.js";
+import {
+  emptyDimGroup, normalizeDimGroups, groupVolumeM3, groupsVolumeM3, groupsSeats,
+  sizeSurcharge, serializeDimGroups,
+} from "../../shared/dims/dimGroups.js";
 
 function formatDate(val) {
   if (!val) return "—";
@@ -380,6 +385,19 @@ export default function SimpleActDetailPage() {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(null);
 
+  // Живой пересчёт суммы при редактировании.
+  const [tariffs, setTariffs] = useState([]);
+  const [autoCalc, setAutoCalc] = useState(false);   // сумма проставлена движком
+  const [manualSum, setManualSum] = useState(false); // сумму правили руками — не затирать
+  const [calcPreview, setCalcPreview] = useState(null); // { sum, description, byWeightOnly }
+
+  // Габариты сохраняются в накладной только с версии «групп размеров».
+  // У старых накладных их нет — и это меняет поведение пересчёта (см. ниже).
+  const hasSavedDims = useMemo(() => {
+    const d = act && Array.isArray(act.dims) ? act.dims : [];
+    return d.length > 0;
+  }, [act]);
+
   useEffect(() => {
     if (!id || id === 'new') {
       setLoading(false);
@@ -395,6 +413,10 @@ export default function SimpleActDetailPage() {
         route: details.route || data.route,
         cargoText: details.cargoText || data.cargoText || "",
         totals: details.totals || data.totals || {},
+        // Габариты: новый формат details.dims. У старых накладных их нет —
+        // пересчёт по кубам для них невозможен, см. предупреждение в форме.
+        dims: Array.isArray(details.dims) ? details.dims : [],
+        volumeM3: Number(details.volumeM3) || 0,
         totalSum: data.totalSum || details.totalSum || "",
         docNumber: details.docNumber || data.docNumber || data.id?.slice(0,8),
         transportType: details.transportType || data.transportType || "auto_console",
@@ -411,6 +433,9 @@ export default function SimpleActDetailPage() {
     }).catch(e => {
       alert("Ошибка: " + e.message);
     }).finally(() => setLoading(false));
+
+    // Тарифы нужны для живого пересчёта суммы в режиме редактирования.
+    api.tariffs.list().then(d => { if (Array.isArray(d)) setTariffs(d); }).catch(() => {});
   }, [id]);
 
   // Войти в режим редактирования — заполняем форму из act
@@ -426,15 +451,90 @@ export default function SimpleActDetailPage() {
       toCity: act.route?.toCity || "",
       seats: act.totals?.seats ?? "",
       weight: act.totals?.weight ?? "",
+      // Габариты: у новых накладных — сохранённые группы, у старых — одна пустая
+      // строка (заполнив её, менеджер вернёт накладной расчёт по кубам).
+      dimGroups: hasSavedDims ? normalizeDimGroups({ dims: act.dims }) : [emptyDimGroup()],
       cargoText: act.cargoText || "",
       totalSum: act.totalSum || "",
     });
+    setAutoCalc(false);
+    setManualSum(false);
+    setCalcPreview(null);
     setEditing(true);
   };
 
   const cancelEdit = () => {
     setEditing(false);
     setForm(null);
+    setAutoCalc(false);
+    setManualSum(false);
+    setCalcPreview(null);
+  };
+
+  // Мест и объём — из групп размеров (как в форме создания).
+  const seatsTotal = useMemo(() => (form ? groupsSeats(form.dimGroups) : 0), [form]);
+  const volumeM3 = useMemo(() => (form ? groupsVolumeM3(form.dimGroups) : 0), [form]);
+
+  // Есть ли габариты В ФОРМЕ прямо сейчас (сохранённые или только что введённые).
+  const hasDimsNow = volumeM3 > 0;
+
+  const addDimGroup = () => setForm(f => ({ ...f, dimGroups: [...f.dimGroups, emptyDimGroup()] }));
+  const removeDimGroup = (idx) => setForm(f => ({
+    ...f,
+    dimGroups: f.dimGroups.length <= 1 ? [emptyDimGroup()] : f.dimGroups.filter((_, i) => i !== idx),
+  }));
+  const setDimGroup = (idx, patch) => setForm(f => ({
+    ...f,
+    dimGroups: f.dimGroups.map((g, i) => (i === idx ? { ...g, ...patch } : g)),
+  }));
+
+  // ── ЖИВОЙ ПЕРЕСЧЁТ ────────────────────────────────────────────────
+  // База тарифа = max(плата за вес, плата за куб). У старых накладных габариты
+  // не сохранены, поэтому объём вышел бы 0 и сумма, посчитанная по кубам, молча
+  // упала бы до расчёта по весу. Поэтому правило:
+  //   • габариты есть (сохранённые или введённые) → сумма пересчитывается сама;
+  //   • габаритов нет → сумму НЕ трогаем, показываем предложение с пометкой
+  //     «пересчитано по весу, габариты не сохранены» и кнопкой «применить».
+  // Ручную правку суммы не затираем никогда (manualSum).
+  // Движок не меняется: sizeCategory ему не передаём, надбавку по группам
+  // считаем отдельно и прибавляем сверху.
+  useEffect(() => {
+    if (!editing || !form) return;
+    if (!form.toCity || !form.weight) { setCalcPreview(null); setAutoCalc(false); return; }
+
+    const res = calcDeliveryPrice({
+      tariffs,
+      city: form.toCity,
+      fromCity: form.fromCity,
+      weightKg: Number(form.weight) || 0,
+      volumeM3,
+      seats: seatsTotal || Number(form.seats) || 0,
+      sizeCategory: "",
+      category: "private",
+      transport: (act?.transportType === "avia_console") ? "avia" : "auto",
+    });
+
+    if (!res.ok) { setCalcPreview(null); setAutoCalc(false); return; }
+
+    const sum = res.sum + sizeSurcharge(form.dimGroups, res.tariff);
+    setCalcPreview({ sum, description: res.description, byWeightOnly: !hasDimsNow });
+
+    // Молча пишем сумму только когда габариты известны и человек её не правил.
+    if (hasDimsNow && !manualSum) {
+      setForm(prev => (String(prev.totalSum) === String(sum) ? prev : { ...prev, totalSum: String(sum) }));
+      setAutoCalc(true);
+    } else {
+      setAutoCalc(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, form?.toCity, form?.fromCity, form?.weight, form?.dimGroups, volumeM3, seatsTotal, tariffs, manualSum, hasDimsNow]);
+
+  // Явное применение предложенной суммы (для старых накладных без габаритов).
+  const applyCalc = () => {
+    if (!calcPreview) return;
+    setForm(prev => ({ ...prev, totalSum: String(calcPreview.sum) }));
+    setManualSum(false);
+    setAutoCalc(true);
   };
 
   // Сохранить изменения — собираем details заново и шлём update
@@ -449,13 +549,25 @@ export default function SimpleActDetailPage() {
         receiver: { fio: form.receiverName, phone: form.receiverPhone, companyName: form.receiverCompany },
         route: { fromCity: form.fromCity, toCity: form.toCity },
         cargoText: form.cargoText,
-        totals: { seats: Number(form.seats) || 0, weight: Number(form.weight) || 0 },
+        // Мест — сумма по группам; если групп нет (старая накладная, габариты не
+        // вводили), оставляем прежнее значение из формы, чтобы не обнулить его.
+        totals: {
+          seats: seatsTotal > 0 ? seatsTotal : (Number(form.seats) || 0),
+          weight: Number(form.weight) || 0,
+        },
+        // Габариты теперь сохраняем и при редактировании — со следующего раза
+        // накладная станет пересчитываемой по кубам.
+        dims: serializeDimGroups(form.dimGroups),
+        volumeM3,
         totalSum: form.totalSum,
         docNumber: act.docNumber,
       };
 
+      // details шлём ОБЪЕКТОМ. Строкой бэк её раньше молча терял (правки не
+      // сохранялись при ответе 200); бэк теперь парсит и строку, но объект —
+      // основной формат, как в форме юрлиц.
       await api.requests.update(act.id, {
-        details: JSON.stringify(newDetails),
+        details: newDetails,
         totalSum: form.totalSum ? String(form.totalSum) : "",
       });
 
@@ -467,6 +579,8 @@ export default function SimpleActDetailPage() {
         route: newDetails.route,
         cargoText: newDetails.cargoText,
         totals: newDetails.totals,
+        dims: newDetails.dims,
+        volumeM3: newDetails.volumeM3,
         totalSum: newDetails.totalSum,
       }));
       setEditing(false);
@@ -743,10 +857,102 @@ ${receiptBlock}
           <div className="card" style={{ flex: 1, minWidth: 280 }}>
             <div className="card_head"><div className="card_title">Груз</div></div>
             <div className="card_body">
-              <div className="field"><div className="label">Мест</div><input type="number" value={form.seats} onChange={e => setForm({...form, seats: e.target.value})} /></div>
+              <div className="field">
+                <div className="label">Мест</div>
+                {hasDimsNow || seatsTotal > 0 ? (
+                  <>
+                    <input type="number" value={seatsTotal} readOnly disabled
+                      style={{ background: '#f1f5f9', cursor: 'not-allowed', fontWeight: 700 }} />
+                    <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>Сумма по группам размеров</div>
+                  </>
+                ) : (
+                  <input type="number" value={form.seats} onChange={e => setForm({...form, seats: e.target.value})} />
+                )}
+              </div>
               <div className="field"><div className="label">Вес (кг)</div><input type="number" value={form.weight} onChange={e => setForm({...form, weight: e.target.value})} /></div>
+
+              <div className="field">
+                <div className="label">Размеры груза (см) — для расчёта по кубам</div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {form.dimGroups.map((g, idx) => (
+                    <div key={idx} style={{ display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap', padding: 6, background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 6 }}>
+                      <span className="muted" style={{ fontSize: '0.72rem', minWidth: 56, fontWeight: 700 }}>Гр. {idx + 1}</span>
+                      <input type="number" min="0" value={g.length} placeholder="Д" style={{ width: 62 }}
+                        onChange={e => setDimGroup(idx, { length: e.target.value })} />
+                      <input type="number" min="0" value={g.width} placeholder="Ш" style={{ width: 62 }}
+                        onChange={e => setDimGroup(idx, { width: e.target.value })} />
+                      <input type="number" min="0" value={g.height} placeholder="В" style={{ width: 62 }}
+                        onChange={e => setDimGroup(idx, { height: e.target.value })} />
+                      <input type="number" min="0" value={g.seats} placeholder="Мест" style={{ width: 62 }}
+                        onChange={e => setDimGroup(idx, { seats: e.target.value })} />
+                      <select value={g.sizeCategory || ""} style={{ width: 120 }}
+                        onChange={e => setDimGroup(idx, { sizeCategory: e.target.value })}>
+                        <option value="">Маленькая</option>
+                        <option value="medium">Средняя</option>
+                        <option value="large">Большая</option>
+                      </select>
+                      <span className="muted" style={{ fontSize: '0.7rem' }}>
+                        {groupVolumeM3(g) > 0 ? `${groupVolumeM3(g).toFixed(4)} м³` : "—"}
+                      </span>
+                      <button type="button" className="btn btn--sm" title="Удалить группу"
+                        style={{ marginLeft: 'auto', color: '#dc2626', borderColor: '#fecaca' }}
+                        onClick={() => removeDimGroup(idx)}>×</button>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginTop: 6, flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn--sm" onClick={addDimGroup}>+ Группа</button>
+                  <span className="muted" style={{ fontSize: '0.75rem' }}>
+                    Объём: <strong>{volumeM3.toFixed(4)} м³</strong>
+                  </span>
+                </div>
+              </div>
+
               <div className="field"><div className="label">Характер груза</div><input value={form.cargoText} onChange={e => setForm({...form, cargoText: e.target.value})} /></div>
-              <div className="field"><div className="label">Сумма (тг)</div><input type="number" value={form.totalSum} onChange={e => setForm({...form, totalSum: e.target.value})} /></div>
+
+              <div className="field">
+                <div className="label">
+                  Сумма (тг)
+                  {autoCalc && <span style={{ marginLeft: 8, fontSize: "0.75rem", color: "#389e0d" }}>⚡ Рассчитано автоматически</span>}
+                  {manualSum && <span style={{ marginLeft: 8, fontSize: "0.75rem", color: "#b45309" }}>✎ Введено вручную</span>}
+                </div>
+                <input
+                  type="number"
+                  value={form.totalSum}
+                  onChange={e => { setForm({ ...form, totalSum: e.target.value }); setManualSum(true); setAutoCalc(false); }}
+                />
+
+                {/* Старая накладная без сохранённых габаритов: сумму не трогаем молча.
+                    Объём при пересчёте вышел бы 0, и цена, посчитанная по кубам, упала бы. */}
+                {calcPreview && calcPreview.byWeightOnly && (
+                  <div style={{ marginTop: 6, padding: '6px 8px', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 6, fontSize: '0.75rem', color: '#92400e' }}>
+                    ⚠ Габариты в этой накладной не сохранены — пересчитано <strong>по весу</strong>:{" "}
+                    <strong>{calcPreview.sum.toLocaleString()} тг</strong> (сейчас {Number(form.totalSum || 0).toLocaleString()} тг).
+                    Сумма автоматически НЕ меняется: если исходная цена считалась по кубам, она была бы занижена.
+                    <div style={{ marginTop: 4 }}>
+                      Заполните размеры выше — пересчёт станет полным. Либо{" "}
+                      <button type="button" onClick={applyCalc}
+                        style={{ border: 'none', background: 'none', padding: 0, color: '#92400e', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>
+                        применить {calcPreview.sum.toLocaleString()} тг
+                      </button>.
+                    </div>
+                  </div>
+                )}
+
+                {calcPreview && !calcPreview.byWeightOnly && manualSum && (
+                  <div className="muted" style={{ marginTop: 6, fontSize: '0.72rem' }}>
+                    Расчёт по тарифу: <strong>{calcPreview.sum.toLocaleString()} тг</strong>.{" "}
+                    <button type="button" onClick={applyCalc}
+                      style={{ border: 'none', background: 'none', padding: 0, color: '#2563eb', textDecoration: 'underline', cursor: 'pointer', font: 'inherit' }}>
+                      вернуть автоматический расчёт
+                    </button>
+                  </div>
+                )}
+
+                {calcPreview && !calcPreview.byWeightOnly && !manualSum && (
+                  <div className="muted" style={{ marginTop: 6, fontSize: '0.72rem' }}>{calcPreview.description}</div>
+                )}
+              </div>
             </div>
           </div>
         </div>

@@ -8,6 +8,8 @@ import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/stora
 import Loader from "../../shared/components/Loader";
 import { printCargoVedomost, printCarrierVedomost } from "../../shared/print/vedomostPrint.js";
 import { buildActiveTotalsMap } from "../../shared/batch/batchTotals.js";
+import CityFilteredSelect from "../../shared/directory/CityFilteredSelect.jsx";
+import { filterByCity } from "../../shared/directory/byCity.js";
 
 function formatDate(val) {
   if (!val) return "—";
@@ -99,6 +101,10 @@ export default function BatchesPage() {
   // Ведомости перевозчика (для вкладки-группировки по номеру)
   const [carrierVedomosts, setCarrierVedomosts] = useState([]);
   const [expandedVedomost, setExpandedVedomost] = useState(null);
+  // Правка строки ведомости: { vedomostId, batchId } + черновик значений строки.
+  const [editingRow, setEditingRow] = useState(null);
+  const [rowDraft, setRowDraft] = useState(null);
+  const [rowSaving, setRowSaving] = useState(false);
 
   const [tab, setTab] = useState('active');
 
@@ -115,6 +121,26 @@ export default function BatchesPage() {
   // Итоги накладных (места/вес) по id — для подсчёта колонок в списке налету.
   // Так и старые партии без сохранённых totalSeats/totalWeight покажут цифры.
   const [reqTotals, setReqTotals] = useState({});
+
+  // Автоподстановка по городу в форме партии: срабатывает ТОЛЬКО когда за городом
+  // закреплён ровно один человек И поле ещё пустое. Уже выбранного (в том числе
+  // при редактировании партии) не перебиваем — приоритет у осознанного выбора.
+  useEffect(() => {
+    if (!showForm || !form.city) return;
+    setForm(f => {
+      const next = { ...f };
+      let changed = false;
+      if (f.needCarrier && !f.carrierId) {
+        const auto = filterByCity(carriers, f.city).autoPick;
+        if (auto) { next.carrierId = auto.id; changed = true; }
+      }
+      if (f.needRepresentative && !f.representativeId) {
+        const auto = filterByCity(representatives, f.city).autoPick;
+        if (auto) { next.representativeId = auto.id; changed = true; }
+      }
+      return changed ? next : f;
+    });
+  }, [showForm, form.city, form.needCarrier, form.needRepresentative, carriers, representatives]);
 
   const toggleVedomostSelect = (id) => {
     setSelectedForVedomost(prev => ({ ...prev, [id]: !prev[id] }));
@@ -281,6 +307,116 @@ export default function BatchesPage() {
       load();
     } catch (e) {
       alert("Ошибка при аннулировании: " + (e.message || e));
+    }
+  };
+
+  // ── Правка и удаление СТРОКИ ведомости перевозчика ──────────────────
+  // Строка = партия внутри снапшота data.rows. Пересчитываем снапшот и итоги
+  // на клиенте и отправляем целиком (PUT /carrier-vedomosts/:id); сервер сверяет
+  // состав партий, освобождает убранные и держит защиты (архив, последняя строка).
+  const vedomostRows = (v) => {
+    const snap = parseJson(v.data);
+    return Array.isArray(snap.rows) ? snap.rows : [];
+  };
+
+  const recalcVedomostTotals = (rows) => ({
+    totalSeats: rows.reduce((a, r) => a + (Number(r.seats) || 0), 0),
+    totalWeight: rows.reduce((a, r) => a + (Number(r.weight) || 0), 0),
+    carrierSum: rows.reduce((a, r) => a + (Number(r.carrierSum) || 0), 0),
+    loaderSum: rows.reduce((a, r) => a + (Number(r.loaderSum) || 0), 0),
+    representativeSum: rows.reduce((a, r) => a + (Number(r.representativeSum) || 0), 0),
+  });
+
+  // Сохранить ведомость с новым набором строк. batchIds пересобираем из строк,
+  // чтобы состав ведомости и снапшот не разъезжались.
+  const saveVedomostRows = async (v, rows) => {
+    const snap = parseJson(v.data) || {};
+    const totals = recalcVedomostTotals(rows);
+    const nextSnap = { ...snap, rows, ...totals };
+    const batchIds = rows.map(r => r.batchId).filter(Boolean);
+    await api.carrierVedomosts.update(v.id, {
+      data: nextSnap,
+      batchIds,
+      totalWeight: totals.totalWeight,
+      carrierSum: totals.carrierSum,
+      loaderSum: totals.loaderSum,
+      representativeSum: totals.representativeSum,
+    });
+    await load();
+  };
+
+  const startEditRow = (v, row) => {
+    setEditingRow({ vedomostId: v.id, batchId: row.batchId });
+    setRowDraft({
+      carrierId: row.carrierId || "",
+      representativeId: row.representativeId || "",
+      carrierRate: row.carrierRate ?? "",
+      carrierSum: row.carrierSum ?? "",
+      representativeSum: row.representativeSum ?? "",
+    });
+  };
+
+  const cancelEditRow = () => { setEditingRow(null); setRowDraft(null); };
+
+  // Тариф правим → сумма пересчитывается (вес × тариф), но остаётся правимой руками.
+  const onRowRateChange = (val, weight) => {
+    setRowDraft(prev => ({
+      ...prev,
+      carrierRate: val,
+      carrierSum: Math.round((Number(weight) || 0) * (Number(val) || 0)),
+    }));
+  };
+
+  const saveEditRow = async (v, row) => {
+    setRowSaving(true);
+    try {
+      const rows = vedomostRows(v).map(r => {
+        if (String(r.batchId) !== String(row.batchId)) return r;
+        return {
+          ...r,
+          carrierId: rowDraft.carrierId || "",
+          carrierName: rowDraft.carrierId
+            ? (carriers.find(c => c.id === rowDraft.carrierId)?.name || r.carrierName || "—")
+            : "—",
+          representativeId: rowDraft.representativeId || "",
+          representativeName: rowDraft.representativeId
+            ? (representatives.find(x => x.id === rowDraft.representativeId)?.name || r.representativeName || "—")
+            : "—",
+          carrierRate: Number(rowDraft.carrierRate) || 0,
+          carrierSum: Number(rowDraft.carrierSum) || 0,
+          representativeSum: Number(rowDraft.representativeSum) || 0,
+        };
+      });
+      await saveVedomostRows(v, rows);
+      cancelEditRow();
+    } catch (e) {
+      alert("Ошибка при сохранении строки: " + (e.message || e));
+    } finally {
+      setRowSaving(false);
+    }
+  };
+
+  // «Удаление» строки = партия выходит из ведомости и возвращается в «Сформированные».
+  // Номер ведомости остаётся закреплён за ней навсегда, запись не стирается.
+  const deleteVedomostRow = async (v, row) => {
+    const rows = vedomostRows(v);
+    if (rows.length <= 1) {
+      alert(
+        `В ведомости ${v.number} это единственная строка — убрать её нельзя.\n\n` +
+        `Если ведомость не нужна, аннулируйте её целиком: номер сохранится, ` +
+        `а партии вернутся в «Сформированные».`
+      );
+      return;
+    }
+    if (!window.confirm(
+      `Убрать партию ${row.number} из ведомости ${v.number}?\n\n` +
+      `Партия освободится и вернётся в раздел «Сформированные» — её можно будет ` +
+      `включить в другую ведомость. Итоги ведомости пересчитаются, номер ${v.number} останется прежним.`
+    )) return;
+    try {
+      await saveVedomostRows(v, rows.filter(r => String(r.batchId) !== String(row.batchId)));
+    } catch (e) {
+      alert("Ошибка при удалении строки: " + (e.message || e));
     }
   };
 
@@ -700,16 +836,16 @@ export default function BatchesPage() {
                   🚚 Нужен перевозчик
                 </label>
                 {form.needCarrier && (
-                  <select
+                  <CityFilteredSelect
+                    items={carriers}
+                    city={form.city}
                     value={form.carrierId}
-                    onChange={e => setForm({ ...form, carrierId: e.target.value })}
-                    style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                  >
-                    <option value="">— выберите перевозчика —</option>
-                    {carriers.map(c => (
-                      <option key={c.id} value={c.id}>{c.name}{c.city ? ` (${c.city})` : ''}{c.phone ? ` · ${c.phone}` : ''}</option>
-                    ))}
-                  </select>
+                    onChange={val => setForm(f => ({ ...f, carrierId: val }))}
+                    kindPlural="перевозчики"
+                    kindSingle="перевозчик"
+                    placeholder="— выберите перевозчика —"
+                    style={{ marginTop: 8 }}
+                  />
                 )}
               </div>
 
@@ -719,16 +855,16 @@ export default function BatchesPage() {
                   🧑‍💼 Нужен представитель
                 </label>
                 {form.needRepresentative && (
-                  <select
+                  <CityFilteredSelect
+                    items={representatives}
+                    city={form.city}
                     value={form.representativeId}
-                    onChange={e => setForm({ ...form, representativeId: e.target.value })}
-                    style={{ marginTop: 8, width: '100%', padding: '8px', borderRadius: 6, border: '1px solid #cbd5e1' }}
-                  >
-                    <option value="">— выберите представителя —</option>
-                    {representatives.map(r => (
-                      <option key={r.id} value={r.id}>{r.name}{r.city ? ` (${r.city})` : ''}{r.phone ? ` · ${r.phone}` : ''}</option>
-                    ))}
-                  </select>
+                    onChange={val => setForm(f => ({ ...f, representativeId: val }))}
+                    kindPlural="представители"
+                    kindSingle="представитель"
+                    placeholder="— выберите представителя —"
+                    style={{ marginTop: 8 }}
+                  />
                 )}
               </div>
 
@@ -832,25 +968,91 @@ export default function BatchesPage() {
                                   <th style={{ textAlign: 'center' }}>Мест</th>
                                   <th style={{ textAlign: 'center' }}>Вес</th>
                                   <th>Перевозчик</th>
+                                  <th style={{ textAlign: 'center' }}>Тариф</th>
                                   <th style={{ textAlign: 'right' }}>Сумма перевозчику</th>
                                   <th>Представитель</th>
+                                  <th style={{ textAlign: 'right' }}>Сумма представителю</th>
+                                  {!v.annulled && <th style={{ width: 96 }}>Действия</th>}
                                 </tr>
                               </thead>
                               <tbody>
                                 {rows.length === 0 ? (
-                                  <tr><td colSpan={8} className="muted" style={{ padding: 10 }}>Нет данных по партиям</td></tr>
-                                ) : rows.map((r, i) => (
-                                  <tr key={i}>
-                                    <td>{i + 1}</td>
-                                    <td style={{ fontWeight: 600 }}>{r.number}</td>
-                                    <td>{r.city}</td>
-                                    <td style={{ textAlign: 'center' }}>{r.seats != null ? Number(r.seats).toLocaleString() : "—"}</td>
-                                    <td style={{ textAlign: 'center' }}>{Number(r.weight || 0).toLocaleString()} кг</td>
-                                    <td>{r.carrierId ? (carriers.find(c => c.id === r.carrierId)?.name || r.carrierName || "—") : (r.carrierName || "—")}</td>
-                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{Number(r.carrierSum || 0).toLocaleString()} тг</td>
-                                    <td>{r.representativeId ? (representatives.find(x => x.id === r.representativeId)?.name || r.representativeName || "—") : (r.representativeName || "—")}</td>
-                                  </tr>
-                                ))}
+                                  <tr><td colSpan={v.annulled ? 10 : 11} className="muted" style={{ padding: 10 }}>Нет данных по партиям</td></tr>
+                                ) : rows.map((r, i) => {
+                                  const isEditing = editingRow
+                                    && editingRow.vedomostId === v.id
+                                    && String(editingRow.batchId) === String(r.batchId);
+                                  if (isEditing) return (
+                                    <tr key={i} style={{ background: '#fffbeb' }}>
+                                      <td>{i + 1}</td>
+                                      <td style={{ fontWeight: 600 }}>{r.number}</td>
+                                      <td>{r.city}</td>
+                                      <td style={{ textAlign: 'center' }}>{r.seats != null ? Number(r.seats).toLocaleString() : "—"}</td>
+                                      <td style={{ textAlign: 'center' }}>{Number(r.weight || 0).toLocaleString()} кг</td>
+                                      <td>
+                                        <select value={rowDraft.carrierId} style={{ width: '100%' }}
+                                          onChange={e => setRowDraft(p => ({ ...p, carrierId: e.target.value }))}>
+                                          <option value="">— не выбран —</option>
+                                          {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                        </select>
+                                      </td>
+                                      <td style={{ textAlign: 'center' }}>
+                                        <input type="number" min="0" value={rowDraft.carrierRate} style={{ width: 78 }}
+                                          onChange={e => onRowRateChange(e.target.value, r.weight)} />
+                                      </td>
+                                      <td style={{ textAlign: 'right' }}>
+                                        <input type="number" min="0" value={rowDraft.carrierSum} style={{ width: 96 }}
+                                          onChange={e => setRowDraft(p => ({ ...p, carrierSum: e.target.value }))} />
+                                      </td>
+                                      <td>
+                                        <select value={rowDraft.representativeId} style={{ width: '100%' }}
+                                          onChange={e => setRowDraft(p => ({ ...p, representativeId: e.target.value }))}>
+                                          <option value="">— не выбран —</option>
+                                          {representatives.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
+                                        </select>
+                                      </td>
+                                      <td style={{ textAlign: 'right' }}>
+                                        <input type="number" min="0" value={rowDraft.representativeSum} style={{ width: 96 }}
+                                          onChange={e => setRowDraft(p => ({ ...p, representativeSum: e.target.value }))} />
+                                      </td>
+                                      <td>
+                                        <div style={{ display: 'flex', gap: 4 }}>
+                                          <button className="btn btn--sm btn--accent" disabled={rowSaving}
+                                            title="Сохранить строку" style={{ fontSize: 11 }}
+                                            onClick={() => saveEditRow(v, r)}>{rowSaving ? '…' : '✓'}</button>
+                                          <button className="btn btn--sm" disabled={rowSaving}
+                                            title="Отменить" style={{ fontSize: 11 }}
+                                            onClick={cancelEditRow}>✕</button>
+                                        </div>
+                                      </td>
+                                    </tr>
+                                  );
+                                  return (
+                                    <tr key={i}>
+                                      <td>{i + 1}</td>
+                                      <td style={{ fontWeight: 600 }}>{r.number}</td>
+                                      <td>{r.city}</td>
+                                      <td style={{ textAlign: 'center' }}>{r.seats != null ? Number(r.seats).toLocaleString() : "—"}</td>
+                                      <td style={{ textAlign: 'center' }}>{Number(r.weight || 0).toLocaleString()} кг</td>
+                                      <td>{r.carrierId ? (carriers.find(c => c.id === r.carrierId)?.name || r.carrierName || "—") : (r.carrierName || "—")}</td>
+                                      <td style={{ textAlign: 'center' }}>{r.carrierRate ? `${Number(r.carrierRate).toLocaleString()} тг/кг` : "—"}</td>
+                                      <td style={{ textAlign: 'right', fontWeight: 600 }}>{Number(r.carrierSum || 0).toLocaleString()} тг</td>
+                                      <td>{r.representativeId ? (representatives.find(x => x.id === r.representativeId)?.name || r.representativeName || "—") : (r.representativeName || "—")}</td>
+                                      <td style={{ textAlign: 'right' }}>{Number(r.representativeSum || 0).toLocaleString()} тг</td>
+                                      {!v.annulled && (
+                                        <td>
+                                          <div style={{ display: 'flex', gap: 4 }}>
+                                            <button className="btn btn--sm" title="Редактировать строку"
+                                              style={{ fontSize: 11 }} onClick={() => startEditRow(v, r)}>✏️</button>
+                                            <button className="btn btn--sm" title="Убрать партию из ведомости (вернётся в «Сформированные»)"
+                                              style={{ fontSize: 11, color: '#dc2626', borderColor: '#fecaca' }}
+                                              onClick={() => deleteVedomostRow(v, r)}>🗑</button>
+                                          </div>
+                                        </td>
+                                      )}
+                                    </tr>
+                                  );
+                                })}
                               </tbody>
                             </table>
                           </td>
