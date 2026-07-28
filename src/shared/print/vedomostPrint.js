@@ -7,8 +7,15 @@
 //   printCargoVedomost({ companyName, batchNumber, city, rows })
 //     rows: [{ docNumber, receiver, phone, seats, weight, city, sum }]
 //   printCarrierVedomost({ companyName, vedomostNumber, rows, totals })
-//     rows: [{ number, city, weight, carrierName, carrierRate, carrierSum, representativeName }]
+//     rows: [{ number, city, weight, carrierName, carrierRate, carrierSum,
+//              representativeName, representativePhone }]
 //     totals: { totalWeight, carrierSum, representativeRate, representativeSum }
+//
+// ТЗ: из блока итогов убрана ПЛАШКА «Сумма представителю» (только она).
+// Колонка «Представитель» в таблице и весь расчёт остаются как были, а сама
+// сумма живёт в снапшоте ведомости и в отчёте бухгалтера — по ней представитель
+// получает выплаты. Поэтому totals.representativeSum намеренно оставлен в
+// контракте (вызывающие его шлют) — просто не рисуется в итогах.
 // ============================================================
 
 function esc(s) {
@@ -158,7 +165,6 @@ export function printCarrierVedomost({ companyName = "", vedomostNumber = "", ro
       <div>Всего мест: ${totals.totalSeats != null ? fmt(totals.totalSeats) : "—"}</div>
       <div>Общий вес: ${fmt(totals.totalWeight)} кг</div>
       <div>Сумма перевозчику: ${fmt(totals.carrierSum)} тг</div>
-      <div>Сумма представителю: ${fmt(totals.representativeSum)} тг</div>
     </div>
     <div class="signatures">
       <div class="sig"><div class="sig-line"></div><div class="sig-label">Составил (ФИО, подпись)</div></div>

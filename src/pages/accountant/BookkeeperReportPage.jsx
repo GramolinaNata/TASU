@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../shared/api/api.js";
 import { activeRequestIds, batchTotalsExcludingCanceled } from "../../shared/batch/batchTotals.js";
+import { vedomostRowForBatch, payoutsFromRow } from "../../shared/batch/vedomostPayouts.js";
 
 const parseDetails = (raw) => {
   if (!raw) return {};
@@ -128,35 +129,14 @@ export default function BookkeeperReportPage() {
   // Строка снапшота ведомости перевозчика, относящаяся к этой партии.
   // В снапшоте сохранены перевозчик/представитель/грузчики и суммы — партия
   // сама их НЕ хранит (назначаются в форме создания ведомости).
-  const batchVedomostRow = (batch) => {
-    if (!batch.carrierVedomostId) return null;
-    const vedomost = carrierVedomosts.find(v => v.id === batch.carrierVedomostId);
-    if (!vedomost) return null;
-    const snapshot = parseJson(vedomost.data) || {};
-    const rows = Array.isArray(snapshot.rows) ? snapshot.rows : [];
-    const row = rows.find(r => r.batchId === batch.id) || null;
-    return row ? { ...row, _snapshot: snapshot } : null;
-  };
+  const batchVedomostRow = (batch) => vedomostRowForBatch(batch, carrierVedomosts);
 
   // ТЗ: суммы перевозчику/грузчикам/представителю — из сформированной ведомости
   // перевозчика, если партия в неё входит (берём точную разбивку по этой партии,
-  // а не общий итог ведомости, т.к. в одну ведомость может входить несколько партий)
-  const batchPayouts = (batch) => {
-    const row = batchVedomostRow(batch);
-    if (!row) return { carrierSum: 0, loaderSum: 0, representativeSum: 0 };
-
-    // Новые ведомости: сумма представителя сохранена в строке (ставка из тарифов).
-    // Старые: fallback на ручную ставку из snapshot × вес.
-    const representativeSum = row.representativeSum != null
-      ? Number(row.representativeSum) || 0
-      : Math.round((Number(row.weight) || 0) * (Number(row._snapshot.representativeRate) || 0));
-
-    return {
-      carrierSum: Number(row.carrierSum) || 0,
-      loaderSum: Number(row.loaderSum) || 0,
-      representativeSum,
-    };
-  };
+  // а не общий итог ведомости, т.к. в одну ведомость может входить несколько партий).
+  // Логика вынесена в shared/batch/vedomostPayouts.js и покрыта тестами —
+  // отображение ведомости меняется, суммы выплат меняться не должны.
+  const batchPayouts = (batch) => payoutsFromRow(batchVedomostRow(batch));
 
   // Мест в партии — сумма по накладным из requestIds (без аннулированных).
   // Fallback на сохранённое totalSeats, если накладные не подтянулись.

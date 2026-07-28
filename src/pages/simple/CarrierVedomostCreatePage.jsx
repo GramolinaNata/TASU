@@ -488,9 +488,9 @@ export default function CarrierVedomostCreatePage() {
               <div style={{ padding: '8px 16px', background: '#eff6ff', borderRadius: 8, border: '1px solid #bfdbfe' }}>
                 Сумма перевозчику: <strong>{breakdown.carrierSum.toLocaleString()} тг</strong>
               </div>
-              <div style={{ padding: '8px 16px', background: '#fdf4ff', borderRadius: 8, border: '1px solid #f0abfc' }}>
-                Сумма представителю: <strong>{breakdown.representativeSum.toLocaleString()} тг</strong>
-              </div>
+              {/* ТЗ: итоговая плашка «Сумма представителю» убрана. Колонка в таблице
+                  выше остаётся, расчёт и снапшот не тронуты — по representativeSum
+                  идут выплаты представителю и считается отчёт бухгалтера. */}
               <div className="muted" style={{ fontSize: '0.72rem', flexBasis: '100%' }}>
                 Ставка представителя берётся из тарифов (вкладка «Представители», ставка за кг по городу). Если не найдена — «тариф не найден», сумма 0.
               </div>

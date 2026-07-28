@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "test": "node src/shared/tariff/calcTariff.test.mjs && node src/shared/batch/batchTotals.test.mjs && node src/shared/directory/byCity.test.mjs && node src/shared/dims/dimGroups.test.mjs && node src/shared/tariff/calcCarrierPrice.test.mjs",
+    "test": "node src/shared/tariff/calcTariff.test.mjs && node src/shared/batch/batchTotals.test.mjs && node src/shared/batch/vedomostPayouts.test.mjs && node src/shared/directory/byCity.test.mjs && node src/shared/dims/dimGroups.test.mjs && node src/shared/tariff/calcCarrierPrice.test.mjs",
     "build": "vite build",
     "build:server": "cd server && npm install && npx prisma generate",
     "postinstall": "npx prisma generate --schema=server/prisma/schema.prisma",
