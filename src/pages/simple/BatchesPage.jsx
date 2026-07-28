@@ -294,19 +294,22 @@ export default function BatchesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrierVedomosts, sortBy, sortOrder]);
 
-  // ТЗ: аннулирование ведомости перевозчика (удалять нельзя). Партии освобождаются
-  // и возвращаются в «Сформированные»; номер ведомости сохраняется, строка серая.
-  const handleAnnulVedomost = async (v) => {
+  // ТЗ: удаление ведомости перевозчика ЦЕЛИКОМ — мягкое, как удаление строки.
+  // Ведомость уходит из списка, партии освобождаются и возвращаются в
+  // «Сформированные», но запись в базе остаётся и номер закреплён за ней навсегда.
+  // Сервер блокирует удаление, если партии уже проведены в архив бухгалтерии.
+  const handleDeleteVedomost = async (v) => {
     if (!window.confirm(
-      `Аннулировать ведомость перевозчика №${v.number}?\n\n` +
-      `Партии освободятся и вернутся в раздел «Сформированные» — их можно будет собрать в новую ведомость. ` +
-      `Номер ${v.number} сохранится за этой ведомостью. Удаление невозможно.`
+      `Удалить ведомость перевозчика №${v.number}?\n\n` +
+      `Партии освободятся и вернутся в раздел «Сформированные» — их можно будет собрать в новую ведомость.\n` +
+      `Номер ${v.number} останется закреплён за этой ведомостью навсегда и другой ведомости не достанется.\n\n` +
+      `Ведомость исчезнет из списка, но из базы не стирается.`
     )) return;
     try {
-      await api.carrierVedomosts.annul(v.id);
+      await api.carrierVedomosts.delete(v.id);
       load();
     } catch (e) {
-      alert("Ошибка при аннулировании: " + (e.message || e));
+      alert("Не удалось удалить ведомость: " + (e.message || e));
     }
   };
 
@@ -964,11 +967,9 @@ export default function BatchesPage() {
                             <button className="btn btn--sm" onClick={() => printCarrierVedomostRecord(v)} title="Печать ведомости перевозчика" style={{ fontSize: 11 }}>
                               🖨 Печать
                             </button>
-                            {!v.annulled && (
-                              <button className="btn btn--sm" onClick={() => handleAnnulVedomost(v)} title="Аннулировать ведомость (партии освободятся)" style={{ fontSize: 11, color: '#dc2626', borderColor: '#fecaca' }}>
-                                ⊘ Аннулировать
-                              </button>
-                            )}
+                            <button className="btn btn--sm" onClick={() => handleDeleteVedomost(v)} title="Удалить ведомость (партии вернутся в «Сформированные», номер останется закреплён)" style={{ fontSize: 11, color: '#dc2626', borderColor: '#fecaca' }}>
+                              🗑 Удалить
+                            </button>
                           </div>
                         </td>
                       </tr>

@@ -2,6 +2,9 @@ import { Response } from 'express';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';
 
+// ВАЖНО: считаем max по ВСЕМ записям, включая удалённые и аннулированные —
+// иначе номер удалённой ведомости уйдёт следующей, а он уже мог попасть
+// в напечатанный отчёт бухгалтера. Не добавлять сюда фильтр deleted/annulled.
 async function genVedomostNumber(): Promise<string> {
   const all = await prisma.carrierVedomost.findMany({ select: { number: true } });
   let maxNum = 0;
@@ -17,7 +20,9 @@ all.forEach((v: { number: string }) => {    const m = (v.number || '').match(/^�
 export const getCarrierVedomosts = async (req: AuthRequest, res: Response) => {
   try {
     const { companyId } = req.query;
-    const where: any = {};
+    // Удалённые (и старые аннулированные — тот же по сути результат: партии
+    // освобождены, номер закреплён) с глаз убраны. Записи в базе остаются.
+    const where: any = { deleted: false, annulled: false };
     if (companyId) where.companyId = companyId as string;
     const list = await prisma.carrierVedomost.findMany({
       where,
@@ -197,6 +202,12 @@ export const updateCarrierVedomost = async (req: AuthRequest, res: Response) => 
   }
 };
 
+// LEGACY: кнопки «Аннулировать» в интерфейсе больше нет — заказчик свёл всё
+// к одной кнопке «Удалить» (мягкое удаление ниже). Эндпоинт оставлен, чтобы не
+// ломать старые ссылки; новые аннулирования через UI не создаются.
+// ВНИМАНИЕ: здесь НЕТ проверки на архив бухгалтерии — в отличие от удаления.
+// Если эндпоинт когда-нибудь вернут в UI, проверку надо добавить.
+//
 // ТЗ: аннулирование ведомости (удалять нельзя). Ведомость помечается annulled=true,
 // номер сохраняется за ней, а входившие партии освобождаются (carrierVedomostId=null)
 // и возвращаются в раздел «Сформированные» для сборки в новую ведомость.
@@ -228,18 +239,57 @@ export const annulCarrierVedomost = async (req: AuthRequest, res: Response) => {
   }
 };
 
+// ТЗ: удаление ведомости ЦЕЛИКОМ — мягкое, той же механикой, что и мягкое
+// удаление строки. Ведомость уходит с глаз, её партии освобождаются и
+// возвращаются в «Сформированные», но запись из базы НЕ стирается и номер
+// закреплён за ней навсегда.
+//
+// Жёсткого DELETE здесь больше нет намеренно: он переиспользовал номера
+// (следующая ведомость получала номер удалённой, уже попавший в напечатанный
+// отчёт) и сдвигал отчёт бухгалтера.
+//
+// Как и у строки, блокируем удаление, если хоть одна партия ведомости уже
+// проведена в архив бухгалтерии (status='reported') — иначе задним числом
+// поедут выплаты в закрытом отчётном периоде.
 export const deleteCarrierVedomost = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    await prisma.$transaction(async (tx) => {
+
+    const result = await prisma.$transaction(async (tx) => {
+      const ved = await tx.carrierVedomost.findUnique({ where: { id: id as string } });
+      if (!ved) throw new Error('NOT_FOUND');
+      // Повторное удаление — не ошибка: партии уже освобождены, метка стоит.
+      if ((ved as any).deleted) return ved;
+
+      const reported = await tx.batch.findMany({
+        where: { carrierVedomostId: id as string, status: 'reported' } as any,
+        select: { number: true },
+      });
+      if (reported.length > 0) {
+        throw new Error('REPORTED:' + reported.map((b) => b.number).join(', '));
+      }
+
       await tx.batch.updateMany({
         where: { carrierVedomostId: id as string } as any,
         data: { carrierVedomostId: null } as any,
       });
-      await tx.carrierVedomost.delete({ where: { id: id as string } });
+
+      return await tx.carrierVedomost.update({
+        where: { id: id as string },
+        data: { deleted: true, deletedAt: new Date() } as any,
+      });
     });
-    res.json({ message: 'Ведомость перевозчика удалена' });
+
+    res.json({ message: 'Ведомость перевозчика удалена', vedomost: result });
   } catch (error: any) {
+    const msg = String(error.message || '');
+    if (msg === 'NOT_FOUND') return res.status(404).json({ message: 'Ведомость перевозчика не найдена' });
+    if (msg.startsWith('REPORTED:')) {
+      return res.status(400).json({
+        message: `Партии ${msg.slice('REPORTED:'.length)} уже проведены в архив бухгалтерии. ` +
+          `Удаление ведомости исказит закрытый отчёт — сначала верните их в «Текущие» в отчёте бухгалтера.`,
+      });
+    }
     console.error('Delete carrier vedomost error:', error);
     res.status(500).json({ message: 'Ошибка при удалении ведомости', details: error.message });
   }

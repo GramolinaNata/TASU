@@ -238,10 +238,17 @@ model CarrierVedomost {
   carrierSum        Float    @default(0)
   loaderSum         Float    @default(0)
   representativeSum Float    @default(0)
-  // ТЗ: ведомость нельзя удалять — только аннулировать. Партии при этом
-  // освобождаются (Batch.carrierVedomostId = null), номер ведомости сохраняется.
+  // Аннулирование — ПРЕЖНИЙ механизм, кнопки в интерфейсе больше нет.
+  // Поля оставлены для истории: по ним видно, каким способом убрали старые
+  // ведомости. Из списка такие записи скрыты наравне с deleted.
   annulled          Boolean  @default(false)
   annulledAt        DateTime?
+  // ТЗ: удаление ведомости — МЯГКОЕ. Запись из базы не стирается никогда,
+  // номер закреплён за ней навсегда (genVedomostNumber считает max по всем
+  // записям, включая удалённые). Партии при удалении освобождаются
+  // (Batch.carrierVedomostId = null) и возвращаются в «Сформированные».
+  deleted           Boolean  @default(false)
+  deletedAt         DateTime?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
