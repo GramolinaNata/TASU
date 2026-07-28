@@ -83,6 +83,10 @@ export default function BatchDetailPage() {
       return;
     }
     if (!ved) { alert("Ведомость перевозчика не найдена."); return; }
+    // Справочник представителей — нужен для телефона под ФИО (ТЗ).
+    // У старых ведомостей телефона в снапшоте нет, берём по representativeId.
+    let reps = [];
+    try { reps = await api.representatives.list(); } catch { reps = []; }
     let snap = {};
     try { snap = typeof ved.data === "string" ? JSON.parse(ved.data) : (ved.data || {}); } catch { snap = {}; }
     const snapRows = Array.isArray(snap.rows) ? snap.rows : [];
@@ -98,6 +102,10 @@ export default function BatchDetailPage() {
     if (!seats) seats = Number(my.seats) || 0;
     const carrierSum = Math.round(weight * carrierRate);
     const representativeSum = Math.round(weight * representativeRate);
+    const repPhone = String(
+      (my.representativeId ? (reps || []).find(x => x.id === my.representativeId)?.phone : "") ||
+      my.representativePhone || ""
+    ).trim();
 
     // По эталону: одна партия → одна строка-партия.
     printCarrierDoc({
@@ -112,6 +120,7 @@ export default function BatchDetailPage() {
         carrierRate,
         carrierSum,
         representativeName: my.representativeName || "—",
+        representativePhone: repPhone,
       }],
       totals: { totalSeats: seats, totalWeight: weight, carrierSum, representativeRate, representativeSum },
     });

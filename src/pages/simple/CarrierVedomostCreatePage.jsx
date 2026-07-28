@@ -215,7 +215,11 @@ export default function CarrierVedomostCreatePage() {
       const representativeId = rowRep[b.id] !== undefined
         ? rowRep[b.id]
         : (b.representativeId || (repAuto ? repAuto.id : ""));
-      const representativeName = representativeId ? (representatives.find(r => r.id === representativeId)?.name || "—") : "—";
+      const repRecord = representativeId ? representatives.find(r => r.id === representativeId) : null;
+      const representativeName = repRecord?.name || "—";
+      // ТЗ: телефон представителя из справочника — сохраняем в снапшот, чтобы
+      // печать ведомости не зависела от последующих правок справочника.
+      const representativePhone = String(repRecord?.phone || "").trim();
       const repTariff = findRepresentativeTariff(b.city);
       const repCalc = calcCarrierPrice(repTariff, weight);
       const representativeRate = repCalc.rate;
@@ -240,6 +244,7 @@ export default function CarrierVedomostCreatePage() {
         loaderMissing: loadersCount > 0 && !loaderTariff,
         representativeId,
         representativeName,
+        representativePhone,
         representativeRate,
         representativeRateLabel,
         representativeSum,
@@ -460,6 +465,10 @@ export default function CarrierVedomostCreatePage() {
                         kindSingle="представитель"
                         compact
                       />
+                      {/* ТЗ: под ФИО представителя — его телефон из справочника, прочерк если нет */}
+                      <div className="muted" style={{ fontSize: '0.75rem', marginTop: 2 }}>
+                        {r.representativePhone || "—"}
+                      </div>
                     </td>
                     <td style={{ textAlign: 'center', fontWeight: 700 }}>
                       {r.repMissing ? <span style={{ color: '#dc2626' }}>тариф не найден</span> : `${r.representativeSum.toLocaleString()} тг`}

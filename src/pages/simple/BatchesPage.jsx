@@ -382,6 +382,11 @@ export default function BatchesPage() {
           representativeName: rowDraft.representativeId
             ? (representatives.find(x => x.id === rowDraft.representativeId)?.name || r.representativeName || "—")
             : "—",
+          // Телефон фиксируем в снапшоте вместе с именем — печать не должна
+          // зависеть от последующих правок справочника.
+          representativePhone: rowDraft.representativeId
+            ? String(representatives.find(x => x.id === rowDraft.representativeId)?.phone || "").trim()
+            : "",
           carrierRate: Number(rowDraft.carrierRate) || 0,
           carrierSum: Number(rowDraft.carrierSum) || 0,
           representativeSum: Number(rowDraft.representativeSum) || 0,
@@ -420,13 +425,24 @@ export default function BatchesPage() {
     }
   };
 
+  // Телефон представителя строки: приоритет — живой справочник (актуальнее),
+  // иначе сохранённый в снапшоте. У старых ведомостей телефона в снапшоте нет,
+  // поэтому подтягиваем по representativeId. Нет нигде → пустая строка (в печати «—»).
+  const rowRepPhone = (r) => {
+    const fromDir = r.representativeId
+      ? representatives.find(x => x.id === r.representativeId)?.phone
+      : "";
+    return String(fromDir || r.representativePhone || "").trim();
+  };
+
   // Печать ведомости с её уровня — из сохранённого snapshot (единый эталон).
   const printCarrierVedomostRecord = (v) => {
     const snap = parseJson(v.data);
+    const snapRows = Array.isArray(snap.rows) ? snap.rows : [];
     printCarrierVedomost({
       companyName: snap.companyName || company?.name || "",
       vedomostNumber: v.number,
-      rows: Array.isArray(snap.rows) ? snap.rows : [],
+      rows: snapRows.map(r => ({ ...r, representativePhone: rowRepPhone(r) })),
       totals: {
         totalSeats: snap.totalSeats,
         totalWeight: v.totalWeight,
@@ -1010,6 +1026,9 @@ export default function BatchesPage() {
                                           <option value="">— не выбран —</option>
                                           {representatives.map(x => <option key={x.id} value={x.id}>{x.name}</option>)}
                                         </select>
+                                        <div className="muted" style={{ fontSize: '0.75rem', marginTop: 2 }}>
+                                          {String(representatives.find(x => x.id === rowDraft.representativeId)?.phone || "").trim() || "—"}
+                                        </div>
                                       </td>
                                       <td style={{ textAlign: 'right' }}>
                                         <input type="number" min="0" value={rowDraft.representativeSum} style={{ width: 96 }}
@@ -1037,7 +1056,11 @@ export default function BatchesPage() {
                                       <td>{r.carrierId ? (carriers.find(c => c.id === r.carrierId)?.name || r.carrierName || "—") : (r.carrierName || "—")}</td>
                                       <td style={{ textAlign: 'center' }}>{r.carrierRate ? `${Number(r.carrierRate).toLocaleString()} тг/кг` : "—"}</td>
                                       <td style={{ textAlign: 'right', fontWeight: 600 }}>{Number(r.carrierSum || 0).toLocaleString()} тг</td>
-                                      <td>{r.representativeId ? (representatives.find(x => x.id === r.representativeId)?.name || r.representativeName || "—") : (r.representativeName || "—")}</td>
+                                                          <td>
+                                        <div>{r.representativeId ? (representatives.find(x => x.id === r.representativeId)?.name || r.representativeName || "—") : (r.representativeName || "—")}</div>
+                                        {/* ТЗ: телефон представителя из справочника, прочерк если нет */}
+                                        <div className="muted" style={{ fontSize: '0.75rem' }}>{rowRepPhone(r) || "—"}</div>
+                                      </td>
                                       <td style={{ textAlign: 'right' }}>{Number(r.representativeSum || 0).toLocaleString()} тг</td>
                                       {!v.annulled && (
                                         <td>

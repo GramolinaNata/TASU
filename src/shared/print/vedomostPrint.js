@@ -126,7 +126,10 @@ export function printCarrierVedomost({ companyName = "", vedomostNumber = "", ro
     <td>${esc(r.carrierName || "—")}</td>
     <td style="text-align:center">${fmt(r.carrierRate)} тг/кг</td>
     <td style="text-align:center;font-weight:700">${fmt(r.carrierSum)} тг</td>
-    <td>${esc(r.representativeName || "—")}</td>
+    <td>
+      <div>${esc(r.representativeName || "—")}</div>
+      <div style="font-size:10px;color:#444">${esc(String(r.representativePhone || "").trim() || "—")}</div>
+    </td>
   </tr>`).join("");
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Ведомость перевозчика ${esc(vedomostNumber)}</title>
