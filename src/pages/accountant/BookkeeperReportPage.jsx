@@ -43,6 +43,7 @@ export default function BookkeeperReportPage() {
   const [companyId, setCompanyId] = useState('all');
   const [selected, setSelected] = useState([]); // отмеченные партии для печати/архива
   const [tab, setTab] = useState('active'); // 'active' | 'archive'
+  const [expandedVedomost, setExpandedVedomost] = useState(null); // ТЗ п.5: раскрытая группа
   const [sortBy, setSortBy] = useState("");
   const [sortOrder, setSortOrder] = useState("asc");
 
@@ -226,6 +227,71 @@ export default function BookkeeperReportPage() {
 
   // Если что-то отмечено — работаем только с отмеченными, иначе со всеми
   const activeRows = selected.length > 0 ? rows.filter(r => selected.includes(r.id)) : rows;
+
+  // ── ТЗ п.5: группировка строк отчёта по ведомости перевозчика ──────
+  // ТОЛЬКО отображение: rows/activeRows/totals/печать считаются как раньше,
+  // здесь строки лишь раскладываются по группам и агрегируются для шапки группы.
+  // Партии без ведомости собираются в отдельную группу и уходят вниз списка.
+  const NO_VEDOMOST = "__none__";
+
+  const groups = useMemo(() => {
+    const map = new Map();
+    sortRows(rows).forEach(r => {
+      const key = r.vedomostNumber || NO_VEDOMOST;
+      if (!map.has(key)) map.set(key, { key, number: r.vedomostNumber || "", rows: [] });
+      map.get(key).rows.push(r);
+    });
+
+    const list = [...map.values()].map(g => {
+      const agg = g.rows.reduce((a, r) => ({
+        seats: a.seats + r.seats,
+        loaders: a.loaders + r.loaders,
+        income: a.income + r.income,
+        expense: a.expense + r.expense,
+        carrierSum: a.carrierSum + r.carrierSum,
+        loaderSum: a.loaderSum + r.loaderSum,
+        representativeSum: a.representativeSum + r.representativeSum,
+        taxAmount: a.taxAmount + r.taxAmount,
+        profit: a.profit + r.profit,
+      }), { seats: 0, loaders: 0, income: 0, expense: 0, carrierSum: 0, loaderSum: 0, representativeSum: 0, taxAmount: 0, profit: 0 });
+
+      // Перевозчик/представитель/регион в шапке группы: показываем, только если
+      // он один на всю ведомость. Разные — «разные», чтобы не выдавать первый за общий.
+      const common = (field) => {
+        const set = new Set(g.rows.map(r => r[field]).filter(v => v && v !== "—"));
+        if (set.size === 0) return "—";
+        return set.size === 1 ? [...set][0] : "разные";
+      };
+      const times = g.rows.map(r => new Date(r.createdAt || 0).getTime()).filter(t => t > 0);
+
+      return {
+        ...g, ...agg,
+        count: g.rows.length,
+        carrier: common("carrier"),
+        representative: common("representative"),
+        region: common("region"),
+        createdAt: times.length ? new Date(Math.min(...times)) : null,
+      };
+    });
+
+    return list.sort((a, b) => {
+      if (!a.number && b.number) return 1;   // «без ведомости» — всегда вниз
+      if (a.number && !b.number) return -1;
+      return String(a.number).localeCompare(String(b.number));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, sortBy, sortOrder]);
+
+  const groupSelected = (g) => g.rows.every(r => selected.includes(r.id));
+
+  // Галочка на шапке группы = выделить/снять все её партии. Печать и архив
+  // работают с теми же id партий, что и раньше.
+  const toggleGroup = (g) => {
+    const ids = g.rows.map(r => r.id);
+    setSelected(prev => groupSelected(g)
+      ? prev.filter(x => !ids.includes(x))
+      : [...new Set([...prev, ...ids])]);
+  };
 
   const toggleSelect = (id) => {
     setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -412,8 +478,8 @@ export default function BookkeeperReportPage() {
 
       <div style={{ marginTop: 12, padding: '8px 12px', background: '#fef9c3', border: '1px solid #fde047', borderRadius: 6, fontSize: '0.85rem', color: '#854d0e' }}>
         {tab === 'active'
-          ? '💡 Отметьте партии галочками и нажмите «Печать» — они напечатаются и уйдут в архив «Проведённые» (вернуть можно из архива). Без галочек печатается весь список по фильтру, и в архив НИЧЕГО не уходит.'
-          : '💡 Архив проведённых партий. Можно отфильтровать по периоду и распечатать отчёт заново, либо вернуть партии в «Текущие».'}
+          ? '💡 Строки сгруппированы по ведомости перевозчика — кликни по ведомости, чтобы раскрыть партии внутри. Отметьте партии галочками (или ведомость целиком) и нажмите «Печать» — они напечатаются и уйдут в архив «Проведённые» (вернуть можно из архива). Без галочек печатается весь список по фильтру, и в архив НИЧЕГО не уходит.'
+          : '💡 Архив проведённых партий, сгруппированный по ведомостям — кликни по ведомости, чтобы раскрыть партии. Можно отфильтровать по периоду и распечатать отчёт заново, либо вернуть партии в «Текущие».'}
       </div>
       <div className="filter" style={{ marginTop: 16, display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end" }}>
         <div className="field" style={{ width: 200 }}>
@@ -466,29 +532,80 @@ export default function BookkeeperReportPage() {
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={16} className="muted" style={{ padding: 16 }}>Нет данных за выбранный период</td></tr>
-              ) : sortRows(rows).map((r, i) => (
-                <tr key={r.id} style={{ background: selected.includes(r.id) ? "rgba(24,144,255,0.06)" : "" }}>
-                  <td style={{ textAlign: "center" }}>
-                    <input type="checkbox" checked={selected.includes(r.id)} onChange={() => toggleSelect(r.id)} />
-                  </td>
-                  <td>{i + 1}</td>
-                  <td style={{ fontWeight: 700 }}>{r.name}{r.vedomostNumber ? <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#1d4ed8", background: "#eff6ff", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>🚚 {r.vedomostNumber}</span> : (!r.hasVedomost && <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#d46b08", background: "#fff7e6", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>⏳ нет ведомости</span>)}</td>
-                  <td>{formatDate(r.createdAt)}</td>
-                  <td>{r.representative}</td>
-                  <td>{r.carrier}</td>
-                  <td style={{ textAlign: "center" }}>{r.loaders || '—'}</td>
-                  <td style={{ textAlign: "center" }}>{r.seats || '—'}</td>
-                  <td>{r.region}</td>
-                  <td style={{ textAlign: "right" }}>{fmt(r.income)} тг</td>
-                  <td style={{ textAlign: "right" }}>{fmt(r.expense)} тг</td>
-                  <td style={{ textAlign: "right" }}>{fmt(r.carrierSum)} тг</td>
-                  <td style={{ textAlign: "right" }}>{fmt(r.loaderSum)} тг</td>
-                  <td style={{ textAlign: "right" }}>{fmt(r.representativeSum)} тг</td>
-                  <td style={{ textAlign: "right" }}>{fmt(r.taxAmount)} тг</td>
-                  <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt(r.profit)} тг</td>
-                </tr>
-              ))}
+                <tr><td colSpan={17} className="muted" style={{ padding: 16 }}>Нет данных за выбранный период</td></tr>
+              ) : groups.map((g, gi) => {
+                const open = expandedVedomost === g.key;
+                return (
+                  <React.Fragment key={g.key}>
+                    {/* Шапка группы = ведомость перевозчика. Клик раскрывает партии внутри. */}
+                    <tr
+                      onClick={() => setExpandedVedomost(open ? null : g.key)}
+                      style={{ cursor: "pointer", background: open ? "#eff6ff" : "", fontWeight: 600 }}
+                    >
+                      <td style={{ textAlign: "center" }} onClick={e => e.stopPropagation()}>
+                        <input type="checkbox" checked={groupSelected(g)} onChange={() => toggleGroup(g)} />
+                      </td>
+                      <td>{gi + 1}</td>
+                      <td style={{ fontWeight: 700 }}>
+                        {open ? "▾" : "▸"}{" "}
+                        {g.number
+                          ? <span style={{ color: "#1d4ed8" }}>🚚 {g.number}</span>
+                          : <span style={{ color: "#d46b08" }}>⏳ Без ведомости</span>}
+                        <span style={{ marginLeft: 6, fontSize: "0.7rem", color: "#475569", background: "#f1f5f9", padding: "1px 6px", borderRadius: 4, fontWeight: 600 }}>
+                          {g.count} {g.count === 1 ? "партия" : "партий"}
+                        </span>
+                      </td>
+                      <td>{formatDate(g.createdAt)}</td>
+                      <td>{g.representative}</td>
+                      <td>{g.carrier}</td>
+                      <td style={{ textAlign: "center" }}>{g.loaders || '—'}</td>
+                      <td style={{ textAlign: "center" }}>{g.seats || '—'}</td>
+                      <td>{g.region}</td>
+                      <td style={{ textAlign: "right" }}>{fmt(g.income)} тг</td>
+                      <td style={{ textAlign: "right" }}>{fmt(g.expense)} тг</td>
+                      <td style={{ textAlign: "right" }}>{fmt(g.carrierSum)} тг</td>
+                      <td style={{ textAlign: "right" }}>{fmt(g.loaderSum)} тг</td>
+                      <td style={{ textAlign: "right" }}>{fmt(g.representativeSum)} тг</td>
+                      <td style={{ textAlign: "right" }}>{fmt(g.taxAmount)} тг</td>
+                      <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt(g.profit)} тг</td>
+                      <td></td>
+                    </tr>
+
+                    {/* Партии внутри ведомости. Колонки те же, что у шапки, — поэтому
+                        строки рендерятся в ту же таблицу (не вложенной), цифры выравнены
+                        по колонкам отчёта. Отступ и серый фон — как в «Ведомостях перевозчика». */}
+                    {open && g.rows.map((r, i) => (
+                      <tr
+                        key={r.id}
+                        style={{ background: selected.includes(r.id) ? "rgba(24,144,255,0.06)" : "#f8fafc", fontSize: "0.92em" }}
+                      >
+                        <td style={{ textAlign: "center" }}>
+                          <input type="checkbox" checked={selected.includes(r.id)} onChange={() => toggleSelect(r.id)} />
+                        </td>
+                        <td style={{ color: "#94a3b8" }}>{gi + 1}.{i + 1}</td>
+                        <td style={{ fontWeight: 700, paddingLeft: 26 }}>
+                          <span style={{ color: "#cbd5e1", marginRight: 6 }}>{i === g.rows.length - 1 ? "└" : "├"}</span>
+                          {r.name}
+                        </td>
+                        <td>{formatDate(r.createdAt)}</td>
+                        <td>{r.representative}</td>
+                        <td>{r.carrier}</td>
+                        <td style={{ textAlign: "center" }}>{r.loaders || '—'}</td>
+                        <td style={{ textAlign: "center" }}>{r.seats || '—'}</td>
+                        <td>{r.region}</td>
+                        <td style={{ textAlign: "right" }}>{fmt(r.income)} тг</td>
+                        <td style={{ textAlign: "right" }}>{fmt(r.expense)} тг</td>
+                        <td style={{ textAlign: "right" }}>{fmt(r.carrierSum)} тг</td>
+                        <td style={{ textAlign: "right" }}>{fmt(r.loaderSum)} тг</td>
+                        <td style={{ textAlign: "right" }}>{fmt(r.representativeSum)} тг</td>
+                        <td style={{ textAlign: "right" }}>{fmt(r.taxAmount)} тг</td>
+                        <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt(r.profit)} тг</td>
+                        <td></td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                );
+              })}
             </tbody>
           </table>
         )}
