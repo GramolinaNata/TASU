@@ -54,10 +54,15 @@ export async function printCargoVedomost({ companyName = "", batchNumber = "", c
   const repContact = [representativeName, representativePhone].map(s => String(s || "").trim()).filter(Boolean).join(" · ");
   const repHtml = repContact ? `<div class="sub" style="margin-top:4px">Представитель: ${esc(repContact)}</div>` : "";
 
+  // ТЗ: в строке ИТОГО — не только сумма, но и суммарные места и вес (как на экране партии).
   let total = 0;
+  let totalSeats = 0;
+  let totalWeight = 0;
   const rowsHtml = rows.map((r, i) => {
     const sum = (r.sum === 0 || r.sum) ? Number(r.sum) : null;
     if (sum != null) total += sum;
+    totalSeats += Number(r.seats) || 0;
+    totalWeight += Number(r.weight) || 0;
     return `<tr>
       <td style="text-align:center">${i + 1}</td>
       <td>${esc(r.docNumber || "—")}</td>
@@ -93,7 +98,10 @@ export async function printCargoVedomost({ companyName = "", batchNumber = "", c
       </tr></thead>
       <tbody>${rowsHtml}</tbody>
       <tfoot><tr>
-        <td colspan="7" style="text-align:right;font-weight:900">ИТОГО:</td>
+        <td colspan="4" style="text-align:right;font-weight:900">ИТОГО:</td>
+        <td style="text-align:center;font-weight:900">${totalSeats ? fmt(totalSeats) : "—"}</td>
+        <td style="text-align:center;font-weight:900">${totalWeight ? fmt(totalWeight) + " кг" : "—"}</td>
+        <td></td>
         <td style="text-align:right;font-weight:900">${fmt(total)} тг</td>
       </tr></tfoot>
     </table>
