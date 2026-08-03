@@ -33,6 +33,7 @@ function ContactSuggest({ items, query, onPick }) {
   );
 }
 import { calcDeliveryPrice, findDeliveryTariff, cleanCityName, getTariffCategory, getDeliveryDestinations, getTariffOrigins } from "../../shared/tariff/calcTariff.js";
+import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
 import {
   emptyDimGroup, groupVolumeM3, groupsVolumeM3, groupsSeats,
   sizeSurcharge, sizeSurchargeParts, serializeDimGroups,
@@ -480,8 +481,9 @@ export default function SimpleActPage() {
 <script>window.onload=function(){window.print();}</script>
 </body></html>`;
 
-      const blob = new Blob([label], { type: "text/html; charset=utf-8" });
-      window.open(URL.createObjectURL(blob), "_blank");
+      // Печать через общий хелпер (скрытый iframe) — тот же способ, что у юрлиц.
+      // Вид, размер и содержимое наклейки не меняются.
+      printLabelViaIframe(label, { title: `Наклейка ${docNumber || ""}` });
 
       // 🆕 ТЗ: чек всплывает сразу при сохранении
       openReceipt(form, company, docNumber);

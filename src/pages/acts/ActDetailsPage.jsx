@@ -16,6 +16,7 @@ function formatDisplayDate(val) {
 import { exportToDocx } from "../../shared/export/docxExport.js";
 import { exportTtnToXlsx } from "../../shared/export/xlsxExport.js";
 import { getCompanies } from "../../shared/storage/companyStorage.js";
+import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
 
 function safeUuid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -350,9 +351,10 @@ const printLabel = async () => {
 </script>
 </body></html>`;
 
-    const blob = new Blob([html], { type: 'text/html' });
-    const url = URL.createObjectURL(blob);
-    window.open(url, '_blank');
+    // Печать через общий хелпер (скрытый iframe), а не отдельной вкладкой:
+    // способ печати у юрлиц и частных должен быть один, чтобы не разъезжался.
+    // Вид наклейки не затронут — HTML выше остался прежним.
+    printLabelViaIframe(html, { title: `Наклейка ${num}` });
 }
   // 🆕 ТЗ v3: Печать наклейки с логотипом выбранной компании
   // - логотип + название ИП динамически из карточки компании

@@ -351,6 +351,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { calcDeliveryPrice } from "../../shared/tariff/calcTariff.js";
+import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
 import {
   emptyDimGroup, normalizeDimGroups, groupVolumeM3, groupsVolumeM3, groupsSeats,
   sizeSurcharge, serializeDimGroups,
@@ -697,8 +698,9 @@ export default function SimpleActDetailPage() {
 <script>window.onload=function(){window.print();}</script>
 </body></html>`;
 
-    const blob = new Blob([label], { type: "text/html; charset=utf-8" });
-    window.open(URL.createObjectURL(blob), "_blank");
+    // Печать через общий хелпер (скрытый iframe) — тот же способ, что у юрлиц.
+    // Вид, размер и содержимое наклейки не меняются.
+    printLabelViaIframe(label, { title: `Наклейка ${act.docNumber || ""}` });
   };
 
   // Чек для клиента — компактный формат, 2 копии на странице
