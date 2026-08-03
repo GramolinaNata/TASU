@@ -116,6 +116,67 @@ function emptyCargoRow() {
   };
 }
 
+// ТЗ: города выбираются из выпадающего списка. Раньше стоял <input list="...">
+// (datalist): у него нет стрелки, а варианты показываются только при наборе —
+// заказчик жаловался, что «нажимаешь стрелочку, ничего не вылазит».
+//
+// Список городов берётся из справочника Тарифы (getDeliveryDestinations) — там
+// же, где их ищет расчёт, поэтому выбор из списка гарантирует совпадение с
+// тарифом. Отдельного справочника городов в системе нет.
+//
+// Пункт «другой город» оставляет ручной ввод: без него нельзя было бы завести
+// заявку на направление, для которого тариф ещё не заведён.
+const OTHER_CITY = "__other__";
+
+function CitySelect({ value, onChange, options, placeholder }) {
+  const list = useMemo(
+    () => (options || []).map((o) => (typeof o === "string" ? { city: o, hint: "" } : o)),
+    [options]
+  );
+  const isKnown = (v) => list.some((o) => o.city === v);
+  const [manual, setManual] = useState(!!value && !isKnown(value));
+
+  // Значение может прийти извне — при редактировании заявки или автоподстановке.
+  // Если такого города нет в тарифах, переключаемся в ручной режим, иначе
+  // select показал бы пустое поле и город «потерялся» бы при сохранении.
+  useEffect(() => {
+    if (value && !isKnown(value)) setManual(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, list]);
+
+  if (manual) {
+    return (
+      <>
+        <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />
+        <button
+          type="button"
+          className="btn btn--sm"
+          style={{ marginTop: 6, fontSize: 11 }}
+          onClick={() => { setManual(false); onChange(""); }}
+        >
+          ← выбрать из списка
+        </button>
+      </>
+    );
+  }
+
+  return (
+    <select
+      value={value}
+      onChange={(e) => {
+        if (e.target.value === OTHER_CITY) { setManual(true); onChange(""); }
+        else onChange(e.target.value);
+      }}
+    >
+      <option value="">— выберите город —</option>
+      {list.map((o) => (
+        <option key={o.city} value={o.city}>{o.hint ? `${o.city} · ${o.hint}` : o.city}</option>
+      ))}
+      <option value={OTHER_CITY}>➕ другой город (ввести вручную)</option>
+    </select>
+  );
+}
+
 function emptyServiceRow() {
   return { id: safeUuid(), name: "", qty: 1, price: 0, total: 0 };
 }
@@ -1199,20 +1260,20 @@ export default function ActCreatePage() {
             <div className="form_grid">
               <div className="field">
                 <div className="label">Страна, город отправителя</div>
-                <input
+                <CitySelect
                   value={route.fromCity}
-                  onChange={(e) => setRoute({ ...route, fromCity: e.target.value })}
+                  onChange={(val) => setRoute({ ...route, fromCity: val })}
+                  options={originCities}
                   placeholder="Алматы"
-                  list="tariff-origins-list"
                 />
               </div>
               <div className="field">
                 <div className="label">Страна, город получателя</div>
-                <input
+                <CitySelect
                   value={route.toCity}
-                  onChange={(e) => setRoute({ ...route, toCity: e.target.value })}
+                  onChange={(val) => setRoute({ ...route, toCity: val })}
+                  options={destinationCities}
                   placeholder="Астана"
-                  list="tariff-destinations-list"
                 />
                 {destinationCities.length === 0 && (
                   <div style={{ fontSize: "0.75rem", color: "#dc2626", marginTop: 4 }}>
@@ -1246,14 +1307,15 @@ export default function ActCreatePage() {
               <table className="table_fixed">
                 <thead style={{ position: "sticky", top: 0, background: "#fff", zIndex: 1, boxShadow: "0 1px 2px rgba(0,0,0,0.1)" }}>
                   <tr>
+                    {/* ТЗ: колонка «Название» (плейсхолдер «Напр. Коробки») убрана —
+                        номенклатура забивается ниже, в «Наименование и характер груза». */}
                     <th style={{ width: 40 }}>№</th>
-                    <th>Название</th>
                     <th>Кол-во</th>
                     <th>Вес (кг)</th>
                     <th>Длина (см)</th>
                     <th>Ширина (см)</th>
                     <th>Высота (см)</th>
-                    <th>Объем (см³)</th>
+                    <th>Объём</th>
                     <th>Об. вес (кг)</th>
                     <th style={{ width: 80 }} />
                   </tr>
@@ -1262,9 +1324,6 @@ export default function ActCreatePage() {
                   {cargoRows.map((r, i) => (
                     <tr key={r.id}>
                       <td>{i + 1}</td>
-                      <td>
-                        <input className="cell_input" value={r.title} onChange={(e) => updateCargoRow(r.id, "title", e.target.value)} placeholder="Напр. Коробки" />
-                      </td>
                       <td>
                         <input type="number" className="cell_input" value={r.seats} onChange={(e) => updateCargoRow(r.id, "seats", e.target.value)} />
                       </td>
@@ -1280,7 +1339,12 @@ export default function ActCreatePage() {
                       <td>
                         <input type="number" className="cell_input" value={r.height} onChange={(e) => updateCargoRow(r.id, "height", e.target.value)} />
                       </td>
-                      <td>{r.volume}</td>
+                      {/* ТЗ: кубатура видна сразу при вводе размеров. Основное
+                          значение — м³, см³ оставлены мелким справочно. */}
+                      <td>
+                        <div style={{ fontWeight: 700 }}>{(Number(r.volume) / 1_000_000).toFixed(3)} м³</div>
+                        <div style={{ fontSize: "0.72rem", color: "#888" }}>{r.volume} см³</div>
+                      </td>
                       <td>{r.volWeight}</td>
                       <td>
                         <button className="btn btn--sm btn--danger" onClick={() => delCargoRow(r.id)}>
@@ -1292,13 +1356,18 @@ export default function ActCreatePage() {
                 </tbody>
                 <tfoot style={{ background: "#f5f5f5", fontWeight: 700, position: "sticky", bottom: 0 }}>
                   <tr>
-                    <td colSpan={2}>Итого:</td>
+                    {/* Колонки: № | Кол-во | Вес | Длина | Ширина | Высота | Объём | Об.вес | (кнопка).
+                        Раньше из-за colSpan={2} общий вес попадал под «Высоту», а «Вес» стоял пустым. */}
+                    <td>Итого:</td>
                     <td>{cargoTotals.seats}</td>
-                    <td />
-                    <td />
-                    <td />
                     <td>{cargoTotals.weight}</td>
-                    <td>{cargoTotals.volume.toFixed(0)}</td>
+                    <td />
+                    <td />
+                    <td />
+                    <td>
+                      <div>{cargoVolumeM3.toFixed(3)} м³</div>
+                      <div style={{ fontSize: "0.72rem", color: "#888", fontWeight: 400 }}>{cargoTotals.volume.toFixed(0)} см³</div>
+                    </td>
                     <td>{cargoTotals.volWeight.toFixed(2)}</td>
                     <td />
                   </tr>
@@ -1653,16 +1722,8 @@ export default function ActCreatePage() {
         </button>
       </div>
 
-      <datalist id="tariff-destinations-list">
-        {destinationCities.map((d) => (
-          <option key={d.city} value={d.city}>{d.hint || undefined}</option>
-        ))}
-      </datalist>
-      <datalist id="tariff-origins-list">
-        {originCities.map((city) => (
-          <option key={city} value={city} />
-        ))}
-      </datalist>
+      {/* datalist'ы городов убраны: города теперь выбираются через CitySelect,
+          ссылок на эти списки не осталось. */}
     </>
   );
 }
