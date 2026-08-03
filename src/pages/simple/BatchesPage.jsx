@@ -86,7 +86,11 @@ const EMPTY_FORM = {
 
 export default function BatchesPage() {
   const navigate = useNavigate();
-  const { isManager } = useAuth();
+  // ТЗ: у ограниченного менеджера нет ведомостей и сумм выплат.
+  // isManager оставлен как был — права обычного менеджера не меняются.
+  const { isManager, isManager2 } = useAuth();
+  // Кому не положены ведомость перевозчика и суммы выплат.
+  const noVedomost = isManager || isManager2;
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState(getSelectedCompany());
@@ -249,7 +253,9 @@ export default function BatchesPage() {
     try {
       const [list, cvs, reqs] = await Promise.all([
         api.batches.list(company?.id),
-        api.carrierVedomosts.list(company?.id).catch(() => []),
+        // Ограниченному менеджеру сервер ведомости не отдаёт (403) — не ходим
+        // за ними вовсе, чтобы не сыпать ошибками в консоль на каждой загрузке.
+        isManager2 ? Promise.resolve([]) : api.carrierVedomosts.list(company?.id).catch(() => []),
         api.requests.list().catch(() => []),
       ]);
       if (Array.isArray(list)) setBatches(list);
@@ -718,7 +724,10 @@ export default function BatchesPage() {
           <div className="chip" style={{ background: "#e6f7ff", borderColor: "#91caff", color: "#0050b3" }}>Упрощённый режим</div>
           {company && <div className="chip">{company.name}</div>}
         </div>
-        <button className="btn btn--accent" onClick={openCreate}>+ Новая партия</button>
+        {/* ТЗ: у ограниченного менеджера партия создаётся только из «Мои заявки» */}
+        {!isManager2 && (
+          <button className="btn btn--accent" onClick={openCreate}>+ Новая партия</button>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -734,15 +743,19 @@ export default function BatchesPage() {
         >
           ✅ Сформированные <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.formed})</span>
         </button>
-        <button
-          className={`btn ${tab === 'vedomost' ? 'btn--accent' : ''}`}
-          onClick={() => setTab('vedomost')}
-        >
-          🚚 Ведомости перевозчика <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.vedomost})</span>
-        </button>
+        {/* ТЗ: ведомости перевозчика ограниченному менеджеру не показываем.
+            Сервер их ему всё равно не отдаёт — вкладка была бы пустой. */}
+        {!isManager2 && (
+          <button
+            className={`btn ${tab === 'vedomost' ? 'btn--accent' : ''}`}
+            onClick={() => setTab('vedomost')}
+          >
+            🚚 Ведомости перевозчика <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.vedomost})</span>
+          </button>
+        )}
       </div>
 
-      {!isManager && tab === 'formed' && selectedVedomostCount > 0 && (
+      {!noVedomost && tab === 'formed' && selectedVedomostCount > 0 && (
         <div style={{
           marginTop: 12, padding: '12px 16px', background: '#eef2ff', border: '1px solid #c7d2fe',
           borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10
@@ -1092,7 +1105,7 @@ export default function BatchesPage() {
           <table className="table_fixed">
             <thead>
               <tr>
-                {!isManager && tab === 'formed' && <th style={{ width: 36 }}></th>}
+                {!noVedomost && tab === 'formed' && <th style={{ width: 36 }}></th>}
                 <SortableTh field="number" style={{ width: 120 }}>Номер</SortableTh>
                 <SortableTh field="date" style={{ width: 100 }}>Дата</SortableTh>
                 <SortableTh field="city">Город</SortableTh>
@@ -1106,7 +1119,7 @@ export default function BatchesPage() {
             </thead>
             <tbody>
               {filteredBatches.length === 0 ? (
-                <tr><td colSpan={(!isManager && tab === 'formed') ? 10 : 9} className="muted" style={{ padding: 16 }}>
+                <tr><td colSpan={(!noVedomost && tab === 'formed') ? 10 : 9} className="muted" style={{ padding: 16 }}>
                   {!company ? "Выберите компанию." :
                     tab === 'active' ? 'Нет активных партий' : 'Нет сформированных партий'}
                 </td></tr>
@@ -1126,7 +1139,7 @@ export default function BatchesPage() {
                     onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
                     onMouseLeave={(e) => e.currentTarget.style.background = ''}
                   >
-                    {!isManager && tab === 'formed' && (
+                    {!noVedomost && tab === 'formed' && (
                       <td className="checkbox-cell" onClick={e => e.stopPropagation()}>
                         <input
                           type="checkbox"
@@ -1179,14 +1192,19 @@ export default function BatchesPage() {
                         >
                           👁 Открыть
                         </button>
-                        <button
-                          className="btn btn--sm"
-                          onClick={() => tab === 'vedomost' ? navigate(`/simple/batches/${b.id}`) : printVedomost(b)}
-                          title={tab === 'vedomost' ? "Открыть партию для печати ведомости перевозчика" : "Распечатать грузовую ведомость"}
-                          style={{ fontSize: 11 }}
-                        >
-                          🖨 {tab === 'vedomost' ? 'Ведомость перевозчика' : 'Печать'}
-                        </button>
+                        {/* ТЗ: ограниченный менеджер грузовую ведомость не формирует.
+                            Печать целиком клиентская, серверного запрета для неё нет —
+                            здесь работает только скрытие кнопки. */}
+                        {!isManager2 && (
+                          <button
+                            className="btn btn--sm"
+                            onClick={() => tab === 'vedomost' ? navigate(`/simple/batches/${b.id}`) : printVedomost(b)}
+                            title={tab === 'vedomost' ? "Открыть партию для печати ведомости перевозчика" : "Распечатать грузовую ведомость"}
+                            style={{ fontSize: 11 }}
+                          >
+                            🖨 {tab === 'vedomost' ? 'Ведомость перевозчика' : 'Печать'}
+                          </button>
+                        )}
                         {b.isFormed ? (
                           <button
                             className="btn btn--sm"

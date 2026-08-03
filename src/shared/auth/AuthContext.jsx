@@ -104,6 +104,10 @@ export const AuthProvider = ({ children }) => {
   // 🆕 ТЗ v2
   const isPrivate = user?.role === 'PRIVATE';
   const isManager = user?.role === 'MANAGER';
+  // ТЗ: урезанная роль «Менеджер (ограниченный)». Принимает груз, создаёт
+  // заявки и партии, но не формирует ведомости и не видит суммы выплат
+  // перевозчику и представителю. Права MANAGER при этом не меняются.
+  const isManager2 = user?.role === 'MANAGER2';
 
   return (
     <AuthContext.Provider
@@ -118,6 +122,7 @@ export const AuthProvider = ({ children }) => {
         isCourier,
         isPrivate,
         isManager,
+        isManager2,
       }}
     >
       {!loading && children}

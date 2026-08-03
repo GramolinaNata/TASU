@@ -618,6 +618,9 @@ export default function UsersPage() {
     if (role === 'ACCOUNTANT2') return 'Бухгалтер 2';
     if (role === 'COURIER') return 'Курьер';
     if (role === 'PRIVATE') return 'Частное лицо'; // 🆕 ТЗ v2
+    // ТЗ: урезанная роль — принимает груз, создаёт заявки и партии,
+    // но без ведомостей и без сумм выплат.
+    if (role === 'MANAGER2') return 'Менеджер (ограниченный)';
     return 'Менеджер';
   };
 
@@ -627,6 +630,7 @@ export default function UsersPage() {
     if (role === 'ACCOUNTANT2') return 'badge-info';
     if (role === 'COURIER') return 'badge-warning';
     if (role === 'PRIVATE') return 'badge-private'; // 🆕 ТЗ v2
+    if (role === 'MANAGER2') return 'badge-warning';
     return 'badge-secondary';
   };
 
@@ -670,6 +674,7 @@ export default function UsersPage() {
             <option value="ALL">Все роли</option>
             <option value="ADMIN">Администраторы</option>
             <option value="MANAGER">Менеджеры</option>
+            <option value="MANAGER2">Менеджеры (ограниченные)</option>
             <option value="ACCOUNTANT">Бухгалтеры</option>
             <option value="ACCOUNTANT2">Бухгалтер 2</option>
             <option value="COURIER">Курьеры</option>
@@ -787,12 +792,25 @@ export default function UsersPage() {
                 <label className="label_clean">Уровень доступа</label>
                 <select className="input_clean" value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
                   <option value="MANAGER">Менеджер</option>
+                  <option value="MANAGER2">Менеджер (ограниченный)</option>
                   <option value="ACCOUNTANT">Бухгалтер</option>
                   <option value="ACCOUNTANT2">Бухгалтер 2</option>
                   <option value="COURIER">Курьер</option>
                   <option value="PRIVATE">👤 Частное лицо</option>
                   <option value="ADMIN">Администратор</option>
                 </select>
+                {formData.role === 'MANAGER2' && (
+                  <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#64748b' }}>
+                    Принимает груз, создаёт заявки и партии. Без грузовых ведомостей,
+                    ведомости перевозчика и сумм выплат перевозчику и представителю.
+                  </div>
+                )}
+                {/* Роль зашита в токен на 24 часа — до перелогина пользователь
+                    остаётся в прежних правах. Предупреждаем администратора. */}
+                <div style={{ marginTop: 6, fontSize: '0.75rem', color: '#b45309' }}>
+                  ⚠ Смена роли применится после того, как пользователь выйдет и войдёт заново
+                  (права зашиты в сессию на 24 часа).
+                </div>
               </div>
 
               {/* 🆕 ТЗ v2: Если PRIVATE — выбор компании обязателен */}

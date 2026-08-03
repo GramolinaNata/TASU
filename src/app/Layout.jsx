@@ -337,7 +337,7 @@ import { api } from "../shared/api/api.js";
 export default function Layout() {
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('tasu_theme') || 'light');
-  const { user, logout, isAdmin, isAccountant, isAccountant2, isCourier, isPrivate } = useAuth();
+  const { user, logout, isAdmin, isAccountant, isAccountant2, isCourier, isPrivate, isManager2 } = useAuth();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [notifCount, setNotifCount] = useState(0);
@@ -443,6 +443,7 @@ export default function Layout() {
     if (role === 'ACCOUNTANT2') return 'Бухгалтер 2';
     if (role === 'COURIER') return 'Курьер';
     if (role === 'PRIVATE') return 'Частное лицо';
+    if (role === 'MANAGER2') return 'Менеджер (ограниченный)';
     return 'Менеджер';
   };
 
@@ -526,12 +527,15 @@ export default function Layout() {
                       <span className="menu_text">Отработанные</span>
                     </NavLink>
 
-                    {/* 🆕 ТЗ v2: "Частные лица" и "Партии" видны только админу (не менеджеру) */}
-                    {isAdmin && (
+                    {/* 🆕 ТЗ v2: "Частные лица" и "Партии" видны только админу (не менеджеру).
+                        ТЗ: ограниченному менеджеру они тоже нужны — партия создаётся именно
+                        из «Мои заявки», а «Партии» он смотрит без кнопки создания.
+                        Права обычного MANAGER при этом не меняются. */}
+                    {(isAdmin || isManager2) && (
                       <>
-                        <NavLink to="/simple" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Частные лица">
+                        <NavLink to="/simple" className={({ isActive }) => (isActive ? "selected_menu" : "")} title={isAdmin ? "Частные лица" : "Мои заявки"}>
                           <span className="menu_icon">📋</span>
-                          <span className="menu_text">Частные лица</span>
+                          <span className="menu_text">{isAdmin ? "Частные лица" : "Мои заявки"}</span>
                         </NavLink>
                         <NavLink to="/simple/batches" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Партии">
                           <span className="menu_icon">📦</span>

@@ -76,7 +76,9 @@ function getSortValue(a, field) {
 
 export default function SimpleActsListPage() {
   const location = useLocation();
-  const { isAdmin } = useAuth();
+  // ТЗ: ограниченный менеджер создаёт партию, но грузовую ведомость
+  // не формирует — печать для него не открывается.
+  const { isAdmin, isManager2 } = useAuth();
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -287,7 +289,13 @@ export default function SimpleActsListPage() {
       // скрытый текущим фильтром/вкладкой, — из-за этого в партию лезла лишняя накладная.
       const ids = selectedActs.map(a => a.id);
       await api.batches.create({ ...batchData, companyId: company?.id, requestIds: ids });
-      await printVedomost(selectedActs, batchData);
+
+      // ТЗ: партию создают обе роли, а грузовую ведомость ограниченный
+      // менеджер не формирует — печать пропускаем. Для остальных ролей
+      // поведение прежнее: партия и сразу печать.
+      if (!isManager2) {
+        await printVedomost(selectedActs, batchData);
+      }
 
       // ТЗ: после формирования грузовой ведомости накладные уходят во вкладку
       // «Отработанные» и не мешаются в общем списке. Партия и номер ведомости
@@ -296,9 +304,9 @@ export default function SimpleActsListPage() {
         await Promise.all(ids.map(id => api.requests.update(id, { status: 'done' })));
       } catch (e) {
         alert(
-          `Ведомость ${batchData.number} сформирована и напечатана, ` +
+          `Партия ${batchData.number} создана, ` +
           `но не удалось перевести накладные в «Отработанные»: ${e.message || e}\n\n` +
-          `Партия создана — статус можно поменять вручную в списке.`
+          `Статус можно поменять вручную в списке.`
         );
       }
 
@@ -351,7 +359,9 @@ export default function SimpleActsListPage() {
         <div style={{ display: "flex", gap: 10 }}>
           {selected.length > 0 && (
             <button className="btn btn--accent" onClick={createBatchAndPrint}>
-              📋 Грузовая ведомость ({selected.length})
+              {isManager2
+                ? `📦 Создать партию (${selected.length})`
+                : `📋 Грузовая ведомость (${selected.length})`}
             </button>
           )}
           <Link className="btn btn--accent" to="/simple/new">+ Новая накладная</Link>

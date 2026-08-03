@@ -52,7 +52,7 @@ import { filterByCity } from "../../shared/directory/byCity.js";
 
 export default function CarrierVedomostCreatePage() {
   const nav = useNavigate();
-  const { isManager } = useAuth();
+  const { isManager, isManager2 } = useAuth();
   const [searchParams] = useSearchParams();
   const [company, setCompany] = useState(getSelectedCompany());
   const [batches, setBatches] = useState([]);
@@ -71,7 +71,9 @@ export default function CarrierVedomostCreatePage() {
   const [createdVedomost, setCreatedVedomost] = useState(null);
 
   // ТЗ: суммы перевозчику/грузчикам/представителю — не для менеджеров
-  if (isManager) {
+  // и не для ограниченного менеджера. У последнего эндпоинт ведомостей
+  // закрыт и на сервере, эта заглушка — чтобы он не упёрся в 403 вслепую.
+  if (isManager || isManager2) {
     return (
       <div className="card" style={{ marginTop: 16 }}>
         <div className="card_body" style={{ textAlign: 'center', padding: 40 }}>

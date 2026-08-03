@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { printCarrierVedomost as printCarrierDoc } from "../../shared/print/vedomostPrint.js";
+import { useAuth } from "../../shared/auth/AuthContext";
 
 // Достаём сумму перевозки из накладной (юр: из услуг; частные: автоподсчёт).
 // Пробуем несколько мест, приводим к числу. Нет суммы → null (покажем «—»).
@@ -19,6 +20,9 @@ function getRequestSum(req) {
 export default function BatchDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  // ТЗ: ограниченному менеджеру ведомость перевозчика недоступна —
+  // ни кнопки, ни данных (сервер отдаёт по ней 403).
+  const { isManager2 } = useAuth();
   const [batch, setBatch] = useState(null);
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState(null);
@@ -167,7 +171,7 @@ export default function BatchDetailPage() {
           )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
-          {batch.carrierVedomostId && (
+          {batch.carrierVedomostId && !isManager2 && (
             <button className="btn btn--accent" onClick={printCarrierVedomost}>
               🚚 Ведомость перевозчика
             </button>
