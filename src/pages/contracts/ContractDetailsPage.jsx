@@ -223,6 +223,7 @@ import React, { useEffect, useState } from "react";
 import { useNavigate, useParams, Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { exportToDocx } from "../../shared/export/docxExport.js";
+import { useCanSeeMoney } from "../../shared/money/Money.jsx";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -236,6 +237,8 @@ function formatDisplayDate(val) {
 
 export default function ContractDetailsPage() {
   const nav = useNavigate();
+  // ТЗ: сумма услуг по договору — деньги, ограниченному менеджеру не показываем.
+  const canSeeMoney = useCanSeeMoney();
   const { id } = useParams();
   const [contract, setContract] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -431,16 +434,22 @@ export default function ContractDetailsPage() {
             <div className="v">
               {contract.actData.route?.fromCity || "—"} → {contract.actData.route?.toCity || "—"}
             </div>
-            <div className="k">Сумма услуг</div>
-            <div className="v">
-              {(() => {
-                const s = parseFloat(contract.actData.totalSum) ||
-                  (Array.isArray(contract.actData.warehouseServices)
-                    ? contract.actData.warehouseServices.reduce((acc, x) => acc + (parseFloat(x.total) || 0), 0)
-                    : 0);
-                return s ? s.toLocaleString() : "0";
-              })()} тг
-            </div>
+            {/* ТЗ: сумма услуг по договору скрыта от ограниченного менеджера.
+                Пара «подпись + значение» — соседи в сетке, поэтому прячем фрагментом. */}
+            {canSeeMoney && (
+              <>
+                <div className="k">Сумма услуг</div>
+                <div className="v">
+                  {(() => {
+                    const s = parseFloat(contract.actData.totalSum) ||
+                      (Array.isArray(contract.actData.warehouseServices)
+                        ? contract.actData.warehouseServices.reduce((acc, x) => acc + (parseFloat(x.total) || 0), 0)
+                        : 0);
+                    return s ? s.toLocaleString() : "0";
+                  })()} тг
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

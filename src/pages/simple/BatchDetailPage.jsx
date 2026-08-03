@@ -4,6 +4,7 @@ import { api } from "../../shared/api/api.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { printCarrierVedomost as printCarrierDoc } from "../../shared/print/vedomostPrint.js";
 import { useAuth } from "../../shared/auth/AuthContext";
+import { MoneyTh, MoneyTd } from "../../shared/money/Money.jsx";
 
 // Достаём сумму перевозки из накладной (юр: из услуг; частные: автоподсчёт).
 // Пробуем несколько мест, приводим к числу. Нет суммы → null (покажем «—»).
@@ -219,7 +220,7 @@ export default function BatchDetailPage() {
                   <th style={{ width: 70 }}>Мест</th>
                   <th style={{ width: 90 }}>Вес</th>
                   <th>Город</th>
-                  <th style={{ width: 130, textAlign: "right" }}>Сумма перевозки</th>
+                  <MoneyTh style={{ width: 130, textAlign: "right" }}>Сумма перевозки</MoneyTh>
                 </tr>
               </thead>
               <tbody>
@@ -241,9 +242,9 @@ export default function BatchDetailPage() {
                         <td style={{ textAlign: "center" }}>{Number(totals.seats) || "—"}</td>
                         <td style={{ textAlign: "center" }}>{Number(totals.weight) ? Number(totals.weight) + " кг" : "—"}</td>
                         <td>{route.toCity || "—"}</td>
-                        <td style={{ textAlign: "right", fontWeight: 700 }}>
+                        <MoneyTd style={{ textAlign: "right", fontWeight: 700 }}>
                           {sum !== null ? sum.toLocaleString() + " ₸" : "—"}
-                        </td>
+                        </MoneyTd>
                       </tr>
                     );
                   })
@@ -256,7 +257,7 @@ export default function BatchDetailPage() {
                     <td style={{ textAlign: "center" }}>{screenSeats || "—"}</td>
                     <td style={{ textAlign: "center" }}>{screenWeight ? screenWeight + " кг" : "—"}</td>
                     <td></td>
-                    <td style={{ textAlign: "right" }}>{screenHasSum ? screenSum.toLocaleString() + " ₸" : "—"}</td>
+                    <MoneyTd style={{ textAlign: "right" }}>{screenHasSum ? screenSum.toLocaleString() + " ₸" : "—"}</MoneyTd>
                   </tr>
                 </tfoot>
               )}

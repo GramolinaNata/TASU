@@ -17,6 +17,7 @@ import { exportToDocx } from "../../shared/export/docxExport.js";
 import { exportTtnToXlsx } from "../../shared/export/xlsxExport.js";
 import { getCompanies } from "../../shared/storage/companyStorage.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
+import { MoneyTh, MoneyTd, MoneyBlock } from "../../shared/money/Money.jsx";
 
 function safeUuid() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
@@ -1091,15 +1092,20 @@ const printLabel = async () => {
               <div className="label">Страховка</div>
               <div className="v">{act.insured ? "Да" : "Нет"}</div>
               {act.insured && act.cargoValue && (
-                <div className="v" style={{ fontSize: '0.85em', color: 'var(--accent)', fontWeight: 700 }}>
-                  (сумма страховки: {act.cargoValue})
-                </div>
+                <MoneyBlock>
+                  <div className="v" style={{ fontSize: '0.85em', color: 'var(--accent)', fontWeight: 700 }}>
+                    (сумма страховки: {act.cargoValue})
+                  </div>
+                </MoneyBlock>
               )}
           </div>
-          <div className="summary_item">
-    <div className="label">Сумма</div>
-    <div className="v">{act.totalSum || "—"}</div>
-</div>
+          {/* ТЗ: сумма заявки скрыта от ограниченного менеджера */}
+          <MoneyBlock>
+            <div className="summary_item">
+              <div className="label">Сумма</div>
+              <div className="v">{act.totalSum || "—"}</div>
+            </div>
+          </MoneyBlock>
           {act.isWarehouse && (
             <div className="summary_item">
                 <div className="label">Тип</div>
@@ -1477,8 +1483,10 @@ const printLabel = async () => {
                         <th style={{ width: 40 }}>№</th>
                         <th style={{ minWidth: 300 }}>Наименование услуги</th>
                         <th style={{ width: 100 }}>Кол-во</th>
-                        <th style={{ width: 120 }}>Цена</th>
-                        <th style={{ width: 120 }}>Сумма</th>
+                        {/* ТЗ: денежные колонки скрыты от ограниченного менеджера.
+                            Заголовок и ячейка прячутся парой, итог ниже — согласованно. */}
+                        <MoneyTh style={{ width: 120 }}>Цена</MoneyTh>
+                        <MoneyTh style={{ width: 120 }}>Сумма</MoneyTh>
                     </tr>
                 </thead>
                 <tbody>
@@ -1487,8 +1495,8 @@ const printLabel = async () => {
                             <td>{idx + 1}</td>
                             <td>{s.name || "—"}</td>
                             <td>{s.qty}</td>
-                            <td>{s.price?.toLocaleString()}</td>
-                            <td style={{ fontWeight: 700 }}>{s.total?.toLocaleString()}</td>
+                            <MoneyTd>{s.price?.toLocaleString()}</MoneyTd>
+                            <MoneyTd style={{ fontWeight: 700 }}>{s.total?.toLocaleString()}</MoneyTd>
                         </tr>
                     ))}
                 </tbody>
@@ -1496,10 +1504,10 @@ const printLabel = async () => {
                     <tr style={{ fontWeight: 700 }}>
                         <td colSpan={2} style={{ textAlign: 'right' }}>Итого:</td>
                         <td>{act.warehouseServices.reduce((acc, s) => acc + (parseFloat(s.qty) || 0), 0)}</td>
-                        <td></td>
-                        <td style={{ fontWeight: 900 }}>
+                        <MoneyTd></MoneyTd>
+                        <MoneyTd style={{ fontWeight: 900 }}>
                           {act.warehouseServices.reduce((acc, s) => acc + (s.total || 0), 0).toLocaleString()}
-                        </td>
+                        </MoneyTd>
                     </tr>
                 </tfoot>
              </table>

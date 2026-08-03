@@ -700,6 +700,7 @@ import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -752,6 +753,9 @@ function isBaseAct(a) {
 
 export default function ActsListPage() {
   const { user, isAccountant, isAdmin, isManager } = useAuth();
+  // ТЗ: суммы скрыты от ограниченного менеджера — единый флаг из AuthContext.
+  const canSeeMoney = useCanSeeMoney();
+  const moneyColSpan = useMoneyColSpan();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -1001,14 +1005,14 @@ export default function ActsListPage() {
                 <SortableTh field="transport">Вид транспорта</SortableTh>
                 <SortableTh field="seats" style={{ width: 80 }}>Мест</SortableTh>
                 <SortableTh field="weight" style={{ width: 80 }}>Вес (кг)</SortableTh>
-                <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>
+                {canSeeMoney && <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>}
                 {(!isAccountant || isAdmin) && <th style={{ width: 120, textAlign: "right" }}>Действия</th>}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={11} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={moneyColSpan(11)} className="muted" style={{ padding: 16 }}>
                     {!company ? "Выберите компанию." :
                       tab === 'active' ? 'Нет активных заявок' : 'Нет завершённых заявок'}
                   </td>
@@ -1063,9 +1067,9 @@ export default function ActsListPage() {
                     </td>
                     <td style={{ textAlign: 'center' }}>{a.totals?.seats || "—"}</td>
                     <td style={{ textAlign: 'center' }}>{a.totals?.weight || "—"}</td>
-                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    <MoneyTd style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                       {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                    </td>
+                    </MoneyTd>
                     {(!isAccountant || isAdmin) && (
                       <td style={{ textAlign: "right" }}>
                         <details className="actions-dropdown">

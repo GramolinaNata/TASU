@@ -278,6 +278,7 @@ import { Link, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import { useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -316,6 +317,9 @@ function getSortValue(a, field) {
 
 export default function DeferredPage() {
   const { isManager } = useAuth();
+  // ТЗ: суммы скрыты от ограниченного менеджера — единый флаг из AuthContext.
+  const canSeeMoney = useCanSeeMoney();
+  const moneyColSpan = useMoneyColSpan();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -509,14 +513,14 @@ export default function DeferredPage() {
                 <SortableTh field="route">Маршрут</SortableTh>
                 <SortableTh field="seats" style={{ width: 60, textAlign: 'center' }}>Мест</SortableTh>
                 <SortableTh field="weight" style={{ width: 70, textAlign: 'center' }}>Вес (кг)</SortableTh>
-{!isManager && <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>}                <SortableTh field="status">Статус</SortableTh>
+{canSeeMoney && <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>}                <SortableTh field="status">Статус</SortableTh>
                 <th style={{ width: 120, textAlign: "right" }}>Действия</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={moneyColSpan(10)} className="muted" style={{ padding: 16 }}>
                     Нет отложенных заявок.
                   </td>
                 </tr>
@@ -541,7 +545,7 @@ export default function DeferredPage() {
                     </td>
                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.seats || "—"}</td>
                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.weight || "—"}</td>
-                    {!isManager && (
+                    {canSeeMoney && (
                       <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                         {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
                       </td>

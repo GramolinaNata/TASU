@@ -281,6 +281,7 @@ import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -323,6 +324,9 @@ function getSortValue(a, field) {
 
 export default function WarehousePage() {
   const { isAdmin, isAccountant } = useAuth();
+  // ТЗ: суммы скрыты от ограниченного менеджера — единый флаг из AuthContext.
+  const canSeeMoney = useCanSeeMoney();
+  const moneyColSpan = useMoneyColSpan();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -520,14 +524,14 @@ export default function WarehousePage() {
                 <SortableTh field="customer">Заказчик</SortableTh>
                 <SortableTh field="seats" style={{ width: 80 }}>Мест</SortableTh>
                 <SortableTh field="weight" style={{ width: 80 }}>Вес (кг)</SortableTh>
-                <SortableTh field="total" style={{ width: 150 }}>Сумма услуг</SortableTh>
+                {canSeeMoney && <SortableTh field="total" style={{ width: 150 }}>Сумма услуг</SortableTh>}
                 {(!isAccountant || isAdmin) && <th style={{ width: 120, textAlign: "right" }}>Действия</th>}
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={moneyColSpan(10)} className="muted" style={{ padding: 16 }}>
                     {company ? "Складских заявок не найдено." : "Выберите компанию."}
                   </td>
                 </tr>
@@ -556,9 +560,9 @@ export default function WarehousePage() {
                     </td>
                     <td style={{ textAlign: 'center' }}>{a.totals?.seats || "—"}</td>
                     <td style={{ textAlign: 'center' }}>{a.totals?.weight || "—"}</td>
-                    <td style={{ fontWeight: 700 }}>
+                    <MoneyTd style={{ fontWeight: 700 }}>
                       {getServicesTotalStatic(a.warehouseServices).toLocaleString()} тг
-                    </td>
+                    </MoneyTd>
                     {(!isAccountant || isAdmin) && (
                       <td style={{ textAlign: "right" }}>
                         <details className="actions-dropdown">

@@ -10,6 +10,7 @@ import { printCargoVedomost, printCarrierVedomost } from "../../shared/print/ved
 import { buildActiveTotalsMap } from "../../shared/batch/batchTotals.js";
 import CityFilteredSelect from "../../shared/directory/CityFilteredSelect.jsx";
 import { filterByCity } from "../../shared/directory/byCity.js";
+import { MoneyTd, MoneyBlock, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 
 function formatDate(val) {
   if (!val) return "—";
@@ -91,6 +92,9 @@ export default function BatchesPage() {
   const { isManager, isManager2 } = useAuth();
   // Кому не положены ведомость перевозчика и суммы выплат.
   const noVedomost = isManager || isManager2;
+  // ТЗ: деньги (стоимость перевозки, суммы выплат) — не для ограниченного менеджера.
+  const canSeeMoney = useCanSeeMoney();
+  const moneyColSpan = useMoneyColSpan();
   const [batches, setBatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [company, setCompany] = useState(getSelectedCompany());
@@ -795,10 +799,14 @@ export default function BatchesPage() {
                 <div className="label">Номер авто</div>
                 <input value={form.carNumber} onChange={e => setForm({ ...form, carNumber: e.target.value })} placeholder="777 ABC 01" />
               </div>
-              <div className="field">
-                <div className="label">Стоимость перевозки (тг)</div>
-                <input type="number" value={form.deliveryCost} onChange={e => setForm({ ...form, deliveryCost: e.target.value })} placeholder="0" />
-              </div>
+              {/* ТЗ: стоимость перевозки — деньги, ограниченному менеджеру поле не показываем.
+                  Значение при этом сохраняется как есть: форма шлёт form.deliveryCost. */}
+              <MoneyBlock>
+                <div className="field">
+                  <div className="label">Стоимость перевозки (тг)</div>
+                  <input type="number" value={form.deliveryCost} onChange={e => setForm({ ...form, deliveryCost: e.target.value })} placeholder="0" />
+                </div>
+              </MoneyBlock>
               <div className="field">
                 <div className="label">Количество мест <span style={{ color: '#94a3b8', fontWeight: 400 }}>({editBatch ? 'из отмеченных' : 'из накладных города'})</span></div>
                 <input type="number" value={formTotals.seats} readOnly style={{ background: '#f1f5f9', cursor: 'not-allowed' }} />
@@ -1113,13 +1121,13 @@ export default function BatchesPage() {
                 <SortableTh field="carNumber">Авто</SortableTh>
                 <SortableTh field="totalSeats" style={{ width: 80, textAlign: 'center' }}>Мест</SortableTh>
                 <SortableTh field="totalWeight" style={{ width: 100, textAlign: 'center' }}>Вес</SortableTh>
-                <SortableTh field="deliveryCost" style={{ width: 130 }}>Стоимость</SortableTh>
+                {canSeeMoney && <SortableTh field="deliveryCost" style={{ width: 130 }}>Стоимость</SortableTh>}
                 <th style={{ width: 280 }}>Действия</th>
               </tr>
             </thead>
             <tbody>
               {filteredBatches.length === 0 ? (
-                <tr><td colSpan={(!noVedomost && tab === 'formed') ? 10 : 9} className="muted" style={{ padding: 16 }}>
+                <tr><td colSpan={moneyColSpan((!noVedomost && tab === 'formed') ? 10 : 9)} className="muted" style={{ padding: 16 }}>
                   {!company ? "Выберите компанию." :
                     tab === 'active' ? 'Нет активных партий' : 'Нет сформированных партий'}
                 </td></tr>
@@ -1181,7 +1189,7 @@ export default function BatchesPage() {
                         </>
                       );
                     })()}
-                    <td>{b.deliveryCost ? `${Number(b.deliveryCost).toLocaleString()} тг` : "—"}</td>
+                    <MoneyTd>{b.deliveryCost ? `${Number(b.deliveryCost).toLocaleString()} тг` : "—"}</MoneyTd>
                     <td className="actions-cell" onClick={(e) => e.stopPropagation()}>
                       <div style={{ display: "flex", gap: 6, flexWrap: 'wrap' }}>
                         <button

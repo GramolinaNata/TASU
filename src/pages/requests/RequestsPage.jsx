@@ -611,6 +611,7 @@ import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -654,6 +655,9 @@ function isBaseTtn(a) {
 
 export default function RequestsPage() {
   const { isAdmin, isAccountant, isManager } = useAuth();
+  // ТЗ: суммы скрыты от ограниченного менеджера — единый флаг из AuthContext.
+  const canSeeMoney = useCanSeeMoney();
+  const moneyColSpan = useMoneyColSpan();
   const { openCompanySelector } = useOutletContext();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
@@ -872,14 +876,14 @@ export default function RequestsPage() {
                 <SortableTh field="toCity">Страна, город (куда)</SortableTh>
                 <SortableTh field="customer">Заказчик</SortableTh>
                 <SortableTh field="transport" style={{ width: 140 }}>Вид транспорта</SortableTh>
-                <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>
+                {canSeeMoney && <SortableTh field="totalSum" style={{ width: 100 }}>Сумма (тг)</SortableTh>}
                 <th style={{ width: 120, textAlign: "right" }}>Действия</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={moneyColSpan(10)} className="muted" style={{ padding: 16 }}>
                     {!company ? "Выберите компанию." :
                       tab === 'active' ? 'Нет активных ТТН' : 'Нет завершённых ТТН'}
                   </td>
@@ -924,9 +928,9 @@ export default function RequestsPage() {
                         a.docAttrs?.transportType === 'plane' ? "Самолет" :
                           a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
                     </td>
-                    <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
+                    <MoneyTd style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
                       {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
-                    </td>
+                    </MoneyTd>
                     <td style={{ textAlign: "right" }}>
                       <details className="actions-dropdown">
                         <summary className="btn-actions">

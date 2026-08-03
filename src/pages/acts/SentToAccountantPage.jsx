@@ -5,6 +5,7 @@ import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 
 function formatDisplayDate(val) { 
   if (!val) return "—";
@@ -49,6 +50,9 @@ function getSortValue(act, field) {
 export default function SentToAccountantPage() {
   const { openCompanySelector } = useOutletContext();
   const { isAdmin, isAccountant } = useAuth();
+  // ТЗ: суммы скрыты от ограниченного менеджера — единый флаг из AuthContext.
+  const canSeeMoney = useCanSeeMoney();
+  const moneyColSpan = useMoneyColSpan();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -283,9 +287,11 @@ export default function SentToAccountantPage() {
         <div style={{ padding: '8px 16px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--line)', fontSize: '0.9rem' }}>
           Вес: <strong>{totals.weight} кг</strong>
         </div>
+        {canSeeMoney && (
         <div style={{ padding: '8px 16px', background: '#fff2e8', borderRadius: 8, border: '1px solid #ffbb96', fontSize: '0.9rem', color: '#d4380d' }}>
           Сумма: <strong>{totals.sum.toLocaleString()} тг</strong>
         </div>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -315,7 +321,7 @@ export default function SentToAccountantPage() {
                 <SortableTh field="type" style={{ width: 90 }}>Тип</SortableTh>
                 <SortableTh field="customer">Заказчик</SortableTh>
                 <SortableTh field="customerCompany" style={{ width: 180 }}>Компания</SortableTh>
-                <SortableTh field="totalSum" style={{ width: 130 }}>Сумма</SortableTh>
+                {canSeeMoney && <SortableTh field="totalSum" style={{ width: 130 }}>Сумма</SortableTh>}
                 <SortableTh field="fromCity">Откуда</SortableTh>
                 <SortableTh field="toCity">Куда</SortableTh>
                 <SortableTh field="seats" style={{ width: 60, textAlign: 'center' }}>Мест</SortableTh>
@@ -330,7 +336,7 @@ export default function SentToAccountantPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={15} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={moneyColSpan(15)} className="muted" style={{ padding: 16 }}>
                     {company ? "Нет отработанных заявок." : "Выберите компанию."}
                   </td>
                 </tr>
@@ -354,9 +360,9 @@ export default function SentToAccountantPage() {
                       </td>
                       <td><div style={{ fontWeight: 500 }}>{customerFio}</div></td>
                       <td><div style={{ fontSize: '0.9rem' }}>{customerCompany}</div></td>
-                      <td style={{ fontWeight: 700 }}>
+                      <MoneyTd style={{ fontWeight: 700 }}>
                         {a.totalSum ? `${parseFloat(a.totalSum).toLocaleString()} тг` : "—"}
-                      </td>
+                      </MoneyTd>
                       <td>{a.route?.fromCity || "—"}</td>
                       <td>{a.route?.toCity || "—"}</td>
                       <td style={{ textAlign: "center", fontSize: '0.9rem' }}>{a.totals?.seats || "—"}</td>
