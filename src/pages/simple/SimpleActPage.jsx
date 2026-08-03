@@ -416,29 +416,29 @@ export default function SimpleActPage() {
   @page { size: 100mm 150mm; margin: 0; }
   @media print { body { margin: 0; } html, body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
   body { font-family: Arial, sans-serif; margin: 0; padding: 8px; background: white; }
-  .label { border: 2px solid #222; width: 380px; font-size: 13px; border-radius: 4px; overflow: hidden; }
-  .header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 2px solid #222; gap: 10px; }
-  .logo img { max-height: 50px; max-width: 130px; object-fit: contain; }
-  .logo-text { font-weight: 900; color: #222; font-size: 22px; letter-spacing: 1px; padding: 4px 10px; border: 2px solid #222; border-radius: 6px; background: #f5f5f5; }
-  .company-name { font-weight: 900; color: #222; font-size: 14px; text-align: right; flex: 1; }
-  .cities { display: flex; border-bottom: 1px solid #222; }
-  .city-from { flex: 1; padding: 8px 10px; border-right: 1px solid #222; background: #f9f9f9; }
-  .city-to { flex: 2; padding: 8px 10px; background: #fff3cd; text-align: center; }
-  .city-label { font-size: 10px; color: #888; margin-bottom: 3px; text-transform: uppercase; }
+  .label { border: 2px solid #000; width: 380px; font-size: 13px; border-radius: 4px; overflow: hidden; }
+  .header { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 2px solid #000; gap: 10px; }
+  .logo img { max-height: 50px; max-width: 130px; object-fit: contain; filter: grayscale(1) contrast(2); }
+  .logo-text { font-weight: 900; color: #000; font-size: 22px; letter-spacing: 1px; padding: 4px 10px; border: 2px solid #000; border-radius: 6px; }
+  .company-name { font-weight: 900; color: #000; font-size: 14px; text-align: right; flex: 1; }
+  .cities { display: flex; border-bottom: 1px solid #000; }
+  .city-from { flex: 1; padding: 8px 10px; border-right: 1px solid #000; }
+  .city-to { flex: 2; padding: 8px 10px; text-align: center; }
+  .city-label { font-size: 10px; color: #000; margin-bottom: 3px; text-transform: uppercase; font-weight: 700; }
   .city-val { font-size: 13px; font-weight: 700; }
-  .city-big { font-size: 28px; font-weight: 900; color: #333; }
-  .direction-row { padding: 8px 12px; border-bottom: 1px solid #222; background: #f0f7ff; text-align: center; }
-  .direction-label { font-size: 10px; color: #666; text-transform: uppercase; margin-bottom: 3px; }
-  .direction-val { font-size: 14px; font-weight: 700; color: #0050b3; }
-  .info-row { display: flex; border-bottom: 1px solid #222; }
-  .info-cell { flex: 1; padding: 7px 10px; border-right: 1px solid #ddd; }
+  .city-big { font-size: 28px; font-weight: 900; color: #000; }
+  .direction-row { padding: 8px 12px; border-bottom: 1px solid #000; text-align: center; }
+  .direction-label { font-size: 10px; color: #000; text-transform: uppercase; margin-bottom: 3px; font-weight: 700; }
+  .direction-val { font-size: 14px; font-weight: 700; color: #000; }
+  .info-row { display: flex; border-bottom: 1px solid #000; }
+  .info-cell { flex: 1; padding: 7px 10px; border-right: 1px solid #000; }
   .info-cell:last-child { border-right: none; }
-  .info-label { font-size: 10px; color: #888; margin-bottom: 3px; text-transform: uppercase; }
+  .info-label { font-size: 10px; color: #000; margin-bottom: 3px; text-transform: uppercase; font-weight: 700; }
   .info-val { font-weight: 700; font-size: 15px; }
-  .num-row { padding: 10px 12px; border-bottom: 1px solid #222; background: #222; color: #fff; font-size: 17px; font-weight: 900; text-align: center; letter-spacing: 3px; }
-  .receiver-block { padding: 12px; border-bottom: 1px solid #222; text-align: center; }
-  .receiver-label { font-size: 10px; color: #888; text-transform: uppercase; margin-bottom: 5px; }
-  .receiver-name { font-size: 17px; font-weight: 900; color: #111; line-height: 1.3; word-wrap: break-word; }
+  .num-row { padding: 10px 12px; border-bottom: 1px solid #000; background: #000; color: #fff; font-size: 17px; font-weight: 900; text-align: center; letter-spacing: 3px; }
+  .receiver-block { padding: 12px; border-bottom: 1px solid #000; text-align: center; }
+  .receiver-label { font-size: 10px; color: #000; text-transform: uppercase; margin-bottom: 5px; font-weight: 700; }
+  .receiver-name { font-size: 17px; font-weight: 900; color: #000; line-height: 1.3; word-wrap: break-word; }
   .qr-block { padding: 12px; text-align: center; }
 </style></head><body>
 <div class="label">
