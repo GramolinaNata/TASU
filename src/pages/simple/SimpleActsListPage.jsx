@@ -49,6 +49,7 @@ const STATUS_COLORS = {
   "act": { bg: "#e6f7ff", color: "#1890ff" },
   "sent": { bg: "#fffbe6", color: "#d48806" },
   "done": { bg: "#f6ffed", color: "#52c41a" },
+  "deferred": { bg: "#f5f0ff", color: "#722ed1" },
   "canceled": { bg: "#fff1f0", color: "#cf1322" },
 };
 
@@ -177,6 +178,23 @@ export default function SimpleActsListPage() {
     }
   };
 
+  // ТЗ: возврат из «Отработанных» в «Отложенные». Трогаем ТОЛЬКО статус
+  // накладной — партия, номер грузовой ведомости и данные бухгалтерии
+  // остаются как есть, иначе задним числом поедет отчёт.
+  const deferAct = async (act) => {
+    if (!window.confirm(
+      `Вернуть накладную №${act.docNumber || act.number} в «Отложенные»?\n\n` +
+      `Партия и грузовая ведомость, в которые она вошла, останутся без изменений — ` +
+      `меняется только статус самой накладной.`
+    )) return;
+    try {
+      await api.requests.update(act.id, { status: 'deferred' });
+      load();
+    } catch(e) {
+      alert("Ошибка: " + e.message);
+    }
+  };
+
   const restoreAct = async (act) => {
     if (!window.confirm(`Восстановить накладную №${act.docNumber || act.number}?`)) return;
     try {
@@ -206,6 +224,7 @@ export default function SimpleActsListPage() {
       if (activeTab === "stock") matchTab = a.status === "act";
       if (activeTab === "sent") matchTab = a.status === "sent";
       if (activeTab === "done") matchTab = a.status === "done";
+      if (activeTab === "deferred") matchTab = a.status === "deferred";
       if (activeTab === "canceled") matchTab = a.status === "canceled";
       if (activeTab === "all") matchTab = a.status !== "canceled";
       // При активном поиске игнорируем вкладку — ищем по всем накладным,
@@ -269,7 +288,22 @@ export default function SimpleActsListPage() {
       const ids = selectedActs.map(a => a.id);
       await api.batches.create({ ...batchData, companyId: company?.id, requestIds: ids });
       await printVedomost(selectedActs, batchData);
+
+      // ТЗ: после формирования грузовой ведомости накладные уходят во вкладку
+      // «Отработанные» и не мешаются в общем списке. Партия и номер ведомости
+      // при этом уже созданы — меняем только статус самих накладных.
+      try {
+        await Promise.all(ids.map(id => api.requests.update(id, { status: 'done' })));
+      } catch (e) {
+        alert(
+          `Ведомость ${batchData.number} сформирована и напечатана, ` +
+          `но не удалось перевести накладные в «Отработанные»: ${e.message || e}\n\n` +
+          `Партия создана — статус можно поменять вручную в списке.`
+        );
+      }
+
       setSelected([]);
+      load();
     } catch (e) {
       alert("Ошибка: " + e.message);
     }
@@ -300,6 +334,9 @@ export default function SimpleActsListPage() {
     stock: acts.filter(a => a.status === "act").length,
     sent: acts.filter(a => a.status === "sent").length,
     done: acts.filter(a => a.status === "done").length,
+    // ТЗ: отложенные — свой статус в той же механике вкладок, что и остальные
+    // у частных. Флаги юрлиц (isDeferredForAccountant) сюда не тянем.
+    deferred: acts.filter(a => a.status === "deferred").length,
     canceled: acts.filter(a => a.status === "canceled").length,
   };
 
@@ -326,7 +363,8 @@ export default function SimpleActsListPage() {
           { key: "all", label: "Все" },
           { key: "stock", label: "В стоке" },
           { key: "sent", label: "Подано" },
-          { key: "done", label: "Отработано" },
+          { key: "done", label: "Отработанные" },
+          { key: "deferred", label: "Отложенные" },
           { key: "canceled", label: "Аннулированные" },
         ].map(tab => (
           <button
@@ -469,7 +507,8 @@ export default function SimpleActsListPage() {
                           >
                             <option value="act">В стоке</option>
                             <option value="sent">Подано</option>
-                            <option value="done">Отработано</option>
+                            <option value="done">Отработана</option>
+                            <option value="deferred">Отложена</option>
                           </select>
                         )}
                       </td>
@@ -484,14 +523,29 @@ export default function SimpleActsListPage() {
                             ↩ Восстановить
                           </button>
                         ) : (
-                          <button
-                            className="btn btn--sm"
-                            onClick={() => cancelAct(a)}
-                            title="Аннулировать накладную"
-                            style={{ background: '#fff', border: '1px solid #ff4d4f', color: '#ff4d4f', fontSize: 11, fontWeight: 600 }}
-                          >
-                            🗑 Аннулировать
-                          </button>
+                          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {/* ТЗ: из «Отработанных» можно вернуть накладную в «Отложенные».
+                                Меняется ТОЛЬКО статус: партия и номер ведомости остаются
+                                за ней, иначе поехал бы отчёт бухгалтера. */}
+                            {a.status === 'done' && (
+                              <button
+                                className="btn btn--sm"
+                                onClick={() => deferAct(a)}
+                                title="Вернуть накладную в «Отложенные» (партия и ведомость останутся)"
+                                style={{ background: '#fff', border: '1px solid #722ed1', color: '#722ed1', fontSize: 11, fontWeight: 600 }}
+                              >
+                                ⏸ В отложенные
+                              </button>
+                            )}
+                            <button
+                              className="btn btn--sm"
+                              onClick={() => cancelAct(a)}
+                              title="Аннулировать накладную"
+                              style={{ background: '#fff', border: '1px solid #ff4d4f', color: '#ff4d4f', fontSize: 11, fontWeight: 600 }}
+                            >
+                              🗑 Аннулировать
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
