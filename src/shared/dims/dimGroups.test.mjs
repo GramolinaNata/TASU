@@ -5,6 +5,7 @@ import assert from "node:assert";
 import {
   normalizeDimGroups, groupVolumeM3, groupsVolumeM3, groupsSeats,
   sizeCategoryRate, sizeSurcharge, sizeSurchargeParts, serializeDimGroups, emptyDimGroup,
+  flatSizeSurcharge, pickSizeCategory,
 } from "./dimGroups.js";
 import { calcDeliveryPrice } from "../tariff/calcTariff.js";
 
@@ -151,6 +152,42 @@ test("Пустые размеры → движок считает по весу,
   });
   assert.strictEqual(res.sum, 4300, "объём 0 → база по весу");
   assert.strictEqual(res.sum + sizeSurcharge(g, ТАРИФ), 7300, "4300 + 1000×3");
+});
+
+
+// ── Новая модель: одна категория на накладную, места вводятся вручную ──
+// Заказчик вернул ручной ввод мест, поэтому надбавка считается не по группам,
+// а «категория × общее количество мест».
+test("flatSizeSurcharge: категория × общее число мест", () => {
+  const t = { weightRanges: { _sizeMedium: 500, _sizeLarge: 1200 } };
+  assert.strictEqual(flatSizeSurcharge(t, "medium", 3), 1500);
+  assert.strictEqual(flatSizeSurcharge(t, "large", 2), 2400);
+});
+test("flatSizeSurcharge: маленькая категория надбавки не даёт", () => {
+  const t = { weightRanges: { _sizeMedium: 500, _sizeLarge: 1200 } };
+  assert.strictEqual(flatSizeSurcharge(t, "", 10), 0);
+  assert.strictEqual(flatSizeSurcharge(t, null, 10), 0);
+});
+test("flatSizeSurcharge: нет тарифа или мусор в местах → 0, без NaN", () => {
+  assert.strictEqual(flatSizeSurcharge(null, "large", 5), 0);
+  const t = { weightRanges: { _sizeLarge: 1000 } };
+  assert.strictEqual(flatSizeSurcharge(t, "large", "абв"), 0);
+  assert.ok(!Number.isNaN(flatSizeSurcharge(t, "large", undefined)));
+});
+test("pickSizeCategory: берёт самую дорогую категорию из старых групп", () => {
+  assert.strictEqual(pickSizeCategory([{ sizeCategory: "" }, { sizeCategory: "large" }, { sizeCategory: "medium" }]), "large");
+  assert.strictEqual(pickSizeCategory([{ sizeCategory: "" }, { sizeCategory: "medium" }]), "medium");
+  assert.strictEqual(pickSizeCategory([{ sizeCategory: "" }, { sizeCategory: "" }]), "");
+});
+test("pickSizeCategory: пусто и мусор не роняют", () => {
+  assert.strictEqual(pickSizeCategory([]), "");
+  assert.strictEqual(pickSizeCategory(null), "");
+  assert.strictEqual(pickSizeCategory([null, undefined]), "");
+});
+test("Старая модель по группам продолжает считаться (обратная совместимость)", () => {
+  const t = { weightRanges: { _sizeMedium: 500, _sizeLarge: 1200 } };
+  const groups = [{ sizeCategory: "medium", seats: 2 }, { sizeCategory: "large", seats: 1 }];
+  assert.strictEqual(sizeSurcharge(groups, t), 500 * 2 + 1200 * 1);
 });
 
 console.log(`\nИтого (dimGroups): ${passed} passed, ${failed} failed`);

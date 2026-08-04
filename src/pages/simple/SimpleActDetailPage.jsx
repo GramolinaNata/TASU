@@ -354,7 +354,7 @@ import { calcDeliveryPrice } from "../../shared/tariff/calcTariff.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
 import {
   emptyDimGroup, normalizeDimGroups, groupVolumeM3, groupsVolumeM3, groupsSeats,
-  sizeSurcharge, serializeDimGroups,
+  serializeDimGroups, flatSizeSurcharge, pickSizeCategory,
 } from "../../shared/dims/dimGroups.js";
 
 function formatDate(val) {
@@ -455,6 +455,11 @@ export default function SimpleActDetailPage() {
       // Габариты: у новых накладных — сохранённые группы, у старых — одна пустая
       // строка (заполнив её, менеджер вернёт накладной расчёт по кубам).
       dimGroups: hasSavedDims ? normalizeDimGroups({ dims: act.dims }) : [emptyDimGroup()],
+      // Категория габарита: у новых накладных сохранена отдельным полем,
+      // у старых (модель «категория по группам») выводим самую дорогую из групп —
+      // занижать нельзя, это уменьшило бы уже выставленную клиенту сумму.
+      sizeCategory: act.sizeCategory
+        || pickSizeCategory(hasSavedDims ? normalizeDimGroups({ dims: act.dims }) : []),
       cargoText: act.cargoText || "",
       totalSum: act.totalSum || "",
     });
@@ -473,7 +478,10 @@ export default function SimpleActDetailPage() {
   };
 
   // Мест и объём — из групп размеров (как в форме создания).
-  const seatsTotal = useMemo(() => (form ? groupsSeats(form.dimGroups) : 0), [form]);
+  // ТЗ: мест — ручное поле, источник правды form.seats. Сумма по группам
+  // осталась справкой (по ней считается объём).
+  const seatsManual = useMemo(() => (form ? Number(form.seats) || 0 : 0), [form]);
+  const seatsInGroups = useMemo(() => (form ? groupsSeats(form.dimGroups) : 0), [form]);
   const volumeM3 = useMemo(() => (form ? groupsVolumeM3(form.dimGroups) : 0), [form]);
 
   // Есть ли габариты В ФОРМЕ прямо сейчас (сохранённые или только что введённые).
@@ -509,7 +517,7 @@ export default function SimpleActDetailPage() {
       fromCity: form.fromCity,
       weightKg: Number(form.weight) || 0,
       volumeM3,
-      seats: seatsTotal || Number(form.seats) || 0,
+      seats: seatsManual,
       sizeCategory: "",
       category: "private",
       transport: (act?.transportType === "avia_console") ? "avia" : "auto",
@@ -517,7 +525,8 @@ export default function SimpleActDetailPage() {
 
     if (!res.ok) { setCalcPreview(null); setAutoCalc(false); return; }
 
-    const sum = res.sum + sizeSurcharge(form.dimGroups, res.tariff);
+    // ТЗ: одна категория габарита на накладную × общее число мест.
+    const sum = res.sum + flatSizeSurcharge(res.tariff, form.sizeCategory, seatsManual);
     setCalcPreview({ sum, description: res.description, byWeightOnly: !hasDimsNow });
 
     // Молча пишем сумму только когда габариты известны и человек её не правил.
@@ -528,7 +537,7 @@ export default function SimpleActDetailPage() {
       setAutoCalc(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, form?.toCity, form?.fromCity, form?.weight, form?.dimGroups, volumeM3, seatsTotal, tariffs, manualSum, hasDimsNow]);
+  }, [editing, form?.toCity, form?.fromCity, form?.weight, form?.dimGroups, volumeM3, seatsManual, form?.sizeCategory, tariffs, manualSum, hasDimsNow]);
 
   // Явное применение предложенной суммы (для старых накладных без габаритов).
   const applyCalc = () => {
@@ -553,12 +562,14 @@ export default function SimpleActDetailPage() {
         // Мест — сумма по группам; если групп нет (старая накладная, габариты не
         // вводили), оставляем прежнее значение из формы, чтобы не обнулить его.
         totals: {
-          seats: seatsTotal > 0 ? seatsTotal : (Number(form.seats) || 0),
+          seats: seatsManual,
           weight: Number(form.weight) || 0,
         },
         // Габариты теперь сохраняем и при редактировании — со следующего раза
         // накладная станет пересчитываемой по кубам.
         dims: serializeDimGroups(form.dimGroups),
+        // Категория габарита — одна на накладную (ТЗ), сохраняется отдельно.
+        sizeCategory: form.sizeCategory || "",
         volumeM3,
         totalSum: form.totalSum,
         docNumber: act.docNumber,
@@ -861,15 +872,24 @@ ${receiptBlock}
             <div className="card_body">
               <div className="field">
                 <div className="label">Мест</div>
-                {hasDimsNow || seatsTotal > 0 ? (
-                  <>
-                    <input type="number" value={seatsTotal} readOnly disabled
-                      style={{ background: '#f1f5f9', cursor: 'not-allowed', fontWeight: 700 }} />
-                    <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>Сумма по группам размеров</div>
-                  </>
-                ) : (
-                  <input type="number" value={form.seats} onChange={e => setForm({...form, seats: e.target.value})} />
+                {/* ТЗ: мест вводится вручную всегда — автосумма по группам убрана. */}
+                <input type="number" min="0" value={form.seats}
+                  onChange={e => setForm({ ...form, seats: e.target.value })} style={{ fontWeight: 700 }} />
+                {seatsInGroups > 0 && seatsInGroups !== seatsManual && (
+                  <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>
+                    В группах указано {seatsInGroups} — объём считается по ним
+                  </div>
                 )}
+              </div>
+              <div className="field">
+                {/* ТЗ: категория габарита одна на накладную; надбавка = ставка × мест */}
+                <div className="label">Габарит груза</div>
+                <select value={form.sizeCategory || ""}
+                  onChange={e => setForm({ ...form, sizeCategory: e.target.value })}>
+                  <option value="">Маленькая (без надбавки)</option>
+                  <option value="medium">Средняя (+надбавка)</option>
+                  <option value="large">Большая (+надбавка)</option>
+                </select>
               </div>
               <div className="field"><div className="label">Вес (кг)</div><input type="number" value={form.weight} onChange={e => setForm({...form, weight: e.target.value})} /></div>
 
@@ -885,14 +905,10 @@ ${receiptBlock}
                         onChange={e => setDimGroup(idx, { width: e.target.value })} />
                       <input type="number" min="0" value={g.height} placeholder="В" style={{ width: 62 }}
                         onChange={e => setDimGroup(idx, { height: e.target.value })} />
-                      <input type="number" min="0" value={g.seats} placeholder="Мест" style={{ width: 62 }}
+                      {/* «шт» — множитель объёма группы (Д×Ш×В×шт), не общее число мест.
+                          Категория габарита одна на накладную, селект из группы убран. */}
+                      <input type="number" min="0" value={g.seats} placeholder="шт" style={{ width: 62 }}
                         onChange={e => setDimGroup(idx, { seats: e.target.value })} />
-                      <select value={g.sizeCategory || ""} style={{ width: 120 }}
-                        onChange={e => setDimGroup(idx, { sizeCategory: e.target.value })}>
-                        <option value="">Маленькая</option>
-                        <option value="medium">Средняя</option>
-                        <option value="large">Большая</option>
-                      </select>
                       <span className="muted" style={{ fontSize: '0.7rem' }}>
                         {groupVolumeM3(g) > 0 ? `${groupVolumeM3(g).toFixed(4)} м³` : "—"}
                       </span>
