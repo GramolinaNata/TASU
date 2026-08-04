@@ -562,15 +562,16 @@ export default function UsersPage() {
     e.preventDefault();
     try {
       // 🆕 ТЗ v2: Если роль PRIVATE — обязательна привязка к компании
-      if (formData.role === 'PRIVATE' && !formData.assignedCompanyId) {
+      if ((formData.role === 'PRIVATE' || formData.role === 'MANAGER2') && !formData.assignedCompanyId) {
         alert('Для частного лица необходимо выбрать компанию');
         return;
       }
 
       const payload = { ...formData };
 
-      // Если не PRIVATE — assignedCompanyId не нужен
-      if (payload.role !== 'PRIVATE') {
+      // Компания нужна ролям с привязкой (PRIVATE, MANAGER2);
+      // у остальных чистим, чтобы не тянулась при смене роли.
+      if (payload.role !== 'PRIVATE' && payload.role !== 'MANAGER2') {
         payload.assignedCompanyId = null;
       }
 
@@ -726,7 +727,7 @@ export default function UsersPage() {
                     </td>
                     <td>
                       {/* 🆕 ТЗ v2: Привязанная компания + телефон */}
-                      {user.role === 'PRIVATE' && user.assignedCompanyId && (
+                      {(user.role === 'PRIVATE' || user.role === 'MANAGER2') && user.assignedCompanyId && (
                         <div style={{ fontSize: '0.85rem' }}>
                           🏢 {getCompanyName(user.assignedCompanyId)}
                         </div>
@@ -736,7 +737,7 @@ export default function UsersPage() {
                           📞 {user.contactPhone}
                         </div>
                       )}
-                      {!user.contactPhone && !(user.role === 'PRIVATE' && user.assignedCompanyId) && (
+                      {!user.contactPhone && !((user.role === 'PRIVATE' || user.role === 'MANAGER2') && user.assignedCompanyId) && (
                         <span className="muted">—</span>
                       )}
                     </td>
@@ -814,7 +815,9 @@ export default function UsersPage() {
               </div>
 
               {/* 🆕 ТЗ v2: Если PRIVATE — выбор компании обязателен */}
-              {formData.role === 'PRIVATE' && (
+              {/* ТЗ: компания обязательна и для MANAGER2 — ограниченный менеджер
+                  работает только от неё и переключать не может. */}
+              {(formData.role === 'PRIVATE' || formData.role === 'MANAGER2') && (
                 <div className="form_group_clean" style={{ marginTop: '18px', padding: 12, background: '#fef3c7', borderRadius: 8, border: '1px solid #fbbf24' }}>
                   <label className="label_clean">
                     Компания * <span style={{ fontWeight: 400, fontSize: '11px', color: '#92400e' }}>(от какой компании работает частное лицо)</span>

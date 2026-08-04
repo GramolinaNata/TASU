@@ -348,23 +348,35 @@ export default function Layout() {
 
   const isAnyAccountant = isAccountant || isAccountant2;
 
-  // 🆕 ТЗ v2: Для PRIVATE автоматически выставляем его привязанную компанию
+  // ТЗ: роли с ЖЁСТКОЙ привязкой к компании — «Частное лицо» (PRIVATE) и
+  // «Менеджер (ограниченный)» (MANAGER2). Компанию назначает администратор
+  // в «Персонале», переключать её сами они не могут.
+  const isCompanyLocked = isPrivate || isManager2;
+
+  // Привязанная роль без назначенной компании. В общий переключатель пускать
+  // нельзя — иначе выберет любую и обойдёт привязку. Показываем сообщение,
+  // чтобы администратор проставил компанию.
+  const lockedWithoutCompany = isCompanyLocked && !user?.assignedCompanyId;
+
+  // 🆕 ТЗ v2: Для PRIVATE автоматически выставляем его привязанную компанию.
+  // ТЗ: то же для MANAGER2 — он работает только от своей компании.
   useEffect(() => {
-    if (isPrivate && user?.assignedCompanyId) {
+    if (isCompanyLocked && user?.assignedCompanyId) {
       // Проверяем что в localStorage стоит правильная компания
       const currentSelected = getSelectedCompanyId();
       if (currentSelected !== user.assignedCompanyId) {
         setSelectedCompanyId(user.assignedCompanyId);
       }
     }
-  }, [isPrivate, user?.assignedCompanyId]);
+  }, [isCompanyLocked, user?.assignedCompanyId]);
 
   useEffect(() => {
-    // Селектор компаний показывается только не-PRIVATE/не-курьер/не-бухгалтер
-    if (!getSelectedCompanyId() && !isCourier && !isAnyAccountant && !isPrivate) {
+    // Селектор показывается только тем, кто вправе переключаться: не курьеру,
+    // не бухгалтеру и не роли с привязкой к компании.
+    if (!getSelectedCompanyId() && !isCourier && !isAnyAccountant && !isCompanyLocked) {
       setSelectorOpen(true);
     }
-  }, [isCourier, isAnyAccountant, isPrivate]);
+  }, [isCourier, isAnyAccountant, isCompanyLocked]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -449,13 +461,15 @@ export default function Layout() {
 
   return (
     <main className="main">
-      {!isCourier && !isPrivate && <CompanySelector open={selectorOpen} onClose={() => setSelectorOpen(false)} />}
+      {/* ТЗ: ролям с привязкой к компании (PRIVATE, MANAGER2) переключатель
+          не показываем вовсе — иначе привязку можно обойти выбором другой компании. */}
+      {!isCourier && !isCompanyLocked && <CompanySelector open={selectorOpen} onClose={() => setSelectorOpen(false)} />}
 
       <div className="container">
         <div className="main_wrapper">
           {!isCourier && (
             <aside className={`sidebar ${!isSidebarOpen ? 'sidebar--collapsed' : ''}`} style={{ display: 'flex', flexDirection: 'column' }}>
-              <div className="sidebar_logo" onClick={() => !isAnyAccountant && !isPrivate && setSelectorOpen(true)} style={{ cursor: (isAnyAccountant || isPrivate) ? "default" : "pointer", display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px' }}>
+              <div className="sidebar_logo" onClick={() => !isAnyAccountant && !isCompanyLocked && setSelectorOpen(true)} style={{ cursor: (isAnyAccountant || isCompanyLocked) ? "default" : "pointer", display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px' }}>
                 {!isSidebarOpen ? (
                   <div style={{ fontWeight: 900, fontSize: 22, color: 'var(--accent)', width: '100%', textAlign: 'center' }}>
                     {selectedCompany?.name ? selectedCompany.name.charAt(0).toUpperCase() : 'T'}
@@ -685,7 +699,24 @@ export default function Layout() {
               </div>
             )}
             <div className="content_wrapper">
-              <Outlet context={{ openCompanySelector: () => setSelectorOpen(true) }} />
+              {/* ТЗ: привязанная роль без назначенной компании не должна попадать
+                  в общий переключатель — иначе выберет чужую и обойдёт привязку.
+                  Вместо содержимого показываем, к кому идти. */}
+              {lockedWithoutCompany ? (
+                <div className="card" style={{ marginTop: 24 }}>
+                  <div className="card_body" style={{ textAlign: 'center', padding: 40 }}>
+                    <div style={{ fontSize: 34, marginBottom: 12 }}>🏢</div>
+                    <div style={{ fontWeight: 700, marginBottom: 8 }}>Компания не назначена</div>
+                    <div className="muted" style={{ maxWidth: 460, margin: '0 auto' }}>
+                      Обратитесь к администратору — он должен привязать вашу учётную
+                      запись к компании в разделе «Персонал». До этого работа с
+                      документами недоступна.
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <Outlet context={{ openCompanySelector: () => setSelectorOpen(true) }} />
+              )}
             </div>
           </section>
         </div>

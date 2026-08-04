@@ -168,9 +168,12 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'email, password и name обязательны' });
     }
 
-    // 🆕 ТЗ v2: для роли PRIVATE компания обязательна
-    if (role === 'PRIVATE' && !assignedCompanyId) {
-      return res.status(400).json({ message: 'Для роли "Частное лицо" необходимо указать компанию (assignedCompanyId)' });
+    // 🆕 ТЗ v2: для роли PRIVATE компания обязательна.
+    // ТЗ: то же для MANAGER2 — он работает только от назначенной компании и
+    // переключать её не может. Проверка на сервере, а не только в форме:
+    // иначе оператора можно завести без компании прямо через API.
+    if ((role === 'PRIVATE' || role === 'MANAGER2') && !assignedCompanyId) {
+      return res.status(400).json({ message: 'Для этой роли необходимо указать компанию (assignedCompanyId)' });
     }
 
     const existingUser = await prisma.user.findUnique({ where: { email } });
