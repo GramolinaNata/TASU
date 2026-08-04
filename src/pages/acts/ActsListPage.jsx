@@ -769,7 +769,6 @@ export default function ActsListPage() {
   const [sortOrder, setSortOrder] = useState('desc');
 
   // ТЗ: статусы менеджера — Активные / Завершённые
-  const [tab, setTab] = useState('active');
 
   if (isAccountant && !isAdmin) {
     return <Navigate to="/accountant/general" replace />;
@@ -810,7 +809,7 @@ export default function ActsListPage() {
     }
 
     // Вкладка: активные / завершённые (менеджером)
-    list = list.filter(a => tab === 'completed' ? !!a.isManagerCompleted : !a.isManagerCompleted);
+    // Фильтр по вкладке убран вместе с вкладками — список показывает всё сразу.
 
     if (dateFrom) {
        list = list.filter(a => normalizeIsoDate(a.createdAt || a.date) >= dateFrom);
@@ -839,17 +838,10 @@ export default function ActsListPage() {
     });
 
     return sorted;
-  }, [acts, q, company, dateFrom, dateTo, sortBy, sortOrder, tab]);
+  }, [acts, q, company, dateFrom, dateTo, sortBy, sortOrder]);
 
   // Счётчики для вкладок (не зависят от текущей вкладки/поиска/дат)
-  const tabCounts = useMemo(() => {
-    if (!company) return { active: 0, completed: 0 };
-    const base = acts.filter(a => a.companyId === company.id && isBaseAct(a));
-    return {
-      active: base.filter(a => !a.isManagerCompleted).length,
-      completed: base.filter(a => !!a.isManagerCompleted).length,
-    };
-  }, [acts, company]);
+  // tabCounts удалён вместе с вкладками «Активные»/«Завершённые».
 
   const loadActs = async () => {
     setLoading(true);
@@ -974,20 +966,9 @@ export default function ActsListPage() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-        <button
-          className={`btn ${tab === 'active' ? 'btn--accent' : ''}`}
-          onClick={() => setTab('active')}
-        >
-          🟢 Активные <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.active})</span>
-        </button>
-        <button
-          className={`btn ${tab === 'completed' ? 'btn--accent' : ''}`}
-          onClick={() => setTab('completed')}
-        >
-          ✅ Завершённые <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.completed})</span>
-        </button>
-      </div>
+      {/* ТЗ: вкладки «Активные» / «Завершённые» убраны — заказчик сказал, что не нужны.
+          Признак isManagerCompleted и пункт «Завершить работу» в меню строки остались:
+          исчезло только деление списка на две вкладки. */}
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
         {loading ? (
@@ -1014,7 +995,7 @@ export default function ActsListPage() {
                 <tr>
                   <td colSpan={moneyColSpan(11)} className="muted" style={{ padding: 16 }}>
                     {!company ? "Выберите компанию." :
-                      tab === 'active' ? 'Нет активных заявок' : 'Нет завершённых заявок'}
+                      "Заявок нет"}
                   </td>
                 </tr>
               ) : (

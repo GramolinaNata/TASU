@@ -161,6 +161,30 @@ export default function SimpleActsListPage() {
     }
   };
 
+  // ТЗ: массовый перевод статуса по галочкам — менеджерское завершение.
+  // Бухгалтерских признаков не касается: у частных их нет, и отчёт бухгалтера
+  // от статуса накладной не зависит. Партия и номер ведомости тоже не меняются.
+  // Если часть накладных не прошла — говорим какие именно, а не «ошибка».
+  const bulkStatus = async (newStatus, whereTo) => {
+    const ids = filtered.filter(a => selected.includes(a.id) && a.status !== 'canceled').map(a => a.id);
+    if (ids.length === 0) return alert("Выберите накладные (аннулированные не переводятся).");
+    if (!window.confirm(`Перевести ${ids.length} накл. ${whereTo}?`)) return;
+
+    const results = await Promise.allSettled(
+      ids.map(id => api.requests.update(id, { status: newStatus }))
+    );
+    const failed = results
+      .map((r, i) => (r.status === "rejected" ? ids[i] : null))
+      .filter(Boolean);
+    if (failed.length) {
+      const nums = filtered.filter(a => failed.includes(a.id))
+        .map(a => a.docNumber || a.number).join(", ");
+      alert(`Переведено ${ids.length - failed.length} из ${ids.length}.\nНе удалось: ${nums}`);
+    }
+    setSelected([]);
+    load();
+  };
+
   const updateStatus = async (id, newStatus) => {
     try {
       await api.requests.update(id, { status: newStatus });
@@ -357,6 +381,20 @@ export default function SimpleActsListPage() {
           {company && <div className="chip">{company.name}</div>}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
+          {/* ТЗ: менеджер сам отправляет накладные в «Отработанные» — галочками,
+              не дожидаясь бухгалтера. Завершение здесь МЕНЕДЖЕРСКОЕ и с бухгалтерским
+              никак не связано: у частных бухгалтерских признаков нет вовсе. */}
+          {selected.length > 0 && activeTab !== 'done' && (
+            <button className="btn" onClick={() => bulkStatus('done', 'в «Отработанные»')}
+              style={{ background: '#52c41a', color: '#fff', border: 'none', fontWeight: 700 }}>
+              ✅ Завершить ({selected.length})
+            </button>
+          )}
+          {selected.length > 0 && activeTab === 'done' && (
+            <button className="btn" onClick={() => bulkStatus('act', 'в «В стоке»')}>
+              ↩ Вернуть в сток ({selected.length})
+            </button>
+          )}
           {selected.length > 0 && (
             <button className="btn btn--accent" onClick={createBatchAndPrint}>
               {isManager2
@@ -534,6 +572,18 @@ export default function SimpleActsListPage() {
                           </button>
                         ) : (
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                            {/* ТЗ: менеджер завершает накладную сам, не дожидаясь бухгалтера.
+                                Это менеджерское завершение — бухгалтерских признаков не касается. */}
+                            {a.status !== 'done' && (
+                              <button
+                                className="btn btn--sm"
+                                onClick={() => updateStatus(a.id, 'done')}
+                                title="Завершить: накладная уйдёт во вкладку «Отработанные»"
+                                style={{ background: '#52c41a', color: '#fff', border: 'none', fontSize: 11, fontWeight: 700 }}
+                              >
+                                ✅ Завершить
+                              </button>
+                            )}
                             {/* ТЗ: из «Отработанных» можно вернуть накладную в «Отложенные».
                                 Меняется ТОЛЬКО статус: партия и номер ведомости остаются
                                 за ней, иначе поехал бы отчёт бухгалтера. */}
