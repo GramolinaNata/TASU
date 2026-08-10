@@ -33,7 +33,9 @@ export default function PublicSignPage() {
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch(`/api/public/sign/${encodeURIComponent(token)}`);
+        const r = await fetch(
+  `${import.meta.env.VITE_API_URL}/public/sign/${encodeURIComponent(token)}`
+);
         const body = await r.json().catch(() => ({}));
         if (!r.ok) { setError(body.message || "Ссылка недействительна"); setData(null); }
         else { setData(body); }
@@ -134,7 +136,9 @@ export default function PublicSignPage() {
     setSaving(true);
     setError("");
     try {
-      const r = await fetch(`/api/public/sign/${encodeURIComponent(token)}`, {
+      const r = await fetch(
+  `${import.meta.env.VITE_API_URL}/public/sign/${encodeURIComponent(token)}`,
+  {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: trimmedDataUrl(), name: name.trim() }),
