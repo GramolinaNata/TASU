@@ -26,7 +26,9 @@ export default function PublicCargoPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const r = await fetch(`/api/public/cargo/${encodeURIComponent(token)}`);
+      const r = await fetch(
+  `${import.meta.env.VITE_API_URL}/public/cargo/${encodeURIComponent(token)}`
+);
       const body = await r.json().catch(() => ({}));
       if (!r.ok) { setError(body.message || "Ссылка недействительна"); setData(null); }
       else { setData(body); setError(""); }
@@ -42,7 +44,9 @@ export default function PublicCargoPage() {
   const move = async (target) => {
     setSaving(true);
     try {
-      const r = await fetch(`/api/public/cargo/${encodeURIComponent(token)}/status`, {
+      const r = await fetch(
+  `${import.meta.env.VITE_API_URL}/public/cargo/${encodeURIComponent(token)}/status`,
+  {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cargoStatus: target }),
