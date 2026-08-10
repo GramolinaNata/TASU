@@ -32,9 +32,8 @@ export default function AccessLinksDialog({ act, onClose, onChanged }) {
     try {
       const entry = await api.requests.issueAccessLink(act.id, purpose, days);
       setTokens((prev) => [...prev, entry]);
-      setFresh(entry);
-      setCopied(false);
-      onChanged && onChanged();
+setFresh(entry);
+setCopied(false);
     } catch (e) {
       setError(e.message || "Не удалось выдать ссылку");
     } finally {

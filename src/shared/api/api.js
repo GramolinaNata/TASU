@@ -250,11 +250,25 @@ export const api = {
 
     // Редактирование не меняет ИП. Перевод: старая аннулируется, создаётся новая
     // в целевом ИП. newDocNumber — следующий номер целевого ИП (genNumber(target)).
-    cancelAndClone: (id, newCompanyId, newDocNumber) => request(`/requests/${id}/cancel-and-clone`, {
-      method: 'POST',
-      body: JSON.stringify({ newCompanyId, newDocNumber }),
-    }),
-  },
+   cancelAndClone: (id, newCompanyId, newDocNumber) => request(`/requests/${id}/cancel-and-clone`, {
+  method: 'POST',
+  body: JSON.stringify({ newCompanyId, newDocNumber }),
+}),
+
+setCargoStatus: (id, cargoStatus) => request(`/requests/${id}/cargo-status`, {
+  method: 'POST',
+  body: JSON.stringify({ cargoStatus }),
+}),
+
+issueAccessLink: (id, purpose, days = 3) => request(`/requests/${id}/access-link`, {
+  method: 'POST',
+  body: JSON.stringify({ purpose, days }),
+}),
+
+revokeAccessLink: (id, token) => request(`/requests/${id}/access-link/${token}/revoke`, {
+  method: 'POST',
+}),
+},
   users: {
     /**
      * Поддержка сортировки: api.users.list({ sortBy: 'name', order: 'asc' })
