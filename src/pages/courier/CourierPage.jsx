@@ -2,6 +2,8 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import Loader from "../../shared/components/Loader";
+import { useAuth } from "../../shared/auth/AuthContext";
+import { isVisibleToCourier } from "../../shared/courier/courierCity.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -19,6 +21,10 @@ const STATUS_COLORS = {
 };
 
 export default function CourierPage() {
+  const { user } = useAuth();
+  // ТЗ: курьер работает по своему городу. Город назначает администратор
+  // в «Персонале»; пока не назначен — список пуст (см. ниже).
+  const courierCity = user?.city || "";
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -37,7 +43,10 @@ export default function CourierPage() {
             }
             return { ...a, ...details };
           });
-          setActs(parsed);
+          // Фильтр продублирован с сервером намеренно: интерфейс не должен
+          // зависеть от того, что вернул API. Серверный фильтр — главный,
+          // без него курьер получил бы всё простым запросом мимо интерфейса.
+          setActs(parsed.filter(a => isVisibleToCourier(a, courierCity)));
         }
       } catch (e) {
         console.error(e);
@@ -46,7 +55,7 @@ export default function CourierPage() {
       }
     };
     load();
-  }, []);
+  }, [courierCity]);
 
   const filtered = acts.filter(a => {
     const s = search.trim().toLowerCase();
@@ -59,10 +68,34 @@ export default function CourierPage() {
     return matchSearch && matchStatus;
   });
 
+  // ТЗ: город не назначен — показываем подсказку вместо списка, а не всё
+  // подряд. Пустое поле означает «доступ не настроен»: иначе новый курьер
+  // до настройки видел бы заявки всех городов и компаний.
+  if (!courierCity) {
+    return (
+      <>
+        <div className="navbar">
+          <h1>Мои доставки</h1>
+        </div>
+        <div className="card" style={{ marginTop: 24, padding: 28, textAlign: 'center' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>📍</div>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Город не назначен</div>
+          <div className="muted">
+            Обратитесь к администратору — он задаёт город в разделе «Персонал».
+            До этого список доставок пуст.
+          </div>
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="navbar">
-        <h1>Мои доставки</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h1>Мои доставки</h1>
+          <div className="chip">📍 {courierCity}</div>
+        </div>
       </div>
 
       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>

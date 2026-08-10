@@ -895,6 +895,8 @@
 import { Response } from 'express';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';
+// ТЗ: токены одноразовых ссылок генерируются на сервере — клиентский был бы предсказуем.
+import { randomUUID } from 'crypto';
 
 const STATUS = {
   REQUEST: 'Заявка',
@@ -907,6 +909,31 @@ function safeParseDetails(raw: any): Record<string, any> {
   if (!raw) return {};
   if (typeof raw === 'object') return raw;
   try { return JSON.parse(String(raw)); } catch { return {}; }
+}
+
+/**
+ * ТЗ: доступ курьера по городу.
+ *
+ * ⚠️ ЗЕРКАЛО ФРОНТА: src/shared/courier/courierCity.js. При правке менять
+ * в ОБОИХ местах. Общий модуль сделать нельзя — образ бэка собирается из
+ * каталога server/ и до src/ не достаёт.
+ *
+ * 'toCity' — куда доставляют, 'fromCity' — откуда забирают. Заказчик указал
+ * город назначения; вопрос не окончательный (курьер ведёт заявку целиком:
+ * и «Забрал», и «Доставил»), поэтому переключается одной строкой.
+ */
+const COURIER_CITY_FIELD: 'toCity' | 'fromCity' = 'toCity';
+
+/** Города вводят руками, регистр и пробелы гуляют — сравниваем нормализованно. */
+function normalizeCity(value: any): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+/** Город заявки, по которому её видит курьер. */
+function requestCityForCourier(details: Record<string, any>): string {
+  const route = details?.route;
+  if (route && typeof route === 'object') return route[COURIER_CITY_FIELD] || '';
+  return '';
 }
 
 function hasFormedDocument(request: any, details: Record<string, any>): boolean {
@@ -981,6 +1008,26 @@ export const getRequests = async (req: AuthRequest, res: Response) => {
       requests = requests.filter((r: any) => safeParseDetails(r.details).isDeferredForAccountant === true);
     }
 
+    // ТЗ: курьер видит только заявки своего города. Проверка обязана быть
+    // здесь, а не только в интерфейсе: скрытая строка в таблице ограничением
+    // не является — без этого фильтра курьер получил бы все заявки всех
+    // компаний простым запросом к API.
+    //
+    // Город не назначен → пустой список. Пустое поле означает «доступ не
+    // настроен», а не «доступ ко всему»: иначе новый курьер до настройки
+    // видел бы всю базу.
+    if (req.user?.role === 'COURIER') {
+      const me = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { city: true },
+      });
+      const city = normalizeCity((me as any)?.city);
+      if (!city) return res.json([]);
+      requests = requests.filter(
+        (r: any) => normalizeCity(requestCityForCourier(safeParseDetails(r.details))) === city
+      );
+    }
+
     res.json(requests);
   } catch (error: any) {
     console.error('Get requests error:', error);
@@ -1014,6 +1061,43 @@ export const getRequest = async (req: AuthRequest, res: Response) => {
   }
 };
 
+/**
+ * ТЗ: аккуратная сквозная нумерация накладных частных лиц — 1, 2, 3…
+ *
+ * ПОЧЕМУ НА СЕРВЕРЕ. Раньше номер считал клиент: тянул весь список, брал
+ * максимум, прибавлял единицу. Отсюда два дефекта. Первый — при сбое запроса
+ * срабатывал аварийный фоллбэк «А» + время в миллисекундах, и появлялись те
+ * самые «непонятные цифры» вида А6016146, после которых серия уезжала
+ * в миллионы навсегда. Второй — гонка: два менеджера, оформляющие приём
+ * одновременно, получали один и тот же максимум, и второй упирался в @unique.
+ * На сервере номер выдаётся в одной транзакции с созданием записи.
+ *
+ * ФОРМАТ. Голое число без префикса. Старые номера частных (А000001…) остаются
+ * как есть и с новыми не пересекаются: это разные строки, @unique не сработает.
+ * Перенумеровывать старое нельзя — номера ушли на печатные наклейки, чеки
+ * и в QR-код, которые уже у клиентов на руках.
+ *
+ * Последовательность ОДНА на все компании: docNumber уникален глобально,
+ * поэтому «своя нумерация с 1 у каждой компании» столкнулась бы на первом же
+ * совпадении.
+ */
+const NUMERIC_DOC_NUMBER = /^\d+$/;
+
+async function nextSimpleDocNumber(tx: any): Promise<string> {
+  const rows = await tx.$queryRawUnsafe<Array<{ max: number | null }>>(
+    `SELECT COALESCE(MAX(CAST("docNumber" AS BIGINT)), 0)::int AS max
+       FROM "Request"
+      WHERE "docNumber" ~ '^[0-9]+$'`
+  );
+  const max = Number(rows?.[0]?.max) || 0;
+  return String(max + 1);
+}
+
+/** Частная накладная: по типу или по признаку в details. */
+function isSimpleRequest(type: any, details: Record<string, any>): boolean {
+  return type === 'SIMPLE' || details?.isSimple === true;
+}
+
 export const createRequest = async (req: AuthRequest, res: Response) => {
   try {
     const { status, date, companyId, type, docNumber, details, totalSum, ...rest } = req.body;
@@ -1046,21 +1130,58 @@ export const createRequest = async (req: AuthRequest, res: Response) => {
       detailsStr = JSON.stringify(rest);
     }
 
-    const newRequest = await prisma.request.create({
-      data: {
-        status: status || STATUS.REQUEST,
-        date: date || new Date().toISOString().split('T')[0],
-        companyId: finalCompanyId,
-        managerId: req.user.id,
-        type: type || 'REQUEST',
-        route: routeStr,
-        cargo: cargoStr,
-        docNumber: docNumber,
-        totalSum: totalSum ? String(totalSum) : '',
-        details: detailsStr,
-      } as any,
-      include: { company: true },
-    });
+    const baseData = {
+      status: status || STATUS.REQUEST,
+      date: date || new Date().toISOString().split('T')[0],
+      companyId: finalCompanyId,
+      managerId: req.user.id,
+      type: type || 'REQUEST',
+      route: routeStr,
+      cargo: cargoStr,
+      totalSum: totalSum ? String(totalSum) : '',
+      details: detailsStr,
+    };
+
+    // Номер частной накладной выдаёт сервер. Клиент может прислать свой —
+    // тогда уважаем его (так работают юрлица и импорт), но если поле пустое,
+    // берём следующий номер сквозной последовательности.
+    const parsedDetails = safeParseDetails(detailsStr);
+    const needsNumber = !docNumber && isSimpleRequest(type, parsedDetails);
+
+    let newRequest;
+    if (!needsNumber) {
+      newRequest = await prisma.request.create({
+        data: { ...baseData, docNumber } as any,
+        include: { company: true },
+      });
+    } else {
+      // Между вычислением максимума и вставкой номер может занять параллельный
+      // запрос — тогда Prisma отдаёт P2002 по уникальному docNumber. Повторяем
+      // с пересчётом: несколько попыток надёжнее любой блокировки и не держат
+      // таблицу. Практически хватает первой.
+      const ATTEMPTS = 5;
+      let lastError: any = null;
+      for (let i = 0; i < ATTEMPTS; i++) {
+        try {
+          newRequest = await prisma.$transaction(async (tx) => {
+            const number = await nextSimpleDocNumber(tx);
+            return tx.request.create({
+              data: { ...baseData, docNumber: number } as any,
+              include: { company: true },
+            });
+          });
+          break;
+        } catch (e: any) {
+          lastError = e;
+          const isDuplicate = e?.code === 'P2002';
+          if (!isDuplicate) throw e;
+        }
+      }
+      if (!newRequest) {
+        console.error('createRequest: не удалось подобрать номер', lastError);
+        return res.status(409).json({ message: 'Не удалось присвоить номер накладной, повторите сохранение' });
+      }
+    }
 
     res.status(201).json(newRequest);
   } catch (error: any) {
@@ -1318,6 +1439,109 @@ export const markFullyCompleted = async (req: AuthRequest, res: Response) => {
   }
 };
 
+/**
+ * ТЗ: движение груза по сканированию QR.
+ *
+ * ⚠️ ЗЕРКАЛО ФРОНТА: src/shared/cargo/cargoStatus.js. При правке цепочки или
+ * ролей менять в ОБОИХ местах. Общий модуль сделать нельзя — образ бэка
+ * собирается из каталога server/ и до src/ не достаёт.
+ */
+const CARGO_CHAIN = ['picked_up', 'loaded', 'rep_received', 'delivered'];
+const CARGO_ROLES = ['COURIER', 'MANAGER', 'ADMIN'];
+const CARGO_REVERT_ROLES = ['MANAGER', 'ADMIN'];
+
+function nextCargo(current: string): string | null {
+  const cur = current && CARGO_CHAIN.includes(current) ? current : '';
+  if (cur === '') return CARGO_CHAIN[0];
+  const i = CARGO_CHAIN.indexOf(cur);
+  return i < CARGO_CHAIN.length - 1 ? CARGO_CHAIN[i + 1] : null;
+}
+
+function prevCargo(current: string): string | null {
+  const i = CARGO_CHAIN.indexOf(current);
+  if (i < 0) return null;
+  return i === 0 ? '' : CARGO_CHAIN[i - 1];
+}
+
+/**
+ * Смена статуса груза. Проверка допустимости перехода И роли стоит ЗДЕСЬ:
+ * скрытая кнопка в интерфейсе ограничением не является — эндпоинт открыт
+ * для любого запроса с токеном.
+ *
+ * Существующий Request.status не трогается: движение груза и рабочий процесс
+ * документа — разные оси.
+ */
+export const setCargoStatus = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const target = String(req.body?.cargoStatus || '');
+    const role = req.user?.role || '';
+
+    if (!CARGO_CHAIN.includes(target)) {
+      return res.status(400).json({ message: 'Неизвестный статус груза' });
+    }
+    if (!CARGO_ROLES.includes(role)) {
+      return res.status(403).json({ message: 'Эта роль не отмечает движение груза' });
+    }
+
+    const existing = await prisma.request.findUnique({ where: { id: id as string } });
+    if (!existing) return res.status(404).json({ message: 'Накладная не найдена' });
+
+    const current = String((existing as any).cargoStatus || '');
+
+    // Повторный скан одной наклейки — не ошибка: водитель мог приложить
+    // телефон дважды. Отвечаем успехом, ничего не меняя.
+    if (target === current) {
+      return res.json({ ...existing, alreadySet: true });
+    }
+
+    const isForward = target === nextCargo(current);
+    const isBack = target === prevCargo(current);
+
+    if (!isForward && !isBack) {
+      return res.status(400).json({
+        message: 'Нельзя перескочить шаг цепочки движения груза',
+        current,
+        expected: nextCargo(current),
+      });
+    }
+    if (isBack && !CARGO_REVERT_ROLES.includes(role)) {
+      return res.status(403).json({ message: 'Отменить шаг может только менеджер или администратор' });
+    }
+
+    const updated = await prisma.request.update({
+      where: { id: id as string },
+      data: { cargoStatus: target, cargoStatusAt: new Date() } as any,
+      include: { company: true },
+    });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('setCargoStatus error:', error);
+    res.status(500).json({ message: 'Ошибка смены статуса груза', details: error.message });
+  }
+};
+
+/**
+ * Поиск накладной по человеческому номеру — для СТАРЫХ наклеек, где в QR
+ * записана строка TASU-<номер>-... вместо ссылки. Без этого весь уже
+ * отгруженный груз перестал бы сканироваться.
+ */
+export const findByDocNumber = async (req: AuthRequest, res: Response) => {
+  try {
+    const num = String(req.query.docNumber || '').trim();
+    if (!num) return res.status(400).json({ message: 'Не указан номер' });
+    const found = await prisma.request.findFirst({
+      where: { docNumber: num },
+      include: { company: true },
+    });
+    if (!found) return res.status(404).json({ message: `Накладная ${num} не найдена` });
+    res.json(found);
+  } catch (error: any) {
+    console.error('findByDocNumber error:', error);
+    res.status(500).json({ message: 'Ошибка поиска', details: error.message });
+  }
+};
+
 export const markPaid = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
@@ -1387,5 +1611,78 @@ export const deleteRequest = async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('Delete request error:', error);
     res.status(500).json({ message: 'Ошибка при удалении заявки', details: error.message });
+  }
+};
+/**
+ * ТЗ: выдача одноразовой ссылки наёмному водителю или получателю.
+ *
+ * Токен генерируется НА СЕРВЕРЕ (crypto.randomUUID): сгенерированный на
+ * клиенте был бы предсказуем, а ссылка — угадываема.
+ *
+ * Срок по умолчанию 3 дня: рейсы междугородние, суток мало.
+ */
+export const issueAccessLink = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const role = req.user?.role || '';
+    if (!['MANAGER', 'ADMIN'].includes(role)) {
+      return res.status(403).json({ message: 'Ссылки выдают менеджер и администратор' });
+    }
+
+    const purpose = String(req.body?.purpose || 'cargo');
+    if (!['cargo', 'sign'].includes(purpose)) {
+      return res.status(400).json({ message: 'Неизвестное назначение ссылки' });
+    }
+    const daysRaw = Number(req.body?.days);
+    const days = [1, 3, 7].includes(daysRaw) ? daysRaw : 3;
+
+    const existing = await prisma.request.findUnique({ where: { id: id as string } });
+    if (!existing) return res.status(404).json({ message: 'Накладная не найдена' });
+
+    const prev = Array.isArray((existing as any).accessTokens) ? (existing as any).accessTokens : [];
+    const entry = {
+      token: randomUUID(),
+      purpose,
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + days * 86400000).toISOString(),
+      usedAt: null,
+      revokedAt: null,
+      issuedBy: req.user?.id ?? null,
+    };
+
+    await prisma.request.update({
+      where: { id: id as string },
+      data: { accessTokens: [...prev, entry] as any },
+    });
+    res.json(entry);
+  } catch (error: any) {
+    console.error('issueAccessLink error:', error);
+    res.status(500).json({ message: 'Ошибка выдачи ссылки', details: error.message });
+  }
+};
+
+/** Досрочный отзыв ссылки — третий предохранитель. */
+export const revokeAccessLink = async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, token } = req.params;
+    const role = req.user?.role || '';
+    if (!['MANAGER', 'ADMIN'].includes(role)) {
+      return res.status(403).json({ message: 'Ссылки отзывают менеджер и администратор' });
+    }
+    const existing = await prisma.request.findUnique({ where: { id: id as string } });
+    if (!existing) return res.status(404).json({ message: 'Накладная не найдена' });
+
+    const prev = Array.isArray((existing as any).accessTokens) ? (existing as any).accessTokens : [];
+    const next = prev.map((t: any) =>
+      t && t.token === token && !t.revokedAt ? { ...t, revokedAt: new Date().toISOString() } : t
+    );
+    await prisma.request.update({
+      where: { id: id as string },
+      data: { accessTokens: next as any },
+    });
+    res.json({ ok: true });
+  } catch (error: any) {
+    console.error('revokeAccessLink error:', error);
+    res.status(500).json({ message: 'Ошибка отзыва ссылки', details: error.message });
   }
 };

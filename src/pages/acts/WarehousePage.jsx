@@ -276,12 +276,13 @@
 
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Link, useOutletContext } from "react-router-dom";
+import { Link, useOutletContext, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
+import { getActSection, SECTION } from "../../shared/acts/section.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -328,6 +329,7 @@ export default function WarehousePage() {
   const canSeeMoney = useCanSeeMoney();
   const moneyColSpan = useMoneyColSpan();
   const { openCompanySelector } = useOutletContext();
+  const location = useLocation();
   const [q, setQ] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -395,6 +397,10 @@ export default function WarehousePage() {
     return unsubscribe;
   }, []);
 
+  // location.key в зависимостях: склад был единственным разделом без него и
+  // показывал старые данные при возврате из карточки — из-за этого отмена
+  // формирования выглядела как «ничего не произошло». В «Заявках», СМР и ТТН
+  // так сделано давно.
   useEffect(() => {
     if (company) {
       loadActs();
@@ -402,13 +408,13 @@ export default function WarehousePage() {
       setActs([]);
       setLoading(false);
     }
-  }, [company]);
+  }, [company, location.key]);
 
   const filtered = useMemo(() => {
-    let list = acts.filter(a => a.isWarehouse && !a.isDeferredForAccountant);
+    let list = acts.filter(a => getActSection(a) === SECTION.WAREHOUSE);
 
     if (company) {
-       list = list.filter(a => a.companyId === company.id && !!a.isWarehouse && !a.isDeferredForAccountant && !a.readyForAccountant);
+       list = list.filter(a => a.companyId === company.id);
     } else {
        return [];
     }

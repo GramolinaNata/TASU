@@ -701,6 +701,7 @@ import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/stora
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
+import { getActSection, sectionPatch, SECTION } from "../../shared/acts/section.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -739,16 +740,11 @@ function getSortValue(a, field) {
   }
 }
 
-// Базовый фильтр раздела "Заявки" (без ТТН/СМР/склада/отложенных/у бухгалтера)
+// Базовый фильтр раздела "Заявки". Раздел определяется единой функцией: раньше
+// каждый список считал его сам, условия разошлись, и накладная попадала в два
+// списка сразу либо не попадала ни в один.
 function isBaseAct(a) {
-  return (
-    a.type !== 'SIMPLE' &&
-    a.type !== 'ttn' &&
-    a.type !== 'smr' &&
-    !a.isWarehouse &&
-    !a.isDeferredForAccountant &&
-    !a.readyForAccountant
-  );
+  return getActSection(a) === SECTION.ACT;
 }
 
 export default function ActsListPage() {
@@ -920,6 +916,28 @@ export default function ActsListPage() {
     }
   };
 
+  // ТЗ: перевод на склад прямо из списка — то же действие, что галочка «склад»
+  // в редактировании и кнопка «На склад» в карточке. Логика одна на все три
+  // точки: sectionPatch(WAREHOUSE) выставляет состояние целиком и гасит docType
+  // от прежней ТТН/СМР, поэтому накладная не остаётся в двух разделах сразу.
+  //
+  // После перевода она уходит из «Заявок» (фильтр раздела её больше не берёт) —
+  // об этом предупреждаем в подтверждении, иначе выглядит как пропажа.
+  const handleMoveToWarehouse = async (act) => {
+    const num = act.docNumber || act.number || "";
+    if (!window.confirm(
+      `Перевести накладную ${num} на склад?\n\n` +
+      `Она уйдёт из «Заявок» в раздел «Склад». ` +
+      `Вернуть можно кнопкой «Отменить формирование» в карточке.`
+    )) return;
+    try {
+      await api.requests.update(act.id, { ...sectionPatch(SECTION.WAREHOUSE), status: "act" });
+      loadActs();
+    } catch (err) {
+      alert("Ошибка при переводе на склад: " + err.message);
+    }
+  };
+
   return (
     <>
       <div className="navbar">
@@ -1074,6 +1092,18 @@ export default function ActsListPage() {
                               <button className="actions-item" onClick={() => handleToggleManagerCompleted(a.id, a.isManagerCompleted)}>
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6L9 17l-5-5"/></svg>
                                 {a.isManagerCompleted ? "Вернуть в активные" : "Завершить работу"}
+                              </button>
+                            )}
+
+                            {/* ТЗ: перевод на склад доступен прямо из списка,
+                                а не только через «редактировать → галочка».
+                                Действие то же самое — sectionPatch(WAREHOUSE),
+                                поэтому результат совпадает с галочкой и с
+                                кнопкой в карточке, без третьей ветки логики. */}
+                            {a.status !== 'canceled' && (
+                              <button className="actions-item" onClick={() => handleMoveToWarehouse(a)}>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9l9-6 9 6v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                На склад
                               </button>
                             )}
 

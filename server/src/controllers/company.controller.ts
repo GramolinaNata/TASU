@@ -326,6 +326,8 @@ export const createCompany = async (req: AuthRequest, res: Response) => {
       taxMode: restData.taxMode || 'none',
       taxExtra: parseFloat(restData.taxExtra) || 0,
       vatRate: parseFloat(restData.vatRate) || 0,
+      // ТЗ: ставка КПН для режима ОУР (считается после вычета НДС и перевозки).
+      kpnRate: parseFloat(restData.kpnRate) || 0,
     };
 
     if (id && typeof id === 'string') dataToSave.id = id;
@@ -363,6 +365,7 @@ export const updateCompany = async (req: AuthRequest, res: Response) => {
     if (restData.taxRate !== undefined) dataToUpdate.taxRate = parseFloat(restData.taxRate) || 0;
     if (restData.taxExtra !== undefined) dataToUpdate.taxExtra = parseFloat(restData.taxExtra) || 0;
     if (restData.vatRate !== undefined) dataToUpdate.vatRate = parseFloat(restData.vatRate) || 0;
+    if (restData.kpnRate !== undefined) dataToUpdate.kpnRate = parseFloat(restData.kpnRate) || 0;
 
     const updatedCompany = await prisma.company.update({
       where: { id: id as string },

@@ -80,7 +80,7 @@ const EMPTY_FORM = {
   carNumber: "", deliveryCost: "",
   totalSeats: "", totalWeight: "",
   // Перевозчик / представитель / грузчики
-  needCarrier: false, carrierId: "",
+  needCarrier: false, carrierId: "", carrierOfficial: false,
   needRepresentative: false, representativeId: "",
   needLoaders: false, loadersCount: "",
 };
@@ -579,6 +579,7 @@ export default function BatchesPage() {
       totalWeight: batch.totalWeight || "",
       needCarrier: !!batch.carrierId,
       carrierId: batch.carrierId || "",
+      carrierOfficial: !!batch.carrierOfficial,
       needRepresentative: !!batch.representativeId,
       representativeId: batch.representativeId || "",
       needLoaders: (batch.loadersCount || 0) > 0,
@@ -602,6 +603,8 @@ export default function BatchesPage() {
         totalWeight: totals.weight,
         requestIds: JSON.stringify(ids),
         carrierId: form.needCarrier ? (form.carrierId || null) : null,
+        // Без перевозчика признак официальности смысла не имеет — гасим.
+        carrierOfficial: form.needCarrier ? !!form.carrierOfficial : false,
         representativeId: form.needRepresentative ? (form.representativeId || null) : null,
         loadersCount: form.needLoaders ? (parseInt(form.loadersCount) || 0) : 0,
       };
@@ -876,16 +879,33 @@ export default function BatchesPage() {
                   🚚 Нужен перевозчик
                 </label>
                 {form.needCarrier && (
-                  <CityFilteredSelect
-                    items={carriers}
-                    city={form.city}
-                    value={form.carrierId}
-                    onChange={val => setForm(f => ({ ...f, carrierId: val }))}
-                    kindPlural="перевозчики"
-                    kindSingle="перевозчик"
-                    placeholder="— выберите перевозчика —"
-                    style={{ marginTop: 8 }}
-                  />
+                  <>
+                    <CityFilteredSelect
+                      items={carriers}
+                      city={form.city}
+                      value={form.carrierId}
+                      onChange={val => setForm(f => ({ ...f, carrierId: val }))}
+                      kindPlural="перевозчики"
+                      kindSingle="перевозчик"
+                      placeholder="— выберите перевозчика —"
+                      style={{ marginTop: 8 }}
+                    />
+                    {/* ТЗ: перевозку покупают и официально, и за наличные.
+                        Официальная проходит по учёту и уменьшает базу КПН,
+                        неофициальная — нет. На саму выплату перевозчику
+                        галочка не влияет, только на расчёт налога в ОУР. */}
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 10, fontWeight: 600 }}>
+                      <input
+                        type="checkbox"
+                        checked={!!form.carrierOfficial}
+                        onChange={e => setForm(f => ({ ...f, carrierOfficial: e.target.checked }))}
+                      />
+                      📄 Перевозка куплена официально
+                    </label>
+                    <div className="muted" style={{ fontSize: '0.75rem', marginTop: 4, marginLeft: 26 }}>
+                      Уменьшает базу КПН в режиме ОУР. За наличные — не отмечать.
+                    </div>
+                  </>
                 )}
               </div>
 

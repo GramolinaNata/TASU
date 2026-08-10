@@ -1,6 +1,10 @@
 ﻿
 import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../shared/api/api.js";
+import {
+  WAREHOUSE_TARIFF_CITY, readWarehouseGroups,
+  buildWarehouseRanges, findWarehouseTariff,
+} from "../../shared/warehouse/warehouseServices.js";
 
 // Заказчик отключил доставку по городу (оставлена только по регионам).
 // Логика/категория city_delivery в коде сохранена — чтобы вернуть, поставь true.
@@ -224,6 +228,172 @@ const EMPTY_FORM = {
   // Диапазоны весов с типом расчёта (fixed/perKg) и доставкой — для legal/private.
   ranges: [],
 };
+
+/**
+ * ТЗ: прейскурант складских услуг по прайсу заказчика — три группы.
+ *   Упаковка       (скотч/стрейч/пупырка/картон) × 3 диапазона размера
+ *   Палеты и ящики (5 услуг)                     × 3 своих диапазона
+ *   Прочие         (сортировка/маркировка/фото/видео) — без диапазонов
+ *
+ * Хранение и ПРР сюда НЕ входят: они в обычных тарифах, их считает движок
+ * перевозки. Дублировать их здесь значило бы считать одно дважды.
+ *
+ * Весь прейскурант — в одной записи Tariff с city='__WAREHOUSE'. Схему БД
+ * менять не требуется.
+ */
+function WarehouseServicesEditor({ tariffs, loading, onSaved }) {
+  const [groups, setGroups] = useState([]);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!loading) setGroups(readWarehouseGroups(tariffs));
+  }, [tariffs, loading]);
+
+  const patchGroup = (gi, patch) =>
+    setGroups(prev => prev.map((g, i) => (i === gi ? { ...g, ...patch } : g)));
+
+  const patchService = (gi, si, patch) =>
+    setGroups(prev => prev.map((g, i) => i !== gi ? g : {
+      ...g, services: g.services.map((s, j) => (j === si ? { ...s, ...patch } : s)),
+    }));
+
+  const setPrice = (gi, si, rangeKey, value) =>
+    setGroups(prev => prev.map((g, i) => i !== gi ? g : {
+      ...g,
+      services: g.services.map((s, j) => j !== si ? s : (
+        rangeKey === null ? { ...s, price: value } : { ...s, prices: { ...(s.prices || {}), [rangeKey]: value } }
+      )),
+    }));
+
+  const addService = (gi) =>
+    patchGroup(gi, {
+      services: [...groups[gi].services, { key: `svc${Date.now()}`, name: "", prices: {}, price: null }],
+    });
+
+  const removeService = (gi, si) =>
+    patchGroup(gi, { services: groups[gi].services.filter((_, j) => j !== si) });
+
+  const setRangeLabel = (gi, ri, label) =>
+    patchGroup(gi, { ranges: groups[gi].ranges.map((r, j) => (j === ri ? { ...r, label } : r)) });
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const existing = findWarehouseTariff(tariffs);
+      // fromCity обязателен в схеме, но у складского прайса города нет:
+      // ставим то же служебное значение, чтобы запись не путалась
+      // с направлениями перевозки.
+      const body = {
+        fromCity: WAREHOUSE_TARIFF_CITY,
+        city: WAREHOUSE_TARIFF_CITY,
+        pricePerKg: 0,
+        deliveryPrice: 0,
+        isPrivate: false,
+        weightRanges: buildWarehouseRanges(groups),
+      };
+      if (existing) await api.tariffs.update(existing.id, body);
+      else await api.tariffs.create(body);
+      alert("Прейскурант складских услуг сохранён.");
+      onSaved && onSaved();
+    } catch (e) {
+      alert("Ошибка сохранения: " + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="card" style={{ marginTop: 16, padding: 16 }}>Загрузка...</div>;
+
+  const priceCell = (g, gi, s, si, rangeKey) => {
+    const val = rangeKey === null ? s.price : s.prices?.[rangeKey];
+    const empty = val === null || val === undefined || val === "";
+    return (
+      <input
+        type="number"
+        min="0"
+        value={val ?? ""}
+        onChange={e => setPrice(gi, si, rangeKey, e.target.value === "" ? null : e.target.value)}
+        placeholder="—"
+        title={empty ? "Цена не задана — услуга не попадёт в накладную" : ""}
+        style={{
+          width: "100%",
+          background: empty ? "#fff7e6" : undefined,
+          borderColor: empty ? "#faad14" : undefined,
+        }}
+      />
+    );
+  };
+
+  return (
+    <div className="card" style={{ marginTop: 16, padding: 20 }}>
+      <div className="muted" style={{ fontSize: "0.85rem", marginBottom: 16 }}>
+        Цены общие для всех городов. Пустая цена подсвечена — такая услуга в накладную не добавится.
+        Хранение и ПРР задаются в обычных тарифах, здесь их нет.
+      </div>
+
+      {groups.map((g, gi) => (
+        <div key={g.key} style={{ marginBottom: 26 }}>
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>
+            {g.name}
+            {g.ranges.length === 0 && (
+              <span className="muted" style={{ fontWeight: 400, fontSize: "0.8rem", marginLeft: 8 }}>
+                без диапазонов, цена за единицу
+              </span>
+            )}
+          </div>
+
+          <table className="table">
+            <thead>
+              <tr>
+                <th>Услуга</th>
+                {g.ranges.length === 0 ? (
+                  <th style={{ width: 160 }}>Цена, тг</th>
+                ) : g.ranges.map((r, ri) => (
+                  <th key={r.key} style={{ width: 150 }}>
+                    {/* Подпись диапазона правится заказчиком. */}
+                    <input
+                      value={r.label}
+                      onChange={e => setRangeLabel(gi, ri, e.target.value)}
+                      style={{ width: "100%", fontWeight: 700 }}
+                    />
+                  </th>
+                ))}
+                <th style={{ width: 50 }} />
+              </tr>
+            </thead>
+            <tbody>
+              {g.services.length === 0 ? (
+                <tr><td colSpan={g.ranges.length + 2} className="muted" style={{ padding: 12 }}>Услуг нет.</td></tr>
+              ) : g.services.map((s, si) => (
+                <tr key={s.key}>
+                  <td>
+                    <input value={s.name} onChange={e => patchService(gi, si, { name: e.target.value })}
+                      placeholder="Название услуги" style={{ width: "100%" }} />
+                  </td>
+                  {g.ranges.length === 0 ? (
+                    <td>{priceCell(g, gi, s, si, null)}</td>
+                  ) : g.ranges.map(r => <td key={r.key}>{priceCell(g, gi, s, si, r.key)}</td>)}
+                  <td>
+                    <button type="button" className="btn btn--sm btn--danger"
+                      onClick={() => removeService(gi, si)} title="Удалить услугу">✕</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <button type="button" className="btn btn--sm" style={{ marginTop: 8 }} onClick={() => addService(gi)}>
+            + Добавить услугу
+          </button>
+        </div>
+      ))}
+
+      <button type="button" className="btn btn--accent" onClick={save} disabled={saving}>
+        {saving ? "Сохранение..." : "Сохранить прейскурант"}
+      </button>
+    </div>
+  );
+}
 
 export default function TariffsPage() {
   const [tariffs, setTariffs] = useState([]);
@@ -592,7 +762,20 @@ const tabCounts = useMemo(() => ({
             🚐 Доставка по регионам <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts.region_delivery})</span>
           </button>
         )}
+        {/* ТЗ: прейскурант складских услуг. Цена общая, без привязки к городу,
+            поэтому это не список тарифов, а одна редактируемая таблица —
+            у вкладки свой экран, а не общая таблица направлений. */}
+        <button
+          className={`btn ${tab === 'warehouse' ? 'btn--accent' : ''}`}
+          onClick={() => setTab('warehouse')}
+        >
+          📦 Складские услуги
+        </button>
       </div>
+
+      {tab === 'warehouse' ? (
+        <WarehouseServicesEditor tariffs={tariffs} loading={loading} onSaved={load} />
+      ) : (
       <div className="card" style={{ marginTop: 16 }}>
         {loading ? <div style={{ padding: 16 }}>Загрузка...</div> : (
           <table className="table">
@@ -673,6 +856,7 @@ const tabCounts = useMemo(() => ({
           </table>
         )}
       </div>
+      )}
 
       {isModalOpen && (
         <div className="modal_overlay animate_fade">

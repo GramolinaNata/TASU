@@ -174,7 +174,16 @@ function formatDmy(isoString) {
   return `${day}.${month}.${date.getFullYear()} г.`;
 }
 
-export async function exportToDocx(act, templateOverride = null) {
+/**
+ * Формирование docx-документа по заявке.
+ *
+ * @param {object} act              заявка (с company)
+ * @param {string|null} templateOverride  тип документа
+ * @param {object} opts             { asBlob: true } — вернуть Blob вместо
+ *   скачивания. Нужно для комплекта документов: там файлы складываются
+ *   в архив, а не сохраняются по одному. Поведение по умолчанию прежнее.
+ */
+export async function exportToDocx(act, templateOverride = null, opts = {}) {
   console.log("🔵 [Export] START");
 
   try {
@@ -211,6 +220,10 @@ export async function exportToDocx(act, templateOverride = null) {
     const companyLogo = act.company?.logo || "";
     // 🆕 ТЗ v2: Печать компании
     const companyStamp = act.company?.stamp || "";
+    // Подпись получателя из Request.signatures (роль receiver).
+    const receiverSignature = (Array.isArray(act.signatures) ? act.signatures : [])
+      .filter((s) => s && s.role === "receiver" && typeof s.image === "string")
+      .slice(-1)[0]?.image || "";
 // 🆕 ТЗ v2: водяной знак — текст ТТН/СМР в круге, не логотип
     const docType = (act.docType || act.type || '').toString().toUpperCase();
     let watermarkText = '';
@@ -239,6 +252,12 @@ export async function exportToDocx(act, templateOverride = null) {
         if (tagName === "stamp" || tagName === "company_stamp") {
           return sizeByHeight(img, 2, 1); // 2 см высотой, ширина из пропорций картинки
         }
+        // ТЗ: электронная подпись получателя в СМР. Ниже печати — это роспись
+        // от руки, а не оттиск; 1,5 см хватает, чтобы читалась и не наезжала
+        // на соседние графы бланка.
+        if (tagName === "signature_receiver") {
+          return sizeByHeight(img, 1.5, 1);
+        }
         return [120, 39]; // лого в шапке (уменьшено)
       },
     };
@@ -255,6 +274,11 @@ export async function exportToDocx(act, templateOverride = null) {
       logo: companyLogo,
       // 🆕 ТЗ v2: ПЕЧАТЬ КОМПАНИИ — вставляется как картинка через {%stamp} в шаблоне
       stamp: companyStamp,
+      // ТЗ: электронная подпись получателя — расписывается пальцем по
+      // одноразовой ссылке (/sign/:token), хранится в Request.signatures.
+      // Вставляется тем же механизмом, что и печать: {%signature_receiver}.
+      // Подписи нет — тег пустой, графа остаётся под ручную роспись.
+      signature_receiver: receiverSignature,
       company_stamp: companyStamp,
       has_stamp: !!companyStamp,
 
@@ -501,11 +525,21 @@ watermark: watermarkImage,
       fileName = `dogovor_${act.contractNumber || act.docNumber || act.number}.docx`;
     }
 
+    // Режим сборки комплекта: отдаём файл вызывающему, ничего не сохраняем
+    // и не показываем alert — ошибки собирает и показывает сборщик пакета.
+    if (opts.asBlob) {
+      console.log("🟢 [Export] ГОТОВО (blob)");
+      return { blob: out, filename: fileName };
+    }
+
     saveAs(out, fileName);
     console.log("🟢 [Export] ГОТОВО");
 
   } catch (error) {
     console.error("❌ [Export] FATAL:", error);
+    // В режиме комплекта пробрасываем ошибку: сборщик запишет её в ОШИБКИ.txt,
+    // а остальные документы всё равно попадут в архив.
+    if (opts.asBlob) throw error;
     alert(`Ошибка экспорта: ${error.message || error}`);
   }
 }

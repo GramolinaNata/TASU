@@ -125,6 +125,12 @@ import SimpleActDetailPage from "../pages/simple/SimpleActDetailPage.jsx";
 import BatchesPage from "../pages/simple/BatchesPage.jsx";
 import CarrierVedomostCreatePage from "../pages/simple/CarrierVedomostCreatePage.jsx";
 import BatchDetailPage from "../pages/simple/BatchDetailPage.jsx";
+// ТЗ, этап 1: сканирование QR — движение груза.
+import ScanPage from "../pages/scan/ScanPage.jsx";
+import ScanActPage from "../pages/scan/ScanActPage.jsx";
+// ТЗ: одноразовые ссылки — страницы ВНЕ авторизации.
+import PublicCargoPage from "../pages/public/PublicCargoPage.jsx";
+import PublicSignPage from "../pages/public/PublicSignPage.jsx";
 import CarriersPage from "../pages/admin/CarriersPage.jsx";
 import RepresentativesPage from "../pages/admin/RepresentativesPage.jsx";
 import { useEffect } from "react";
@@ -214,8 +220,22 @@ export default function App() {
         <Route path="/simple/carrier-vedomost/new" element={<CarrierVedomostCreatePage />} />
         {/* Детальная страница партии — для просмотра накладных внутри партии */}
         <Route path="/simple/batches/:id" element={<BatchDetailPage />} />
+
+        {/* ТЗ, этап 1: сканирование QR. ПОД авторизацией — одноразовые
+            ссылки для наёмных водителей это отдельный этап, до него
+            открывать смену статусов наружу нельзя. */}
+        <Route path="/scan" element={<ScanPage />} />
+        <Route path="/scan/:id" element={<ScanActPage />} />
       </Route>
       <Route path="/courier/acts/:id" element={<CourierActViewPage />} />
+
+      {/* ТЗ: одноразовые ссылки для наёмных водителей и получателей.
+          ВНЕ RequireAuth: у них нет учёток и кабинетов. Доступ ограничен
+          самим токеном — срок, однократность, отзыв проверяет сервер,
+          а выдача урезана до номера, направления, адреса выгрузки,
+          мест, веса и статуса. */}
+      <Route path="/t/:token" element={<PublicCargoPage />} />
+      <Route path="/sign/:token" element={<PublicSignPage />} />
     </Routes>
   );
 }

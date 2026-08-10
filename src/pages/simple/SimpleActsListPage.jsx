@@ -59,9 +59,22 @@ function displayName(party) {
   return party.companyName || party.fio || "—";
 }
 
+// ТЗ: новая нумерация частных — голые числа (1, 2, 3…). Сортировать их как
+// строки нельзя: «10» встало бы перед «2». Числовые номера сравниваем числом,
+// старые буквенные (А000007) — по-прежнему строкой, и идут отдельной группой.
+function numberSortKey(raw) {
+  const s = String(raw || '').trim();
+  if (/^\d+$/.test(s)) {
+    // Ведущий пробел ставит числовую серию перед буквенной при сравнении строк,
+    // а padStart выравнивает разряды: «2» → «000002», «10» → «000010».
+    return ' ' + s.padStart(12, '0');
+  }
+  return s.toLowerCase();
+}
+
 function getSortValue(a, field) {
   switch (field) {
-    case 'number':   return (a.docNumber || a.number || a.id || '').toString().toLowerCase();
+    case 'number':   return numberSortKey(a.docNumber || a.number || a.id || '');
     case 'date':     return new Date(a.createdAt || a.date || 0).getTime();
     case 'customer': return displayName(a.customer).toLowerCase();
     case 'receiver': return displayName(a.receiver).toLowerCase();
@@ -78,7 +91,10 @@ export default function SimpleActsListPage() {
   const location = useLocation();
   // ТЗ: ограниченный менеджер создаёт партию, но грузовую ведомость
   // не формирует — печать для него не открывается.
-  const { isAdmin, isManager2 } = useAuth();
+  const { isAdmin, isManager2, isAccountant, isAccountant2 } = useAuth();
+  // ТЗ: «Завершённые» (оплата пришла) отмечает бухгалтер. Админу тоже даём —
+  // он видит всё и подменяет бухгалтера, как в остальных разделах.
+  const canMarkPaid = isAdmin || isAccountant || isAccountant2;
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -161,9 +177,50 @@ export default function SimpleActsListPage() {
     }
   };
 
-  // ТЗ: массовый перевод статуса по галочкам — менеджерское завершение.
-  // Бухгалтерских признаков не касается: у частных их нет, и отчёт бухгалтера
-  // от статуса накладной не зависит. Партия и номер ведомости тоже не меняются.
+  // ТЗ: последний шаг цепочки — «Завершённые» = оплата пришла. Ставит бухгалтер
+  // через отдельный признак isPaid, статус обработки груза при этом не меняется:
+  // обработка и оплата — разные события, и смешивать их в одном поле нельзя.
+  // Эндпоинт mark-paid уже существовал (используется в Аналитике), роль он не
+  // ограничивает — доступ регулируем показом кнопки.
+  const bulkPaid = async (paid) => {
+    const ids = filtered.filter(a => selected.includes(a.id) && a.status !== 'canceled').map(a => a.id);
+    if (ids.length === 0) return alert("Выберите накладные (аннулированные не переводятся).");
+    const текст = paid
+      ? `Отметить ${ids.length} накл. как оплаченные? Они уйдут в «Завершённые».`
+      : `Вернуть ${ids.length} накл. в «Обработанные»? Отметка об оплате будет снята.`;
+    if (!window.confirm(текст)) return;
+
+    const results = await Promise.allSettled(ids.map(id => api.requests.markPaid(id, paid)));
+    const failed = results
+      .map((r, i) => (r.status === "rejected" ? ids[i] : null))
+      .filter(Boolean);
+    if (failed.length) {
+      const nums = filtered.filter(a => failed.includes(a.id))
+        .map(a => a.docNumber || a.number).join(", ");
+      alert(`Переведено ${ids.length - failed.length} из ${ids.length}.\nНе удалось: ${nums}`);
+    }
+    setSelected([]);
+    load();
+  };
+
+  // Построчная отметка оплаты — та же механика, что и массовая.
+  const markPaidAct = async (act, paid) => {
+    const num = act.docNumber || act.number;
+    const текст = paid
+      ? `Завершить накладную №${num}? Оплата пришла, она уйдёт в «Завершённые».`
+      : `Снять отметку об оплате с №${num}? Она вернётся в «Обработанные».`;
+    if (!window.confirm(текст)) return;
+    try {
+      await api.requests.markPaid(act.id, paid);
+      load();
+    } catch (e) {
+      alert("Ошибка: " + e.message);
+    }
+  };
+
+  // ТЗ: массовый перевод статуса по галочкам — менеджерская обработка.
+  // Бухгалтерских признаков не касается: обработку отмечает менеджер, оплату —
+  // бухгалтер отдельной кнопкой. Партия и номер ведомости тоже не меняются.
   // Если часть накладных не прошла — говорим какие именно, а не «ошибка».
   const bulkStatus = async (newStatus, whereTo) => {
     const ids = filtered.filter(a => selected.includes(a.id) && a.status !== 'canceled').map(a => a.id);
@@ -204,7 +261,7 @@ export default function SimpleActsListPage() {
     }
   };
 
-  // ТЗ: возврат из «Отработанных» в «Отложенные». Трогаем ТОЛЬКО статус
+  // ТЗ: возврат из «Обработанных» в «Отложенные». Трогаем ТОЛЬКО статус
   // накладной — партия, номер грузовой ведомости и данные бухгалтерии
   // остаются как есть, иначе задним числом поедет отчёт.
   const deferAct = async (act) => {
@@ -246,10 +303,17 @@ export default function SimpleActsListPage() {
       let matchDate = true;
       if (dateFrom) matchDate = matchDate && new Date(a.createdAt || a.date) >= new Date(dateFrom);
       if (dateTo) matchDate = matchDate && new Date(a.createdAt || a.date) <= new Date(dateTo + "T23:59:59");
-     let matchTab = true;
+      // ТЗ, цепочка частных: Сток → Подано → Обработанные → Завершённые.
+      //
+      // Первые три шага — это status. Последний, «Завершённые», стоит на
+      // ОТДЕЛЬНОМ признаке isPaid: его ставит бухгалтер, когда пришла оплата,
+      // и он не связан с обработкой груза. Поэтому «Обработанные» показывают
+      // только неоплаченные — иначе накладная висела бы в двух вкладках сразу.
+      let matchTab = true;
       if (activeTab === "stock") matchTab = a.status === "act";
       if (activeTab === "sent") matchTab = a.status === "sent";
-      if (activeTab === "done") matchTab = a.status === "done";
+      if (activeTab === "done") matchTab = a.status === "done" && !a.isPaid;
+      if (activeTab === "paid") matchTab = !!a.isPaid && a.status !== "canceled";
       if (activeTab === "deferred") matchTab = a.status === "deferred";
       if (activeTab === "canceled") matchTab = a.status === "canceled";
       if (activeTab === "all") matchTab = a.status !== "canceled";
@@ -321,15 +385,17 @@ export default function SimpleActsListPage() {
         await printVedomost(selectedActs, batchData);
       }
 
-      // ТЗ: после формирования грузовой ведомости накладные уходят во вкладку
-      // «Отработанные» и не мешаются в общем списке. Партия и номер ведомости
-      // при этом уже созданы — меняем только статус самих накладных.
+      // ТЗ, цепочка: Сток → Подано → Обработанные → Завершённые.
+      // Ведомость сформирована — груз ПОДАН, но ещё не обработан: наклейку
+      // клеит и машину грузит менеджер, и отмечает это он же, отдельной
+      // кнопкой «Обработать». Раньше здесь стоял 'done', и накладная
+      // перескакивала шаг обработки сразу после печати ведомости.
       try {
-        await Promise.all(ids.map(id => api.requests.update(id, { status: 'done' })));
+        await Promise.all(ids.map(id => api.requests.update(id, { status: 'sent' })));
       } catch (e) {
         alert(
           `Партия ${batchData.number} создана, ` +
-          `но не удалось перевести накладные в «Отработанные»: ${e.message || e}\n\n` +
+          `но не удалось перевести накладные в «Подано»: ${e.message || e}\n\n` +
           `Статус можно поменять вручную в списке.`
         );
       }
@@ -365,7 +431,10 @@ export default function SimpleActsListPage() {
     all: acts.filter(a => a.status !== "canceled").length,
     stock: acts.filter(a => a.status === "act").length,
     sent: acts.filter(a => a.status === "sent").length,
-    done: acts.filter(a => a.status === "done").length,
+    done: acts.filter(a => a.status === "done" && !a.isPaid).length,
+    // ТЗ: «Завершённые» — оплата пришла. Признак ставит бухгалтер, он отдельный
+    // от статуса обработки груза.
+    paid: acts.filter(a => !!a.isPaid && a.status !== "canceled").length,
     // ТЗ: отложенные — свой статус в той же механике вкладок, что и остальные
     // у частных. Флаги юрлиц (isDeferredForAccountant) сюда не тянем.
     deferred: acts.filter(a => a.status === "deferred").length,
@@ -381,18 +450,35 @@ export default function SimpleActsListPage() {
           {company && <div className="chip">{company.name}</div>}
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          {/* ТЗ: менеджер сам отправляет накладные в «Отработанные» — галочками,
-              не дожидаясь бухгалтера. Завершение здесь МЕНЕДЖЕРСКОЕ и с бухгалтерским
-              никак не связано: у частных бухгалтерских признаков нет вовсе. */}
-          {selected.length > 0 && activeTab !== 'done' && (
-            <button className="btn" onClick={() => bulkStatus('done', 'в «Отработанные»')}
+          {/* ТЗ: менеджер сам отмечает обработку — наклеил, загрузил, отправил.
+              Кнопка называется «Обработать», а не «Завершить»: «Завершённые» —
+              это следующий, бухгалтерский шаг по оплате. Два разных слова на
+              два разных шага, иначе менеджер жмёт «Завершить» и не понимает,
+              почему накладная не в «Завершённых». */}
+          {selected.length > 0 && activeTab !== 'done' && activeTab !== 'paid' && (
+            <button className="btn" onClick={() => bulkStatus('done', 'в «Обработанные»')}
               style={{ background: '#52c41a', color: '#fff', border: 'none', fontWeight: 700 }}>
-              ✅ Завершить ({selected.length})
+              ✅ Обработать ({selected.length})
             </button>
           )}
           {selected.length > 0 && activeTab === 'done' && (
-            <button className="btn" onClick={() => bulkStatus('act', 'в «В стоке»')}>
-              ↩ Вернуть в сток ({selected.length})
+            <>
+              {/* ТЗ: оплату отмечает бухгалтер. Админу тоже оставляем — он
+                  видит всё и подменяет бухгалтера, как в остальных разделах. */}
+              {canMarkPaid && (
+                <button className="btn" onClick={() => bulkPaid(true)}
+                  style={{ background: '#1890ff', color: '#fff', border: 'none', fontWeight: 700 }}>
+                  💰 Завершить — оплачено ({selected.length})
+                </button>
+              )}
+              <button className="btn" onClick={() => bulkStatus('act', 'в «В стоке»')}>
+                ↩ Вернуть в сток ({selected.length})
+              </button>
+            </>
+          )}
+          {selected.length > 0 && activeTab === 'paid' && canMarkPaid && (
+            <button className="btn" onClick={() => bulkPaid(false)}>
+              ↩ Вернуть в «Обработанные» ({selected.length})
             </button>
           )}
           {selected.length > 0 && (
@@ -408,10 +494,15 @@ export default function SimpleActsListPage() {
 
       <div style={{ display: "flex", gap: 4, marginTop: 16, borderBottom: "2px solid var(--line)" }}>
         {[
+          // ТЗ, порядок цепочки: Сток → Подано → Обработанные → Завершённые.
+          // «Обработанные» — прежний статус done, переименован: заказчик
+          // называет этот шаг так, и это ровно он (менеджер отметил, что груз
+          // обработан). Второго похожего статуса не заводили.
           { key: "all", label: "Все" },
           { key: "stock", label: "В стоке" },
           { key: "sent", label: "Подано" },
-          { key: "done", label: "Отработанные" },
+          { key: "done", label: "Обработанные" },
+          { key: "paid", label: "Завершённые" },
           { key: "deferred", label: "Отложенные" },
           { key: "canceled", label: "Аннулированные" },
         ].map(tab => (
@@ -538,6 +629,20 @@ export default function SimpleActsListPage() {
                           }}>
                             Аннулирована
                           </span>
+                        ) : a.isPaid ? (
+                          /* ТЗ: оплачена — конец цепочки. Статус обработки менять
+                             уже нечего, показываем итог. Снять отметку можно
+                             кнопкой в колонке действий (только бухгалтер/админ). */
+                          <span style={{
+                            background: "#f6ffed",
+                            color: "#237804",
+                            padding: "3px 8px",
+                            borderRadius: 4,
+                            fontSize: "0.8rem",
+                            fontWeight: 700,
+                          }}>
+                            ✓ Завершена
+                          </span>
                         ) : (
                           <select
                             value={a.status || "act"}
@@ -555,7 +660,7 @@ export default function SimpleActsListPage() {
                           >
                             <option value="act">В стоке</option>
                             <option value="sent">Подано</option>
-                            <option value="done">Отработана</option>
+                            <option value="done">Обработана</option>
                             <option value="deferred">Отложена</option>
                           </select>
                         )}
@@ -572,19 +677,41 @@ export default function SimpleActsListPage() {
                           </button>
                         ) : (
                           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            {/* ТЗ: менеджер завершает накладную сам, не дожидаясь бухгалтера.
-                                Это менеджерское завершение — бухгалтерских признаков не касается. */}
-                            {a.status !== 'done' && (
+                            {/* ТЗ: менеджер сам отмечает обработку — наклеил,
+                                загрузил, отправил. Оплату отмечает бухгалтер
+                                отдельной кнопкой, это следующий шаг. */}
+                            {a.status !== 'done' && !a.isPaid && (
                               <button
                                 className="btn btn--sm"
                                 onClick={() => updateStatus(a.id, 'done')}
-                                title="Завершить: накладная уйдёт во вкладку «Отработанные»"
+                                title="Обработать: наклейка наклеена, груз загружен и отправлен"
                                 style={{ background: '#52c41a', color: '#fff', border: 'none', fontSize: 11, fontWeight: 700 }}
                               >
-                                ✅ Завершить
+                                ✅ Обработать
                               </button>
                             )}
-                            {/* ТЗ: из «Отработанных» можно вернуть накладную в «Отложенные».
+                            {/* ТЗ: «Завершено» = пришла оплата. Только бухгалтер и админ. */}
+                            {a.status === 'done' && !a.isPaid && canMarkPaid && (
+                              <button
+                                className="btn btn--sm"
+                                onClick={() => markPaidAct(a, true)}
+                                title="Завершить: оплата пришла, накладная уйдёт в «Завершённые»"
+                                style={{ background: '#1890ff', color: '#fff', border: 'none', fontSize: 11, fontWeight: 700 }}
+                              >
+                                💰 Завершить
+                              </button>
+                            )}
+                            {a.isPaid && canMarkPaid && (
+                              <button
+                                className="btn btn--sm"
+                                onClick={() => markPaidAct(a, false)}
+                                title="Снять отметку об оплате — вернётся в «Обработанные»"
+                                style={{ background: '#fff', border: '1px solid #1890ff', color: '#1890ff', fontSize: 11, fontWeight: 600 }}
+                              >
+                                ↩ Снять оплату
+                              </button>
+                            )}
+                            {/* ТЗ: из «Обработанных» можно вернуть накладную в «Отложенные».
                                 Меняется ТОЛЬКО статус: партия и номер ведомости остаются
                                 за ней, иначе поехал бы отчёт бухгалтера. */}
                             {a.status === 'done' && (

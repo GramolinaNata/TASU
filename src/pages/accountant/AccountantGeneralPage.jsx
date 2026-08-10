@@ -3,6 +3,8 @@ import { Link } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import { getActSection, SECTION } from "../../shared/acts/section.js";
+import { exportBundle } from "../../shared/export/exportBundle.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -192,6 +194,38 @@ export default function AccountantGeneralPage() {
     }
   };
 
+  // ТЗ: комплект отгрузочных документов по заявке одним архивом.
+  // Состав зависит от типа заявки (см. bundlePlan). Частичный сбой не роняет
+  // пакет: остальное собирается, перечень несобранного — в ОШИБКИ.txt внутри.
+  const [bundleId, setBundleId] = useState(null);
+  const handleBundle = async (act) => {
+    setBundleId(act.id);
+    try {
+      let comp = companies.find(c => c.id === act.companyId) || null;
+      if (!comp) {
+        try { comp = await api.companies.get(act.companyId); }
+        catch { /* без реквизитов соберём как есть */ }
+      }
+      const res = await exportBundle({ ...act, company: comp });
+      if (res.failed.length) {
+        alert(
+          `Комплект собран частично.
+
+Готово: ${res.ok.join(", ") || "—"}
+` +
+          `Не удалось: ${res.failed.map(f => f.label).join(", ")}
+
+` +
+          `Подробности — в файле ОШИБКИ.txt внутри архива.`
+        );
+      }
+    } catch (e) {
+      alert("Ошибка сборки комплекта: " + e.message);
+    } finally {
+      setBundleId(null);
+    }
+  };
+
   // ТЗ v2: Финальное завершение работы — заявка уйдёт в "Завершённые"
   const markFullyCompleted = async (actId) => {
     if (!confirm('Подтвердить завершение работы по заявке? Все документы сформированы?')) return;
@@ -229,7 +263,7 @@ export default function AccountantGeneralPage() {
   }, []);
 
   const filtered = useMemo(() => {
-    let list = acts.filter(a => !!a.readyForAccountant && !a.isDeferredForAccountant);
+    let list = acts.filter(a => getActSection(a) === SECTION.ACCOUNTANT);
 
     // ТЗ v2: Активные = НЕ isFullyCompleted; Завершённые = isFullyCompleted
     if (tab === "active") {
@@ -303,7 +337,7 @@ export default function AccountantGeneralPage() {
 
   // ТЗ v2: Считаем по полю isFullyCompleted
   const tabCounts = useMemo(() => {
-    const base = acts.filter(a => !!a.readyForAccountant && !a.isDeferredForAccountant);
+    const base = acts.filter(a => getActSection(a) === SECTION.ACCOUNTANT);
     const applyCompany = (l) => companyFilter === "all" ? l : l.filter(a => a.companyId === companyFilter);
     return {
       active: applyCompany(base.filter(a => !a.isFullyCompleted)).length,
@@ -671,6 +705,21 @@ export default function AccountantGeneralPage() {
                       </td>
                       {/* ТЗ v2: Колонка действий */}
                       <td style={{ textAlign: "center" }}>
+                        {/* ТЗ: комплект отгрузочных документов одним архивом —
+                            бухгалтеру не приходится скачивать их по одному. */}
+                        <button
+                          onClick={() => handleBundle(a)}
+                          disabled={bundleId === a.id}
+                          title="Скачать комплект отгрузочных документов (ZIP)"
+                          style={{
+                            background: '#fff', border: '1px solid #2b5797',
+                            borderRadius: 6, cursor: 'pointer',
+                            padding: '4px 10px', fontSize: 12, fontWeight: 600,
+                            color: '#2b5797', marginRight: 6,
+                          }}
+                        >
+                          {bundleId === a.id ? '…' : '📦 Комплект'}
+                        </button>
                         {a.isFullyCompleted ? (
                           <button
                             onClick={() => restoreToActive(a.id)}

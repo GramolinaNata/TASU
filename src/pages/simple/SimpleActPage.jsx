@@ -34,6 +34,7 @@ function ContactSuggest({ items, query, onPick }) {
 }
 import { calcDeliveryPrice, findDeliveryTariff, cleanCityName, getTariffCategory, getDeliveryDestinations, getTariffOrigins } from "../../shared/tariff/calcTariff.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
+import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
 import {
   emptyDimGroup, groupVolumeM3, groupsVolumeM3, groupsSeats,
   serializeDimGroups, flatSizeSurcharge, sizeCategoryRate,
@@ -139,14 +140,25 @@ ${receiptBlock}
 }
 
 /**
- * 🆕 Генератор последовательных номеров для частных накладных: А000001, А000002...
- * Берёт ВСЕ накладные компании (allCompany=true) — для PRIVATE это важно,
- * чтобы новые номера не пересекались с уже существующими в БД.
+ * ТЗ: аккуратная сквозная нумерация частных накладных — 1, 2, 3…
+ *
+ * Здесь считается только ПРЕДВАРИТЕЛЬНЫЙ номер, для показа в форме.
+ * Настоящий выдаёт сервер в одной транзакции с созданием записи — иначе два
+ * менеджера, оформляющие приём одновременно, получат одинаковый номер.
+ * После сохранения номер берётся из ответа сервера и уже он идёт в наклейку,
+ * чек и QR.
+ *
+ * Аварийного фоллбэка на Date.now() здесь больше НЕТ: именно он порождал
+ * «непонятные цифры» вида А6016146 и уводил всю серию в миллионы. Если список
+ * не загрузился — показываем пустое поле, номер присвоит сервер.
+ *
+ * Старые номера формата А000001 намеренно не учитываются: новая серия идёт
+ * с единицы и со старой не пересекается (разные строки, @unique не мешает).
  */
 async function genNextSimpleNumber() {
   try {
     const allActs = await api.requests.list({ allCompany: true });
-    const pattern = /^А(\d+)$/;
+    const pattern = /^\d+$/;
     let maxNum = 0;
     (allActs || []).forEach(a => {
       const candidates = [a.docNumber, a.number];
@@ -155,19 +167,16 @@ async function genNextSimpleNumber() {
         if (det && det.docNumber) candidates.push(det.docNumber);
       } catch (e) {}
       candidates.forEach(num => {
-        if (num) {
-          const m = String(num).match(pattern);
-          if (m) {
-            const n = parseInt(m[1], 10);
-            if (n > maxNum) maxNum = n;
-          }
+        if (num && pattern.test(String(num))) {
+          const n = parseInt(String(num), 10);
+          if (n > maxNum) maxNum = n;
         }
       });
     });
-    return "А" + String(maxNum + 1).padStart(6, "0");
+    return String(maxNum + 1);
   } catch (e) {
-    console.warn("Не удалось получить max номер, fallback на timestamp:", e);
-    return "А" + String(Date.now()).slice(-7);
+    console.warn("Не удалось показать предварительный номер, его присвоит сервер:", e);
+    return "";
   }
 }
 
@@ -362,12 +371,14 @@ export default function SimpleActPage() {
     if (!form.senderName || !form.receiverName) return alert("Укажите отправителя и получателя");
     setSaving(true);
     try {
-      await api.requests.create({
+      // docNumber НЕ отправляем: номер присваивает сервер в одной транзакции
+      // с созданием. Иначе при одновременном оформлении двух накладных оба
+      // менеджера пришлют один и тот же номер и второй упрётся в @unique.
+      const created = await api.requests.create({
         date: new Date().toISOString().split("T")[0],
         companyId: company.id,
         status: "act",
         type: "SIMPLE",
-        docNumber: docNumber,
         details: JSON.stringify({
           isSimple: true,
           transportType: form.transportType,
@@ -390,9 +401,14 @@ export default function SimpleActPage() {
           sizeCategory: form.sizeCategory || "",
           volumeM3,
           totalSum: form.totalSum,
-          docNumber: docNumber,
         }),
       });
+
+      // Номер, присвоенный сервером. Дальше именно он идёт в наклейку, чек и QR:
+      // предварительный номер из формы мог устареть, если параллельно оформили
+      // другую накладную.
+      const assignedNumber = created?.docNumber || docNumber || "";
+      setDocNumber(assignedNumber);
 
       // Сохраняем отправителя/получателя в справочник (дедуп по телефону).
       try {
@@ -402,7 +418,9 @@ export default function SimpleActPage() {
         if (Array.isArray(fresh)) setCounterparties(fresh);
       } catch { /* справочник не критичен для сохранения накладной */ }
 
-      const qrData = `TASU-${docNumber}-${form.toCity}-${form.receiverName}`;
+      // ТЗ: в QR ссылка на страницу сканера. id берём из ответа сервера —
+      // он же присваивает номер, других источников id здесь нет.
+      const qrData = buildScanUrl(window.location.origin, created?.id || "");
       const { toDataURL } = await import("qrcode");
       const qrUrl = await toDataURL(qrData, { width: 120, margin: 1 });
 
@@ -481,7 +499,7 @@ export default function SimpleActPage() {
       <div class="info-val">${form.weight ? escapeHtml(form.weight) + " кг" : "—"}</div>
     </div>
   </div>
-  <div class="num-row">№ ${escapeHtml(docNumber)}</div>
+  <div class="num-row">№ ${escapeHtml(assignedNumber)}</div>
   <div class="receiver-block">
     <div class="receiver-label">получатель</div>
     <div class="receiver-name">${escapeHtml(receiverDisplay)}</div>
@@ -495,10 +513,10 @@ export default function SimpleActPage() {
 
       // Печать через общий хелпер (скрытый iframe) — тот же способ, что у юрлиц.
       // Вид, размер и содержимое наклейки не меняются.
-      printLabelViaIframe(label, { title: `Наклейка ${docNumber || ""}` });
+      printLabelViaIframe(label, { title: `Наклейка ${assignedNumber || ""}` });
 
       // 🆕 ТЗ: чек всплывает сразу при сохранении
-      openReceipt(form, company, docNumber);
+      openReceipt(form, company, assignedNumber);
 
       if (saveAndNext) {
         setSaved(true);

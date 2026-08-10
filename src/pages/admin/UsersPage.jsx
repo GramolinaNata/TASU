@@ -426,6 +426,8 @@ export default function UsersPage() {
     // 🆕 ТЗ v2
     assignedCompanyId: '',
     contactPhone: '',
+    // ТЗ: город курьера — по нему он видит только заявки своего города
+    city: '',
   });
 
   const loadData = async () => {
@@ -582,7 +584,7 @@ export default function UsersPage() {
       }
       setIsModalOpen(false);
       setEditingUser(null);
-      setFormData({ name: '', email: '', password: '', role: 'MANAGER', assignedCompanyId: '', contactPhone: '' });
+      setFormData({ name: '', email: '', password: '', role: 'MANAGER', assignedCompanyId: '', contactPhone: '', city: '' });
       loadData();
     } catch (err) {
       alert(err.message);
@@ -609,6 +611,7 @@ export default function UsersPage() {
       password: '',
       assignedCompanyId: user.assignedCompanyId || '',
       contactPhone: user.contactPhone || '',
+      city: user.city || '',
     });
     setIsModalOpen(true);
   };
@@ -656,7 +659,7 @@ export default function UsersPage() {
           </button>
           <button className="btn btn-primary" onClick={() => {
             setEditingUser(null);
-            setFormData({ name: '', email: '', password: '', role: 'MANAGER', assignedCompanyId: '', contactPhone: '' });
+            setFormData({ name: '', email: '', password: '', role: 'MANAGER', assignedCompanyId: '', contactPhone: '', city: '' });
             setIsModalOpen(true);
           }}>
             + Добавить сотрудника
@@ -737,7 +740,14 @@ export default function UsersPage() {
                           📞 {user.contactPhone}
                         </div>
                       )}
-                      {!user.contactPhone && !((user.role === 'PRIVATE' || user.role === 'MANAGER2') && user.assignedCompanyId) && (
+                      {/* ТЗ: у курьера видно назначенный город. Не назначен —
+                          говорим об этом прямо: у такого курьера пустой список. */}
+                      {user.role === 'COURIER' && (
+                        user.city
+                          ? <div style={{ fontSize: '0.85rem' }}>📍 {user.city}</div>
+                          : <div style={{ fontSize: '0.85rem', color: '#cf1322', fontWeight: 600 }}>📍 город не назначен</div>
+                      )}
+                      {!user.contactPhone && user.role !== 'COURIER' && !((user.role === 'PRIVATE' || user.role === 'MANAGER2') && user.assignedCompanyId) && (
                         <span className="muted">—</span>
                       )}
                     </td>
@@ -847,6 +857,27 @@ export default function UsersPage() {
                   onChange={e => setFormData({ ...formData, contactPhone: e.target.value })}
                 />
               </div>
+
+              {/* ТЗ: город курьера. Показываем только для роли «Курьер» —
+                  у остальных ролей поле не используется. Без города курьер
+                  не видит НИ ОДНОЙ заявки: пустое поле означает «доступ не
+                  настроен», а не «доступ ко всему». */}
+              {formData.role === 'COURIER' && (
+                <div className="form_group_clean" style={{ marginTop: '18px' }}>
+                  <label className="label_clean">Город курьера *</label>
+                  <input
+                    type="text"
+                    className="input_clean"
+                    placeholder="Алматы"
+                    value={formData.city}
+                    onChange={e => setFormData({ ...formData, city: e.target.value })}
+                  />
+                  <div className="muted" style={{ fontSize: '0.75rem', marginTop: 6 }}>
+                    Курьер видит только заявки с этим городом доставки.
+                    Пока город не задан, его список пуст.
+                  </div>
+                </div>
+              )}
 
               <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
                 <button type="button" className="btn btn--ghost" style={{ flex: 1 }} onClick={() => setIsModalOpen(false)}>Отмена</button>

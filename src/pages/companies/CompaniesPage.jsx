@@ -518,7 +518,7 @@ function getSortValue(c, field) {
 
 const EMPTY_FORM = {
 name: "", bin: "", address: "", factAddress: "", phone: "", director: "",
-  email: "", bank: "", bik: "", account: "", kbe: "", bankDetails: "", taxRate: 0, taxMode: "none", taxExtra: 0, vatRate: 0,
+  email: "", bank: "", bik: "", account: "", kbe: "", bankDetails: "", taxRate: 0, taxMode: "none", taxExtra: 0, vatRate: 0, kpnRate: 0,
   managerDetails: "", logo: "",
   // 🆕 ТЗ v2: PNG с печатью и подписью
   stamp: "",
@@ -613,7 +613,7 @@ export default function CompaniesPage() {
       factAddress: c.factAddress || "", phone: c.phone || "",
       director: c.director || "", email: c.email || "",
       bank: c.bank || "", bik: c.bik || "", account: c.account || "",
-      kbe: c.kbe || "", bankDetails: c.bankDetails || "", taxRate: c.taxRate || 0, taxMode: c.taxMode || "none", taxExtra: c.taxExtra || 0, vatRate: c.vatRate || 0,
+      kbe: c.kbe || "", bankDetails: c.bankDetails || "", taxRate: c.taxRate || 0, taxMode: c.taxMode || "none", taxExtra: c.taxExtra || 0, vatRate: c.vatRate || 0, kpnRate: c.kpnRate || 0,
       managerDetails: c.managerDetails || "",
       logo: c.logo || "",
       stamp: c.stamp || "",
@@ -680,7 +680,7 @@ export default function CompaniesPage() {
 
   const onSave = async () => {
     try {
-      const payload = { ...form, taxRate: parseFloat(form.taxRate) || 0, taxMode: form.taxMode || "none", taxExtra: parseFloat(form.taxExtra) || 0, vatRate: parseFloat(form.vatRate) || 0 };
+      const payload = { ...form, taxRate: parseFloat(form.taxRate) || 0, taxMode: form.taxMode || "none", taxExtra: parseFloat(form.taxExtra) || 0, vatRate: parseFloat(form.vatRate) || 0, kpnRate: parseFloat(form.kpnRate) || 0 };
       if (editId) {
         await api.companies.update(editId, payload);
       } else {
@@ -995,11 +995,26 @@ export default function CompaniesPage() {
                 </>
               )}
 
+              {/* ТЗ: в ОУР две строки налога — НДС и КПН. Ставки вводятся руками,
+                  в коде не зашиты. КПН считается ПОСЛЕ вычета НДС и суммы
+                  официально купленной перевозки (см. shared/tax/calcTax.js). */}
               {form.taxMode === 'our' && (
-                <div className="field">
-                  <div className="label">Ставка НДС, %</div>
-                  <input type="number" step="0.1" value={form.vatRate} onChange={(e) => setForm({ ...form, vatRate: e.target.value })} placeholder="12" />
-                </div>
+                <>
+                  <div className="field">
+                    <div className="label">Ставка НДС, %</div>
+                    <input type="number" step="0.1" value={form.vatRate} onChange={(e) => setForm({ ...form, vatRate: e.target.value })} placeholder="16" />
+                  </div>
+                  <div className="field">
+                    <div className="label">Ставка КПН, % <span style={{ color: '#94a3b8', fontWeight: 400 }}>(с остатка после НДС)</span></div>
+                    <input type="number" step="0.1" value={form.kpnRate} onChange={(e) => setForm({ ...form, kpnRate: e.target.value })} placeholder="10" />
+                  </div>
+                  <div className="field" style={{ gridColumn: '1 / -1' }}>
+                    <div className="muted" style={{ fontSize: '0.78rem' }}>
+                      Порядок расчёта: оборот − НДС − официально купленная перевозка − КПН.
+                      Пока ставка КПН равна 0, налог считается только по НДС.
+                    </div>
+                  </div>
+                </>
               )}
             </div>
 

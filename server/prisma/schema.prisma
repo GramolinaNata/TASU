@@ -17,6 +17,11 @@ model User {
   // ТЗ: Частное лицо — отдельная роль, привязка к компании
   assignedCompanyId String?
   contactPhone      String?
+  // ТЗ: город курьера. Курьер видит только заявки своего города —
+  // фильтр стоит и на сервере (getRequests), и в интерфейсе.
+  // Пусто = город не назначен: список пустой, а не «видно всё».
+  // Для остальных ролей поле не используется.
+  city              String    @default("")
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
   requests          Request[]
@@ -45,12 +50,17 @@ model Company {
   taxRate        Float     @default(0)
   // ТЗ: налоговый режим компании: 'none' | 'simplified' | 'our'
   //   simplified (упрощёнка): налог = оборот × (taxRate% + taxExtra%)
-  //   our (ОУР с НДС): используется vatRate; точная формула — по данным бухгалтера
+  //   our (ОУР): НДС по vatRate, затем КПН по kpnRate с остатка —
+  //   порядок вычетов см. в src/shared/tax/calcTax.js
   taxMode        String    @default("none")
   // Доп. сбор % (напр. 1% за снятие наличных у TASU KZ) — для упрощёнки
   taxExtra       Float     @default(0)
   // Ставка НДС % (для режима ОУР)
   vatRate        Float     @default(0)
+  // ТЗ: ставка КПН % (для режима ОУР). Считается ПОСЛЕ вычета НДС и суммы
+  // официально купленной перевозки. По умолчанию 0 — пока ставку не заполнят,
+  // КПН равен нулю и отчёт считается как до появления этого поля.
+  kpnRate        Float     @default(0)
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
   logo           String?
@@ -67,6 +77,25 @@ model Request {
   route       String?
   cargo       String?
   docNumber   String?   @unique
+  // ТЗ: движение груза по сканированию QR — забрал → погрузил → представитель
+  // принял → выдал. ОТДЕЛЬНОЕ поле, не status: status держит рабочий процесс
+  // документа (act/sent/done/deferred), на нём стоят вкладки и фильтры
+  // разделов. Груз может быть «на фуре», пока накладная «Обработана» —
+  // это разные оси, смешивать их в одном поле нельзя.
+  cargoStatus   String?   @default("")
+  cargoStatusAt DateTime?
+  // ТЗ: одноразовые ссылки для наёмных водителей и представителей — вместо
+  // учёток и кабинетов. Массив, а не пара полей: на одну накладную нужны
+  // РАЗНЫЕ ссылки (водителю и получателю), а после погашения выдают новую,
+  // не затирая историю выдач.
+  // [{ token, purpose, createdAt, expiresAt, usedAt, revokedAt, issuedBy }]
+  accessTokens  Json?
+  // ТЗ: электронная подпись СМР — получатель расписывается пальцем по ссылке.
+  // ОТДЕЛЬНАЯ колонка, не details: details переписываются целиком при каждом
+  // сохранении заявки, а подпись — юридический след, затирать её обычной
+  // правкой нельзя.
+  // [{ role, name, image, signedAt, token }]
+  signatures    Json?
   totalSum    String?   @default("")
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -191,6 +220,11 @@ model Batch {
   loadersCount     Int       @default(0)
   // ТЗ: партия может входить только в ОДНУ ведомость перевозчика одновременно
   carrierVedomostId String?
+  // ТЗ: перевозку покупают и официально, и за наличные. Официальная проходит
+  // по учёту и уменьшает базу КПН, неофициальная — нет. Отмечает менеджер или
+  // бухгалтер. По умолчанию false: молча уменьшать налог у старых партий,
+  // про которые ничего не известно, нельзя.
+  carrierOfficial   Boolean   @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

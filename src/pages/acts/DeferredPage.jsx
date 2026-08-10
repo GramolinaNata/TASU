@@ -279,6 +279,7 @@ import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
+import { getActSection, sectionPatch, sectionAfterAccountant, SECTION } from "../../shared/acts/section.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -388,7 +389,11 @@ export default function DeferredPage() {
   }, [location.key]);
 
   const filtered = useMemo(() => {
-    let list = acts.filter(a => !!a.isDeferredForAccountant && !a.readyForAccountant);
+    // Условие !readyForAccountant убрано: его роль теперь играет приоритет
+    // в getActSection (отложено выше «у бухгалтера»). Именно оно и прятало
+    // накладные, отложенные из «Отработанных», — они лежали в базе, но не
+    // показывались ни здесь, ни у бухгалтера.
+    let list = acts.filter(a => getActSection(a) === SECTION.DEFERRED);
 
     if (docTypeFilter !== "all") {
         if (docTypeFilter === "warehouse") {
@@ -445,7 +450,10 @@ export default function DeferredPage() {
   const handleReturn = async (id, number) => {
     if (window.confirm(`Вернуть документ №${number} из отложенных?`)) {
       try {
-        await api.requests.update(id, { isDeferredForAccountant: false });
+        // Возврат ведёт накладную в её собственный раздел: тип документа при
+        // откладывании не затирался, поэтому склад вернётся на склад, СМР — в СМР.
+        const act = acts.find(a => a.id === id);
+        await api.requests.update(id, sectionPatch(sectionAfterAccountant(act || {})));
         setActs(prev => prev.filter(a => a.id !== id));
       } catch (err) {
         alert("Ошибка: " + err.message);

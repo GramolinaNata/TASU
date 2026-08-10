@@ -612,6 +612,7 @@ import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/stora
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
+import { getActSection, SECTION } from "../../shared/acts/section.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -648,9 +649,10 @@ function getSortValue(a, field) {
   }
 }
 
-// Базовый фильтр ТТН
+// Базовый фильтр ТТН. Раньше здесь не было проверки на склад — накладная
+// со сформированной ТТН после галочки «склад» дублировалась в двух списках.
 function isBaseTtn(a) {
-  return (a.docType === 'ttn' || a.type === 'ttn') && !a.isDeferredForAccountant && !a.readyForAccountant;
+  return getActSection(a) === SECTION.TTN;
 }
 
 export default function RequestsPage() {

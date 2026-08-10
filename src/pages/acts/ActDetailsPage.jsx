@@ -15,6 +15,12 @@ function formatDisplayDate(val) {
 }
 import { exportToDocx } from "../../shared/export/docxExport.js";
 import { exportTtnToXlsx } from "../../shared/export/xlsxExport.js";
+import { exportBundle } from "../../shared/export/exportBundle.js";
+import AccessLinksDialog from "./AccessLinksDialog.jsx";
+import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
+import {
+  getActSection, sectionPatch, sectionPath, sectionAfterAccountant, SECTION,
+} from "../../shared/acts/section.js";
 import { getCompanies } from "../../shared/storage/companyStorage.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
 import { MoneyTh, MoneyTd, MoneyBlock } from "../../shared/money/Money.jsx";
@@ -68,7 +74,7 @@ export default function ActDetailsPage() {
 //     let qrUrl = '';
 //     try {
 //       const { toDataURL } = await import("qrcode");
-//       const qrData = `TASU-${num}-${toCity}-${receiver}`;
+//       const qrData = `TASU-${act.docNumber}-${act.route?.toCity || ""}-${act.receiver?.fio || ""}`;
 //       qrUrl = await toDataURL(qrData, { width: 140, margin: 1 });
 //     } catch (e) {
 //       console.warn("QR generation failed", e);
@@ -213,7 +219,10 @@ const printLabel = async () => {
     let qrUrl = '';
     try {
       const { toDataURL } = await import("qrcode");
-      const qrData = `TASU-${num}-${toCity}-${receiver}`;
+      // ТЗ: в QR теперь ССЫЛКА на страницу сканера — её открывает любая камера
+      // телефона. Прежняя строка TASU-... остаётся на наклейке текстом под
+      // кодом: по ней сверяют груз глазами.
+      const qrData = buildScanUrl(window.location.origin, act.id);
       // Оптимизировали размер генерируемого QR-кода для лучшей четкости на термопринтере
       qrUrl = await toDataURL(qrData, { width: 250, margin: 0 });
     } catch (e) {
@@ -390,12 +399,17 @@ const printLabel = async () => {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showActionMenu, setShowActionMenu] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
+  // ТЗ: диалог одноразовых ссылок для наёмных водителей и получателей.
+  const [showLinks, setShowLinks] = useState(false);
   const [notifyingManager, setNotifyingManager] = useState(false);
   const [docAttrs, setDocAttrs] = useState({
     doc5: "", doc6: "", doc13: "", doc14: "", doc15: "", doc18: "",
     vehicleModel: "",
     vehicleNumber: "",
     driver: "",
+    // ТЗ: телефон водителя хранится в базе, но в ТТН/СМР НЕ выводится —
+    // в маппинг экспорта (docxExport/xlsxExport) он намеренно не добавлен.
+    driverPhone: "",
     hasTrailer: false,
     trailerModel: "",
     trailerNumber: "",
@@ -491,11 +505,23 @@ const printLabel = async () => {
     }
     setActionLoading(true);
     try {
-      await api.requests.update(id, { type: type, docType: type, status: "act" });
+      // ТЗ: перевод на склад — такое же действие, как формирование СМР/ТТН,
+      // только без модалки: складу поля транспорта не нужны.
+      //
+      // sectionPatch(WAREHOUSE) гасит docType от прежней ТТН/СМР, поэтому
+      // накладная не остаётся одновременно в двух разделах — это тот самый
+      // дубль «склад + СМР», который мы чинили. Заодно после перевода
+      // печатается складская накладная, а не ТТН.
+      const target = type === 'warehouse' ? SECTION.WAREHOUSE
+        : type === 'ttn' ? SECTION.TTN
+        : type === 'smr' ? SECTION.SMR
+        : SECTION.ACT;
+      await api.requests.update(id, { ...sectionPatch(target), status: "act" });
       await loadAct();
-      alert("Документ успешно сформирован!");
-      if (type === 'ttn') nav(`/requests/${id}`);
-      else if (type === 'smr') nav(`/smr/${id}`);
+      alert(target === SECTION.WAREHOUSE
+        ? "Накладная переведена на склад."
+        : "Документ успешно сформирован!");
+      nav(sectionPath(target, id));
     } catch (err) {
       alert("Ошибка: " + err.message);
     } finally {
@@ -503,22 +529,51 @@ const printLabel = async () => {
     }
   };
 
+  // ТЗ: данные автотранспорта обязательны при ФОРМИРОВАНИИ документа, но не
+  // при сохранении заявки — заявку заводят, когда машина ещё не назначена.
+  // Поэтому проверка стоит здесь, а не в validateBeforeSave формы заявки.
+  //
+  // Требуются только для авто: у самолёта и поезда машины нет, там свои поля
+  // (номер рейса, вагон). Телефон водителя в список НЕ входит — заказчик
+  // просил его хранить, а обязательность обосновывал тем, что «иначе непонятно,
+  // кто вёз»; для этого достаточно марки, госномера и Ф.И.О.
+  const missingVehicleFields = () => {
+    if (!String(docAttrs.transportType || "").startsWith("auto")) return [];
+    const required = [
+      ["vehicleModel", "Марка автомобиля"],
+      ["vehicleNumber", "Госномер автомобиля"],
+      ["driver", "Водитель (Ф.И.О.)"],
+    ];
+    return required
+      .filter(([key]) => !String(docAttrs[key] || "").trim())
+      .map(([, label]) => label);
+  };
+
   const confirmDocType = async () => {
     if (!id || !showDocForm) return;
+    const missing = missingVehicleFields();
+    if (missing.length) {
+      alert(
+        `Нельзя сформировать ${showDocForm.toUpperCase()}: не заполнены данные автотранспорта.\n\n` +
+        missing.map(m => "• " + m).join("\n") +
+        "\n\nБез них в документе не видно, кто вёз груз."
+      );
+      return;
+    }
     setActionLoading(true);
     try {
+      // sectionPatch гасит признак склада: формирование ТТН/СМР переводит
+      // накладную в свой раздел целиком, а не добавляет её во второй.
+      const target = showDocForm === 'ttn' ? SECTION.TTN : SECTION.SMR;
       await api.requests.update(id, {
-        type: showDocForm,
-        docType: showDocForm,
+        ...sectionPatch(target),
         docAttrs,
         status: "act"
       });
       await loadAct();
       setShowDocForm(null);
       alert(showDocForm === "ttn" ? "ТТН успешно сформирована!" : "СМР успешно сформирована!");
-      if (showDocForm === 'ttn') nav(`/requests/${id}`);
-      else if (showDocForm === 'smr') nav(`/smr/${id}`);
-      setShowDocForm(null);
+      nav(sectionPath(target, id));
     } catch (err) {
       alert("Ошибка: " + err.message);
     } finally {
@@ -526,13 +581,33 @@ const printLabel = async () => {
     }
   };
 
+  // Отмена формирования сбрасывает состояние ПОЛНОСТЬЮ за один запрос.
+  // Раньше снимались только type и docType, а признак склада оставался — и
+  // накладную тут же отсеивал фильтр «Заявок». Со стороны это выглядело как
+  // «нажал, ничего не произошло», приходилось вручную снимать галочку склада.
+  //
+  // warehouseServices очищаются вместе с остальным: иначе hasFormedDocument
+  // продолжит считать документ сформированным и пустит заявку к бухгалтеру.
+  // docAttrs (марка авто, госномер, водитель) НЕ трогаем — это ручной ввод
+  // менеджера, к формированию документа он отношения не имеет.
   const handleCancelFormation = async () => {
     if (!id) return;
-    if (window.confirm("Отменить формирование документа? Заявка вернется в общий список.")) {
-      await api.requests.update(id, { type: 'REQUEST', docType: null, status: "act" });
+    if (!window.confirm("Отменить формирование документа? Заявка вернётся в общий список.")) return;
+    setActionLoading(true);
+    try {
+      await api.requests.update(id, {
+        ...sectionPatch(SECTION.ACT),
+        warehouseServices: [],
+        status: "act",
+      });
       await loadAct();
+      nav(sectionPath(SECTION.ACT));
+    } catch (err) {
+      // Раньше здесь не было ни try/catch, ни alert: ошибка сервера уходила
+      // в никуда и добавляла ощущение «кнопка не работает».
+      alert("Не удалось отменить формирование: " + err.message);
+    } finally {
       setActionLoading(false);
-      nav("/acts");
     }
   };
 
@@ -541,22 +616,16 @@ const printLabel = async () => {
     if (window.confirm("Вернуть документ из отработанных в список заявок? Дата будет обновлена на сегодняшнюю.")) {
       setActionLoading(true);
       try {
-        await api.requests.update(id, {
-          readyForAccountant: false,
-          isDeferredForAccountant: false,
-          isProcessedByAccountant: false,
-        });
+        // Раздел, в который накладная вернётся, считается по её типу документа:
+        // при отправке бухгалтеру он не затирался. Раньше здесь стояла лесенка
+        // if/else, которая расходилась с фильтрами списков.
+        const target = sectionAfterAccountant(act);
+        const patch = sectionPatch(target);
+        await api.requests.update(id, { ...patch, isProcessedByAccountant: false });
         const updated = await api.requests.restore(id);
-        setAct(prev => ({
-          ...prev, ...updated,
-          readyForAccountant: false,
-          isDeferredForAccountant: false,
-          isProcessedByAccountant: false,
-        }));
-        alert("Документ возвращен в работу! Дата обновлена на сегодняшнюю.");
-        if (act.isWarehouse) nav('/warehouse');
-        else if (act.type === 'smr' || act.docType === 'smr') nav('/smr');
-        else nav('/requests');
+        setAct(prev => ({ ...prev, ...updated, ...patch, isProcessedByAccountant: false }));
+        alert("Документ возвращён в работу! Дата обновлена на сегодняшнюю.");
+        nav(sectionPath(target));
       } catch (err) {
         alert("Ошибка: " + err.message);
       } finally {
@@ -574,15 +643,11 @@ const printLabel = async () => {
     if (window.confirm("Отправить документ бухгалтеру? После этого он появится в списке бухгалтерии.")) {
       setActionLoading(true);
       try {
-        const updated = await api.requests.update(id, {
-          readyForAccountant: true,
-          isDeferredForAccountant: false
-        });
-        setAct(prev => ({
-          ...prev, ...updated,
-          readyForAccountant: true,
-          isDeferredForAccountant: false
-        }));
+        // Транзитный переход: тип документа сохраняется, чтобы при возврате
+        // накладная легла обратно в свой раздел.
+        const patch = sectionPatch(SECTION.ACCOUNTANT);
+        const updated = await api.requests.update(id, patch);
+        setAct(prev => ({ ...prev, ...updated, ...patch }));
         alert("Документ отправлен бухгалтеру!");
       } catch (err) {
         alert("Ошибка: " + err.message);
@@ -599,16 +664,13 @@ const printLabel = async () => {
     if (window.confirm(actionText)) {
       setActionLoading(true);
       try {
-        const updated = await api.requests.update(id, { isDeferredForAccountant: !isNowDeferred });
-        setAct(updated);
-        if (!isNowDeferred) {
-           nav('/deferred');
-        } else {
-           if (act.isWarehouse) nav('/warehouse');
-           else if (act.type === 'smr' || act.docType === 'smr') nav('/smr');
-           else if (act.type === 'ttn' || act.docType === 'ttn') nav('/requests');
-           else nav('/acts');
-        }
+        // Откладывание — транзитное состояние, возврат считается по типу
+        // документа. Лесенка if/else заменена на тот же расчёт, что и в списках.
+        const target = isNowDeferred ? sectionAfterAccountant(act) : SECTION.DEFERRED;
+        const patch = sectionPatch(target);
+        const updated = await api.requests.update(id, patch);
+        setAct(prev => ({ ...prev, ...updated, ...patch }));
+        nav(sectionPath(target));
       } catch (err) {
         alert("Ошибка: " + err.message);
       } finally {
@@ -711,6 +773,29 @@ const printLabel = async () => {
       alert("Не указана компания экспедитор");
       return;
     }
+
+    // ТЗ: данные автотранспорта подтягиваются в ТТН и СМР автоматически, но
+    // подтягивать нечего, если их не заполнили. Раньше документ в таком случае
+    // выгружался МОЛЧА с пустыми графами «Автомобиль» и «Водитель» — менеджер
+    // узнавал об этом уже над распечатанным бланком и вписывал ручкой.
+    //
+    // Проверка обязательности стоит на ФОРМИРОВАНИИ документа, но заявки,
+    // созданные до её появления, через неё не проходили — предупреждаем здесь.
+    const kind = String(docTypeOverride || act.docType || act.type || "").toLowerCase();
+    if ((kind === "ttn" || kind === "smr") && !act.isWarehouse) {
+      const missing = missingVehicleFields();
+      if (missing.length) {
+        const ok = window.confirm(
+          `В заявке не заполнены данные автотранспорта:\n\n` +
+          missing.map(m => "• " + m).join("\n") +
+          `\n\nВ бланке ${kind.toUpperCase()} графы «Автомобиль» и «Водитель» останутся пустыми.\n` +
+          `Заполнить: «Редактировать» → блок «Транспорт».\n\n` +
+          `Выгрузить всё равно?`
+        );
+        if (!ok) return;
+      }
+    }
+
     setExportLoading(true);
     try {
       let comp = null;
@@ -726,8 +811,15 @@ const printLabel = async () => {
         return;
       }
       const exportType = docTypeOverride || act.docType;
-      // ТТН — отдельная официальная форма в Excel; остальное — docx
-      if (exportType === "ttn") {
+      // ТТН — отдельная официальная форма в Excel; остальное — docx.
+      //
+      // ТЗ: у складской заявки печатается СКЛАДСКАЯ накладная, а не ТТН.
+      // Признак склада главнее docType: он мог остаться от прежнего
+      // формирования ТТН (заявку сделали ТТН, потом добавили складскую услугу).
+      // Раньше проверка на "ttn" стояла первой и безусловно уводила экспорт
+      // в Excel-бланк ТТН — из-за этого ветка склада в docxExport
+      // (templateFile = template_warehouse.docx) была недостижима в принципе.
+      if (exportType === "ttn" && !act.isWarehouse) {
         await exportTtnToXlsx({ ...act, company: comp });
       } else {
         await exportToDocx({ ...act, company: comp, role: roleOverride || act.role }, exportType);
@@ -736,6 +828,40 @@ const printLabel = async () => {
     } catch (err) {
       console.error("Export error:", err);
       alert("Ошибка при загрузке данных компании: " + err.message);
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  // ТЗ: комплект отгрузочных документов одним архивом. Состав зависит от типа
+  // заявки (см. bundlePlan). Если часть документов не собралась — архив всё
+  // равно отдаётся, а внутри лежит ОШИБКИ.txt: молча отдавать неполный
+  // комплект нельзя, бухгалтер решит, что всё на месте.
+  const handleBundle = async () => {
+    if (!act) return;
+    setExportLoading(true);
+    try {
+      let comp = null;
+      try { comp = await api.companies.get(act.companyId); }
+      catch { const all = await api.companies.list(); comp = all.find(c => c.id === act.companyId); }
+      if (!comp) { alert("Данные компании не найдены на сервере"); return; }
+
+      const res = await exportBundle({ ...act, company: comp });
+      if (res.failed.length) {
+        alert(
+          `Комплект собран частично.
+
+Готово: ${res.ok.join(", ") || "—"}
+` +
+          `Не удалось: ${res.failed.map(f => f.label).join(", ")}
+
+` +
+          `Подробности — в файле ОШИБКИ.txt внутри архива.`
+        );
+      }
+      setShowExportMenu(false);
+    } catch (err) {
+      alert("Ошибка сборки комплекта: " + err.message);
     } finally {
       setExportLoading(false);
     }
@@ -811,6 +937,24 @@ const printLabel = async () => {
                 </button>
               )}
 
+              {/* ТЗ: перевод на склад кнопкой из заявки, наравне с СМР/ТТН.
+                  Условия те же, что у соседей, плюс «ещё не на складе».
+                  Снять склад можно кнопкой «Отменить формирование» — она видна
+                  и для складских, отдельной кнопки возврата не нужно. */}
+              {!isSentPath && act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && (
+                <button className="btn btn--ghost" onClick={() => chooseDocType("warehouse")} disabled={actionLoading}>
+                  {actionLoading ? "Перевод..." : "📦 На склад"}
+                </button>
+              )}
+
+              {/* ТЗ: ссылка для наёмного водителя или получателя — вместо
+                  учётки и кабинета. Аннулированную накладную не отдаём. */}
+              {!isSentPath && act.status !== 'canceled' && (
+                <button className="btn btn--ghost" onClick={() => setShowLinks(true)}>
+                  🔗 Ссылка
+                </button>
+              )}
+
               {!isSentPath && act.status !== 'canceled' && !act.readyForAccountant && (
                 <button
                   className={`btn ${act.isDeferredForAccountant ? 'btn--primary' : 'btn--ghost'}`}
@@ -839,8 +983,13 @@ const printLabel = async () => {
                 </button>
               )}
 
-              {!isSentPath && act.status !== 'canceled' && act.docType && (
-                <button className="btn btn--danger" onClick={handleCancelFormation}>
+              {/* Кнопка видна во всех разделах, куда накладную мог увести
+                  документ или склад. Раньше условием был только docType: в
+                  раздел пускало по двум полям (docType ИЛИ type), а выйти
+                  можно было по одному — у старых записей кнопки не было вовсе. */}
+              {!isSentPath && act.status !== 'canceled' &&
+               [SECTION.TTN, SECTION.SMR, SECTION.WAREHOUSE].includes(getActSection(act)) && (
+                <button className="btn btn--danger" onClick={handleCancelFormation} disabled={actionLoading}>
                   Отменить формирование
                 </button>
               )}
@@ -889,8 +1038,16 @@ const printLabel = async () => {
                   <div className="menu_item" style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee' }} onClick={() => handleExport("Заявка", "carrier")}>
                     📄 Заявка (Перевозчик)
                   </div>
+                  {/* У складской заявки печатается складская накладная,
+                      даже если docType остался 'ttn' от прежнего формирования.
+                      Подпись должна говорить правду, иначе менеджер жмёт «ТТН»,
+                      а получает другой документ. */}
+                  {/* ТЗ: комплект отгрузочных документов одним архивом. */}
+                  <div className="menu_item" style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid #eee', fontWeight: 700 }} onClick={handleBundle}>
+                    📦 Комплект документов (ZIP)
+                  </div>
                   <div className="menu_item" style={{ padding: '10px 15px', cursor: 'pointer' }} onClick={() => handleExport(act.docType)}>
-                    🚛 Экспорт как {act.docType.toUpperCase()}
+                    🚛 Экспорт как {act.isWarehouse ? "СКЛАДСКАЯ НАКЛАДНАЯ" : act.docType.toUpperCase()}
                   </div>
                 </div>
               )}
@@ -898,6 +1055,15 @@ const printLabel = async () => {
           ) : null}
         </div>
       </div>
+
+      {/* ТЗ: одноразовые ссылки — выдача, список выданных, отзыв. */}
+      {showLinks && (
+        <AccessLinksDialog
+          act={act}
+          onClose={() => setShowLinks(false)}
+          onChanged={loadAct}
+        />
+      )}
 
       {showDocForm && (
         <div className="card" style={{ marginTop: 16, border: '2px solid var(--accent)', background: '#f0faff' }}>
@@ -922,17 +1088,30 @@ const printLabel = async () => {
 
               {docAttrs.transportType.startsWith("auto") && (
                 <>
+                  {/* ТЗ: при формировании ТТН/СМР данные авто обязательны —
+                      иначе непонятно, кто вёз. Звёздочка отмечает это на форме,
+                      сама проверка стоит в confirmDocType. */}
                   <div className="field">
-                    <div className="label">Марка автомобиля</div>
+                    <div className="label">Марка автомобиля *</div>
                     <input value={docAttrs.vehicleModel} onChange={e => setDocAttrs({...docAttrs, vehicleModel: e.target.value})} placeholder="Volvo" />
                   </div>
                   <div className="field">
-                    <div className="label">Госномер автомобиля</div>
+                    <div className="label">Госномер автомобиля *</div>
                     <input value={docAttrs.vehicleNumber} onChange={e => setDocAttrs({...docAttrs, vehicleNumber: e.target.value})} placeholder="016ACT02" />
                   </div>
                   <div className="field">
-                    <div className="label">Водитель (Ф.И.О.)</div>
+                    <div className="label">Водитель (Ф.И.О.) *</div>
                     <input value={docAttrs.driver} onChange={e => setDocAttrs({...docAttrs, driver: e.target.value})} />
+                  </div>
+                  {/* Телефон водителя: хранится в базе, в накладную не попадает. */}
+                  <div className="field">
+                    <div className="label">Телефон водителя</div>
+                    <input
+                      value={docAttrs.driverPhone || ""}
+                      onChange={e => setDocAttrs({...docAttrs, driverPhone: e.target.value})}
+                      placeholder="+7 777 123 45 67"
+                      title="Сохраняется в базе, в ТТН/СМР не выводится"
+                    />
                   </div>
                   <div className="field" style={{ gridColumn: 'span 1' }}>
                     <label style={{ display: 'flex', alignItems: 'center', gap: 10, fontWeight: 700, cursor: 'pointer', marginTop: 32 }}>
@@ -1332,6 +1511,47 @@ const printLabel = async () => {
             </div>
        </div>
 
+      {/* ТЗ: подписана ли СМР — видно сразу, без выгрузки документа.
+          Подпись получателя приходит по одноразовой ссылке (/sign/:token)
+          и хранится в Request.signatures. Показываем и миниатюру: менеджеру
+          важно убедиться, что расписались, а не нажали случайно. */}
+      {!act.isWarehouse && (act.type === 'smr' || act.docType === 'smr' || act.type === 'ttn' || act.docType === 'ttn') && (() => {
+        const sign = (Array.isArray(act.signatures) ? act.signatures : [])
+          .filter(s => s && s.role === 'receiver' && s.image)
+          .slice(-1)[0];
+        return (
+          <div className="card" style={{ marginTop: 14, padding: 16 }}>
+            {sign ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 26 }}>✍️</div>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontWeight: 700, color: '#237804' }}>Подписано получателем</div>
+                  <div className="muted" style={{ fontSize: '0.85rem' }}>
+                    {sign.name ? `${sign.name} · ` : ''}
+                    {sign.signedAt ? new Date(sign.signedAt).toLocaleString('ru') : ''}
+                  </div>
+                </div>
+                <img
+                  src={sign.image}
+                  alt="Подпись получателя"
+                  style={{ height: 54, maxWidth: 200, objectFit: 'contain', border: '1px solid #e2e8f0', borderRadius: 6, background: '#fff', padding: 4 }}
+                />
+              </div>
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div style={{ fontSize: 26, opacity: 0.5 }}>✍️</div>
+                <div>
+                  <div style={{ fontWeight: 700, color: '#d48806' }}>Ожидает подписи получателя</div>
+                  <div className="muted" style={{ fontSize: '0.85rem' }}>
+                    Отправьте ссылку кнопкой «🔗 Ссылка» → «Подпись получателя».
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
       {!act.isWarehouse && (act.type === 'ttn' || act.docType === 'ttn' || act.type === 'smr' || act.docType === 'smr' || (act.type === 'REQUEST' && act.docAttrs?.transportType)) && (
         <div className="card card--transport" style={{ marginTop: 14 }}>
           <div className="card_head card_head--transport" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1405,6 +1625,14 @@ const printLabel = async () => {
                 <div className="field">
                   <div className="label">{(act.docAttrs.transportType === 'train' || act.docAttrs.transportType === 'plane') ? 'Ответственный' : 'Водитель'}</div>
                   <div className="v">{act.docAttrs.driver}</div>
+                </div>
+              )}
+              {/* Телефон водителя виден в карточке (это и есть «в базе»),
+                  но в ТТН/СМР не выводится — в маппинг экспорта не добавлен. */}
+              {act.docAttrs?.driverPhone && (
+                <div className="field">
+                  <div className="label">Телефон водителя</div>
+                  <div className="v">{act.docAttrs.driverPhone}</div>
                 </div>
               )}
             </div>

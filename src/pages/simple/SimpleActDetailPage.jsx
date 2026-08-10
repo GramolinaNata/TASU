@@ -352,6 +352,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { calcDeliveryPrice } from "../../shared/tariff/calcTariff.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
+import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
 import {
   emptyDimGroup, normalizeDimGroups, groupVolumeM3, groupsVolumeM3, groupsSeats,
   serializeDimGroups, flatSizeSurcharge, pickSizeCategory,
@@ -623,7 +624,9 @@ export default function SimpleActDetailPage() {
       return;
     }
 
-    const qrData = `TASU-${act.docNumber}-${act.route?.toCity || ""}-${act.receiver?.fio || ""}`;
+    // ТЗ: в QR теперь ССЫЛКА на страницу сканера — её открывает любая камера
+    // телефона. Прежняя строка TASU-... остаётся на наклейке текстом под кодом.
+    const qrData = buildScanUrl(window.location.origin, act.id);
     const { toDataURL } = await import("qrcode");
     const qrUrl = await toDataURL(qrData, { width: 140, margin: 1 });
 

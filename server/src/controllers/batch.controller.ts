@@ -54,6 +54,8 @@ export const createBatch = async (req: AuthRequest, res: Response) => {
         carrierId: b.carrierId || null,
         representativeId: b.representativeId || null,
         loadersCount: b.loadersCount ? Number(b.loadersCount) : 0,
+        // ТЗ: официально купленная перевозка уменьшает базу КПН в режиме ОУР.
+        carrierOfficial: !!b.carrierOfficial,
       }
     });
     res.status(201).json(batch);
@@ -93,6 +95,8 @@ export const updateBatch = async (req: AuthRequest, res: Response) => {
     if (b.carrierId !== undefined) data.carrierId = b.carrierId || null;
     if (b.representativeId !== undefined) data.representativeId = b.representativeId || null;
     if (b.loadersCount !== undefined) data.loadersCount = Number(b.loadersCount) || 0;
+    // ТЗ: официально купленная перевозка уменьшает базу КПН в режиме ОУР.
+    if (b.carrierOfficial !== undefined) data.carrierOfficial = !!b.carrierOfficial;
 
     const batch = await prisma.batch.update({ where: { id: req.params.id }, data });
     res.json(batch);

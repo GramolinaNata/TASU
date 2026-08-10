@@ -87,6 +87,31 @@ export function buildTtnData(act) {
     // «Масса брутто прописью»: по решению заказчика дублируем цифрами —
     // ровно так заполнен его собственный образец бланка.
     weight_words: weight ? `${weight} кг` : "",
+
+    // ТЗ: данные автотранспорта в бланк. Раньше в шаблоне для них не было
+    // токенов вовсе — графы «Автомобиль» и «Водитель» печатались пустыми,
+    // и менеджер вписывал их от руки. Сами данные лежат в details.docAttrs
+    // (марка, госномер, водитель, телефон) и с недавних пор обязательны
+    // при формировании ТТН.
+    //
+    // Марка и госномер идут в одну графу: в бланке «Автомобиль» — одна
+    // строка, отдельной ячейки под номер нет.
+    vehicle: [a.docAttrs?.vehicleModel, a.docAttrs?.vehicleNumber]
+      .map(s => String(s || "").trim()).filter(Boolean).join(" "),
+    vehicle_model: String(a.docAttrs?.vehicleModel || "").trim(),
+    vehicle_number: String(a.docAttrs?.vehicleNumber || "").trim(),
+
+    // Водитель: ФИО и телефон вместе. Телефон в накладной заказчик просил
+    // НЕ показывать, поэтому в графу «Водитель» идёт только ФИО, а телефон
+    // отдаётся отдельным токеном — на случай, если понадобится позже.
+    driver: String(a.docAttrs?.driver || "").trim(),
+    driver_phone: String(a.docAttrs?.driverPhone || "").trim(),
+
+    // Прицеп — если отмечен.
+    trailer: a.docAttrs?.hasTrailer
+      ? [a.docAttrs?.trailerModel, a.docAttrs?.trailerNumber]
+          .map(s => String(s || "").trim()).filter(Boolean).join(" ")
+      : "",
   };
 }
 
@@ -106,10 +131,68 @@ function cellText(value) {
   return null;
 }
 
-export async function exportTtnToXlsx(act) {
-  const [{ default: ExcelJS }, { saveAs }] = await Promise.all([
+// Служебный токен-якорь печати. В Excel картинка НЕ привязана к тексту, как
+// в docx: она кладётся поверх листа по координатам ячейки. Поэтому в бланке
+// стоит токен, экспорт находит его координаты, гасит текст и ставит печать
+// в эту позицию — если заказчик пришлёт новую версию бланка, печать переедет
+// вместе с якорем, а не останется по забитым координатам.
+const STAMP_ANCHOR = "{stamp_here}";
+
+// Печать хранится как data:image/png;base64,… — ExcelJS нужен чистый base64
+// и расширение отдельно.
+function parseDataUrl(dataUrl) {
+  const m = String(dataUrl || "").match(/^data:image\/(png|jpe?g);base64,(.+)$/i);
+  if (!m) return null;
+  const ext = m[1].toLowerCase() === "png" ? "png" : "jpeg";
+  return { ext, base64: m[2] };
+}
+
+/**
+ * Печать/подпись компании в бланк ТТН.
+ *
+ * Пропорции картинки в браузере без её загрузки не вычислить, поэтому берём
+ * фиксированный бокс高 ~2 см (как в docx-экспорте): 90×75 px. editAs:'oneCell'
+ * держит печать привязанной к ячейке при изменении ширины колонок.
+ *
+ * Нет печати у компании — ничего не вставляем, якорь просто гасится.
+ */
+function placeStamp(wb, ws, act) {
+  const parsed = parseDataUrl(act?.company?.stamp);
+  let anchor = null;
+
+  ws.eachRow({ includeEmpty: false }, (row) => {
+    row.eachCell({ includeEmpty: false }, (cell) => {
+      if (cellText(cell.value) === STAMP_ANCHOR) {
+        anchor = { col: cell.col, row: cell.row };
+        cell.value = null;          // сам токен в документе виден быть не должен
+      }
+    });
+  });
+
+  if (!anchor || !parsed) return;
+
+  const imgId = wb.addImage({ base64: parsed.base64, extension: parsed.ext });
+  // ExcelJS считает координаты от нуля, а cell.col/row — от единицы.
+  ws.addImage(imgId, {
+    tl: { col: anchor.col - 1, row: anchor.row - 1 },
+    ext: { width: 90, height: 75 },
+    editAs: "oneCell",
+  });
+}
+
+/**
+ * Формирование ТТН.
+ *
+ * @param {object} act  заявка (с company)
+ * @param {object} opts { asBlob: true } — вернуть Blob вместо скачивания.
+ *                      Нужно для комплекта документов: там файлы складываются
+ *                      в архив, а не сохраняются по одному.
+ */
+export async function exportTtnToXlsx(act, opts = {}) {
+  const needSave = !opts.asBlob;
+  const [{ default: ExcelJS }, fileSaver] = await Promise.all([
     import("exceljs"),
-    import("file-saver"),
+    needSave ? import("file-saver") : Promise.resolve(null),
   ]);
 
   const resp = await fetch("/templates/ttn_2026.xlsx");
@@ -127,7 +210,7 @@ export async function exportTtnToXlsx(act) {
   ws.eachRow({ includeEmpty: false }, (row) => {
     row.eachCell({ includeEmpty: false }, (cell) => {
       const text = cellText(cell.value);
-      if (text && text.includes("{")) {
+      if (text && text.includes("{") && text !== STAMP_ANCHOR) {
         // Присваиваем плоскую строку: richText с токеном схлопываем,
         // оформление самой ячейки (шрифт, рамки) при этом не трогается.
         cell.value = fillTokens(text, data);
@@ -135,9 +218,16 @@ export async function exportTtnToXlsx(act) {
     });
   });
 
+  // Печать ставится ПОСЛЕ подстановки текста: обход ячеек выше не должен
+  // натыкаться на уже обработанный якорь.
+  placeStamp(wb, ws, act);
+
   const out = await wb.xlsx.writeBuffer();
   const blob = new Blob([out], {
     type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   });
-  saveAs(blob, `ТТН_${data.number || "новая"}.xlsx`);
+  const filename = `ТТН_${data.number || "новая"}.xlsx`;
+  if (!needSave) return { blob, filename };
+  fileSaver.saveAs(blob, filename);
+  return { blob, filename };
 }

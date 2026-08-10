@@ -4,6 +4,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { api } from "../../shared/api/api.js";
 import { activeRequestIds, batchTotalsExcludingCanceled } from "../../shared/batch/batchTotals.js";
 import { vedomostRowForBatch, payoutsFromRow } from "../../shared/batch/vedomostPayouts.js";
+import { calcTax, taxSettingsOf } from "../../shared/tax/calcTax.js";
 
 const parseDetails = (raw) => {
   if (!raw) return {};
@@ -182,21 +183,23 @@ export default function BookkeeperReportPage() {
         ? Number(vedRow.loadersCount) || 0 : (b.loadersCount || 0);
       const seats = batchSeats(b);
 
-      // ТЗ: налог считается от компании партии по её ставке (Company.taxRate, %)
+      // ТЗ: налог считается от компании партии по её ставкам. Сам расчёт вынесен
+      // в shared/tax/calcTax.js и покрыт тестами: в ОУР появился КПН, который
+      // берётся ПОСЛЕ вычета НДС и суммы официально купленной перевозки.
+      //
+      // Пока ставка КПН у компании не заполнена (по умолчанию 0), результат
+      // совпадает с прежним до тенге — упрощёнка и «без налога» не менялись.
       const compId = batchCompanyId(b);
       const comp = companies.find(c => c.id === compId);
-      const taxMode = comp?.taxMode || 'none';
-      const taxRate = Number(comp?.taxRate) || 0;
-      const taxExtra = Number(comp?.taxExtra) || 0;
-      const vatRate = Number(comp?.vatRate) || 0;
-      let taxAmount = 0;
-      if (taxMode === 'simplified') {
-        taxAmount = Math.round(income * ((taxRate + taxExtra) / 100));
-      } else if (taxMode === 'our') {
-        taxAmount = Math.round(income * (vatRate / 100));
-      } else {
-        taxAmount = Math.round(income * (taxRate / 100));
-      }
+      const settings = taxSettingsOf(comp);
+      const tax = calcTax({
+        income,
+        carrierSum: payouts.carrierSum,
+        carrierOfficial: !!b.carrierOfficial,
+        ...settings,
+      });
+      const taxRate = settings.taxRate;
+      const taxAmount = tax.total;
 
       const totalPayouts = expense + payouts.carrierSum + payouts.loaderSum + payouts.representativeSum + taxAmount;
 
@@ -218,6 +221,17 @@ export default function BookkeeperReportPage() {
         representativeSum: payouts.representativeSum,
         taxRate,
         taxAmount,
+        // Разбивка налога — чтобы бухгалтер видел, из чего он сложился,
+        // и мог сверить вычет по перевозке.
+        taxVat: tax.vat,
+        taxKpn: tax.kpn,
+        taxAfterVat: tax.afterVat,
+        taxKpnBase: tax.kpnBase,
+        taxDeducted: tax.deducted,
+        // «Итог» из примера заказчика: остаток после НДС, перевозки и КПН.
+        taxNet: tax.net,
+        taxMode: settings.taxMode,
+        carrierOfficial: !!b.carrierOfficial,
         totalPayouts,
         profit: income - totalPayouts,
       };
@@ -598,7 +612,28 @@ export default function BookkeeperReportPage() {
                         <td style={{ textAlign: "right" }}>{fmt(r.carrierSum)} тг</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.loaderSum)} тг</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.representativeSum)} тг</td>
-                        <td style={{ textAlign: "right" }}>{fmt(r.taxAmount)} тг</td>
+                        {/* ТЗ: в ОУР налог складывается из двух строк — НДС и КПН.
+                            Показываем разбивку под суммой, чтобы бухгалтер видел,
+                            откуда она взялась и учтён ли вычет по перевозке. */}
+                        <td style={{ textAlign: "right" }}>
+                          <div>{fmt(r.taxAmount)} тг</div>
+                          {r.taxMode === 'our' && r.taxKpn > 0 && (
+                            <div
+                              className="muted"
+                              style={{ fontSize: "0.72rem", whiteSpace: "nowrap" }}
+                              title={
+                                `Оборот: ${fmt(r.income)} тг\n` +
+                                `− НДС: ${fmt(r.taxVat)} тг  →  ${fmt(r.taxAfterVat)} тг\n` +
+                                `− перевозка: ${r.taxDeducted ? fmt(r.taxDeducted) + " тг (официальная)" : "0 (не отмечена как официальная)"}  →  ${fmt(r.taxKpnBase)} тг\n` +
+                                `− КПН: ${fmt(r.taxKpn)} тг\n` +
+                                `= итог: ${fmt(r.taxNet)} тг`
+                              }
+                            >
+                              НДС {fmt(r.taxVat)} + КПН {fmt(r.taxKpn)}
+                              {r.carrierOfficial && r.taxDeducted > 0 ? " ⁎" : ""}
+                            </div>
+                          )}
+                        </td>
                         <td style={{ textAlign: "right", fontWeight: 700 }}>{fmt(r.profit)} тг</td>
                         <td></td>
                       </tr>

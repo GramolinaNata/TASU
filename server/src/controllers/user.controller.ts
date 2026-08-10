@@ -140,6 +140,7 @@ export const getUsers = async (req: AuthRequest, res: Response) => {
         plainPassword: isAdmin,
         // 🆕 ТЗ v2
         assignedCompanyId: true,
+        city: true,
         contactPhone: true,
       },
       orderBy: { [sortBy]: order },
@@ -162,6 +163,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       // 🆕 ТЗ v2
       assignedCompanyId,
       contactPhone,
+      // ТЗ: город курьера — по нему он видит только свои заявки.
+      city,
     } = req.body;
 
     if (!email || !password || !name) {
@@ -194,6 +197,8 @@ export const createUser = async (req: AuthRequest, res: Response) => {
     // 🆕 Сохраняем привязку к компании только если она задана (для PRIVATE — обязательно)
     if (assignedCompanyId) data.assignedCompanyId = assignedCompanyId;
     if (contactPhone !== undefined) data.contactPhone = contactPhone;
+    // Город нужен только курьеру; у прочих ролей поле не используется.
+    if (city !== undefined) data.city = String(city || '');
 
     const newUser = await prisma.user.create({
       data,
@@ -205,6 +210,7 @@ export const createUser = async (req: AuthRequest, res: Response) => {
         createdAt: true,
         plainPassword: true,
         assignedCompanyId: true,
+        city: true,
         contactPhone: true,
       },
     });
@@ -227,6 +233,8 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
       // 🆕 ТЗ v2
       assignedCompanyId,
       contactPhone,
+      // ТЗ: город курьера
+      city,
     } = req.body;
 
     const updateData: any = {};
@@ -245,6 +253,10 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     }
     if (contactPhone !== undefined) {
       updateData.contactPhone = contactPhone;
+    }
+    // ТЗ: город курьера
+    if (city !== undefined) {
+      updateData.city = String(city || '');
     }
 
     // 🆕 ТЗ v2: при смене роли с PRIVATE на любую другую — сбрасываем assignedCompanyId
@@ -268,6 +280,7 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
         role: true,
         plainPassword: true,
         assignedCompanyId: true,
+        city: true,
         contactPhone: true,
       },
     });

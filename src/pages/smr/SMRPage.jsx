@@ -4358,6 +4358,7 @@ import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/stora
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
+import { getActSection, SECTION } from "../../shared/acts/section.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -4394,9 +4395,11 @@ function getSortValue(a, field) {
   }
 }
 
-// Базовый фильтр СМР
+// Базовый фильтр СМР. Раньше здесь не было проверки на склад: накладная со
+// сформированной СМР, которой ставили галочку «склад», оставалась в СМР И
+// появлялась на складе — тот самый дубль. Теперь раздел один на всех.
 function isBaseSmr(a) {
-  return (a.docType === 'smr' || a.type === 'smr') && !a.isDeferredForAccountant && !a.readyForAccountant;
+  return getActSection(a) === SECTION.SMR;
 }
 
 export default function SmrPage() {

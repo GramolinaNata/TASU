@@ -6,8 +6,9 @@ import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/stora
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
+import { getActSection, sectionPatch, sectionAfterAccountant, SECTION } from "../../shared/acts/section.js";
 
-function formatDisplayDate(val) { 
+function formatDisplayDate(val) {
   if (!val) return "—";
   const d = new Date(val);
   if (isNaN(d.getTime())) return val;
@@ -79,7 +80,7 @@ export default function SentToAccountantPage() {
   };
 
   const filtered = useMemo(() => {
-    let list = acts.filter(a => !!a.readyForAccountant);
+    let list = acts.filter(a => getActSection(a) === SECTION.ACCOUNTANT);
 
     // ТЗ: аннулированные НЕ убираем из списка — показываем серым (см. рендер строки).
     if (tab === "completed") list = list.filter(a => a.isProcessedByAccountant === true);
@@ -166,9 +167,11 @@ export default function SentToAccountantPage() {
   const handleReturn = async (id) => {
     if (!window.confirm("Вернуть заявку в работу? Дата будет обновлена на сегодняшнюю, заявка появится в списке активных.")) return;
     try {
+      // Возврат ведёт накладную обратно в её раздел: тип документа при отправке
+      // бухгалтеру не затирался, поэтому склад останется складом, СМР — СМР.
+      const act = acts.find(a => a.id === id);
       await api.requests.update(id, {
-        readyForAccountant: false,
-        isDeferredForAccountant: false,
+        ...sectionPatch(sectionAfterAccountant(act || {})),
         isProcessedByAccountant: false,
       });
       await api.requests.restore(id);
@@ -183,8 +186,13 @@ export default function SentToAccountantPage() {
   const handleDefer = async (id) => {
     if (!window.confirm("Перевести заявку в отложенные?")) return;
     try {
+      // readyForAccountant снимается ОБЯЗАТЕЛЬНО (его ставит sectionPatch).
+      // Раньше он оставался, и накладная проваливалась между списками:
+      // «Отложенные» её не брали (там стоит !readyForAccountant), у бухгалтера
+      // она пропадала, а в «Отработанных» продолжала висеть — со стороны
+      // выглядело как «кнопка ничего не делает».
       await api.requests.update(id, {
-        isDeferredForAccountant: true,
+        ...sectionPatch(SECTION.DEFERRED),
         isProcessedByAccountant: false,
       });
       loadActs();

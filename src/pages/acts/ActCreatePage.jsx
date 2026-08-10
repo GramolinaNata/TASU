@@ -4,6 +4,8 @@ import { calcDeliveryPrice, getDeliveryDestinations, getTariffOrigins } from "..
 import { upsertCounterparty } from "../../shared/counterparty/upsertCounterparty.js";
 import CounterpartyField from "../../shared/counterparty/CounterpartyField.jsx";
 import { api } from "../../shared/api/api.js";
+import { deriveSection, SECTION } from "../../shared/acts/section.js";
+import { readWarehouseGroups, buildPosition, draftTotal } from "../../shared/warehouse/warehouseServices.js";
 import {
   getSelectedCompanyId,
   loadCompanies,
@@ -181,6 +183,52 @@ function emptyServiceRow() {
   return { id: safeUuid(), name: "", qty: 1, price: 0, total: 0 };
 }
 
+/**
+ * ТЗ: одна компактная строка на группу складских услуг.
+ * Услуга → диапазон размера → количество → сумма → «+».
+ * У группы «Прочие» диапазонов нет, селект диапазона скрыт.
+ */
+function WarehouseGroupRow({ group, draft, onChange, onAdd }) {
+  const service = group.services.find(x => x.key === draft.serviceKey) || null;
+  const hasRanges = (group.ranges || []).length > 0;
+  const price = service
+    ? (hasRanges ? service.prices?.[draft.rangeKey] : service.price)
+    : null;
+  const qty = Number(draft.qty) || 0;
+  const sum = price != null && qty > 0 ? price * qty : null;
+
+  if (group.services.length === 0) return null;
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", flexWrap: "wrap" }}>
+      <div style={{ width: 110, fontWeight: 600, fontSize: "0.85rem" }}>{group.name}</div>
+
+      <select value={draft.serviceKey || ""} onChange={e => onChange({ serviceKey: e.target.value })}
+        style={{ flex: 1, minWidth: 150 }}>
+        <option value="">— услуга —</option>
+        {group.services.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
+      </select>
+
+      {hasRanges && (
+        <select value={draft.rangeKey || ""} onChange={e => onChange({ rangeKey: e.target.value })}
+          style={{ width: 150 }}>
+          <option value="">— размер —</option>
+          {group.ranges.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
+        </select>
+      )}
+
+      <input type="number" min="0" value={draft.qty ?? ""} placeholder="кол-во"
+        onChange={e => onChange({ qty: e.target.value })} style={{ width: 80 }} />
+
+      <div style={{ width: 110, textAlign: "right", fontWeight: sum ? 700 : 400 }}>
+        {sum != null ? `${sum.toLocaleString()} тг` : (service && price == null ? "цена не задана" : "—")}
+      </div>
+
+      <button type="button" className="btn btn--sm btn--accent" onClick={onAdd} title="Добавить позицию">+</button>
+    </div>
+  );
+}
+
 const initialRequisites = {
   jurAddress: "",
   factAddress: "",
@@ -250,6 +298,15 @@ export default function ActCreatePage() {
   // ---------- Склад / услуги ----------
   const [isWarehouse, setIsWarehouse] = useState(false);
   const [warehouseServices, setWarehouseServices] = useState([emptyServiceRow()]);
+  // ТЗ: прейскурант складских услуг + что отмечено галочками ({ key: кол-во }).
+  // Черновик по каждой группе ({ [groupKey]: {serviceKey, rangeKey, qty} })
+  // и набранные позиции до переноса в таблицу услуг накладной.
+  const [whDraft, setWhDraft] = useState({});
+  const [whPositions, setWhPositions] = useState([]);
+  // Галочки группы без диапазонов («Прочие»): { [serviceKey]: количество }.
+  // Отдельно от whDraft: там выбор одной услуги на группу, здесь — сразу
+  // несколько, каждая со своим количеством.
+  const [whFlat, setWhFlat] = useState({});
 
   // ---------- Тарифы ----------
   const [allTariffs, setAllTariffs] = useState([]);
@@ -280,6 +337,9 @@ export default function ActCreatePage() {
     vehicleModel: "",
     vehicleNumber: "",
     driver: "",
+    // ТЗ: телефон водителя хранится в базе, в ТТН/СМР не выводится.
+    // Живёт в details.docAttrs — отдельного поля в схеме не требуется.
+    driverPhone: "",
     hasTrailer: false,
     trailerModel: "",
     trailerNumber: "",
@@ -358,6 +418,8 @@ export default function ActCreatePage() {
   // ТЗ: подсказки городов из справочника Тарифы, чтобы город в заявке точно совпадал
   // с тарифом (иначе расчёт не находит совпадение). Назначения = города тарифов +
   // ПОСЁЛКИ из _regionalDeliveries (с пометкой «посёлок · Родитель»). Отправления = fromCity.
+  // ТЗ: прейскурант складских услуг живёт в тарифах отдельной записью.
+  const whGroups = useMemo(() => readWarehouseGroups(allTariffs), [allTariffs]);
   const destinationCities = useMemo(() => getDeliveryDestinations(allTariffs), [allTariffs]);
   const originCities = useMemo(() => getTariffOrigins(allTariffs), [allTariffs]);
 
@@ -628,6 +690,61 @@ export default function ActCreatePage() {
     );
   }, []);
 
+  // Добавление позиции в черновой список. Причину отказа показываем словами:
+  // «цена не задана» — ошибка настройки прейскуранта, молча считать нулём нельзя.
+  const addWarehousePosition = useCallback((group) => {
+    const d = whDraft[group.key] || {};
+    const service = group.services.find(x => x.key === d.serviceKey);
+    const res = buildPosition(group, service, d.rangeKey, d.qty, safeUuid);
+    if (!res.ok) { alert(res.reason); return; }
+    setWhPositions(prev => [...prev, res.row]);
+    setWhDraft(prev => ({ ...prev, [group.key]: { serviceKey: d.serviceKey, rangeKey: d.rangeKey, qty: "" } }));
+  }, [whDraft]);
+
+  // Перенос набранных позиций в таблицу услуг накладной. Формат строк совпадает
+  // с ручным вводом, поэтому печать складской накладной и итог работают без правок.
+  // Пустая заготовка вытесняется — иначе первой строкой в документе шла бы пустая услуга.
+  const addWarehouseToAct = useCallback(() => {
+    if (whPositions.length === 0) return;
+    setWarehouseServices((prev) => {
+      const meaningful = prev.filter((s) => String(s.name || "").trim() || Number(s.price) > 0);
+      return [...meaningful, ...whPositions];
+    });
+    setWhPositions([]);
+  }, [whPositions]);
+
+  // ТЗ: «из списка, несколько сразу» — добавляем все отмеченные позиции
+  // группы без диапазонов одним действием. Услуги без заведённой цены
+  // не добавляются молча нулём: перечисляем их в предупреждении.
+  const addPickedFlat = useCallback((group) => {
+    const rows = [];
+    const skipped = [];
+    for (const s of group.services) {
+      const qty = whFlat[s.key];
+      if (!(Number(qty) > 0)) continue;
+      const res = buildPosition(group, s, null, qty, safeUuid);
+      if (res.ok) rows.push(res.row);
+      else skipped.push(res.reason);
+    }
+    if (rows.length === 0 && skipped.length === 0) {
+      alert("Отметьте хотя бы одну услугу и укажите количество.");
+      return;
+    }
+    if (rows.length) {
+      setWhPositions(prev => [...prev, ...rows]);
+      // Сбрасываем только то, что добавилось: неудавшиеся строки остаются
+      // отмеченными, чтобы менеджер видел, с чем разбираться.
+      setWhFlat(prev => {
+        const next = { ...prev };
+        group.services.forEach(s => {
+          if (rows.some(r => r.name === s.name)) next[s.key] = "";
+        });
+        return next;
+      });
+    }
+    if (skipped.length) alert("Не добавлено:\n\n" + skipped.map(x => "• " + x).join("\n"));
+  }, [whFlat]);
+
   const addServiceRow = useCallback(() => {
     setWarehouseServices((prev) => [...prev, emptyServiceRow()]);
   }, []);
@@ -738,11 +855,28 @@ export default function ActCreatePage() {
       companyId: selectedCompanyId,
       status,
       type: docType || dbType || "REQUEST",
+      // Единое состояние раздела. Пишем его здесь, иначе после снятия/установки
+      // галочки «склад» осталось бы старое значение и накладная не переехала бы.
+      // Флаги бухгалтера в форме не участвуют — для заявки в работе у бухгалтера
+      // состояние поправляется ниже, после чтения текущей записи.
+      section: deriveSection({
+        type: docType || dbType || "REQUEST",
+        docType,
+        isWarehouse,
+      }),
     };
 
     try {
       if (isEditMode) {
         const currentAct = await api.requests.get(id);
+        // Редактирование не должно вытаскивать заявку от бухгалтера или из
+        // отложенных: это транзитные состояния, они приоритетнее раздела
+        // документа. Тип документа при этом уже обновлён выше и сработает,
+        // когда заявку вернут в работу.
+        const curDetails = currentAct ? deriveSection({ ...currentAct }) : null;
+        if (curDetails === SECTION.ACCOUNTANT || curDetails === SECTION.DEFERRED) {
+          actData.section = curDetails;
+        }
         // Этап 8: при переводе документа между ИП СОХРАНЯЕМ исходный номер
         // (раньше он перегенерировался под целевой ИП и исходный терялся).
         // actData не содержит docNumber → update не меняет номер.
@@ -1388,35 +1522,143 @@ export default function ActCreatePage() {
                     </button>
                   </div>
                 </div>
+              {/* ТЗ: слева поля «ПРР» и «Хранение» (обычные тарифы, их считает
+                  движок перевозки), справа — складские услуги. Раньше складской
+                  блок шёл ниже во всю ширину, а место справа от полей пустовало.
+                  Устройство блока не менялось: три группы, диапазоны, галочки
+                  у «Прочих».
 
-              <div className="field" style={{ maxWidth: 320, marginBottom: 12 }}>
-                <div className="label">ПРР (погрузка-разгрузка)</div>
-                <select value={prrType} onChange={e => setPrrType(e.target.value)}>
-                  <option value="">Нет ПРР</option>
-                  <option value="pallet">Палетная</option>
-                  <option value="manual">Ручная</option>
-                </select>
-                {prrType === 'pallet' && (
-                  <div style={{ marginTop: 8 }}>
-                    <div className="label">Количество палет</div>
-                    <input type="number" min="0" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0" />
+                  Блок виден ВСЕГДА, а не только при галочке «склад»: упаковку
+                  (скотч, стрейч, палеты) берут и при обычной перевозке — груз
+                  обматывают при отправке, а не только при хранении. */}
+              <div style={{ display: "flex", gap: 20, marginBottom: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                <div style={{ width: 320, flexShrink: 0 }}>
+    <div className="field" style={{ maxWidth: 320, marginBottom: 12 }}>
+                    <div className="label">ПРР (погрузка-разгрузка)</div>
+                    <select value={prrType} onChange={e => setPrrType(e.target.value)}>
+                      <option value="">Нет ПРР</option>
+                      <option value="pallet">Палетная</option>
+                      <option value="manual">Ручная</option>
+                    </select>
+                    {prrType === 'pallet' && (
+                      <div style={{ marginTop: 8 }}>
+                        <div className="label">Количество палет</div>
+                        <input type="number" min="0" value={pallets} onChange={e => setPallets(e.target.value)} placeholder="0" />
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
 
-              <div className="field" style={{ maxWidth: 320, marginBottom: 12 }}>
-                <div className="label">Хранение</div>
-                <select value={storageMode} onChange={e => setStorageMode(e.target.value)}>
-                  <option value="">Без хранения</option>
-                  <option value="weight">По весу</option>
-                  <option value="cube">По кубам</option>
-                </select>
-                {storageMode && (
-                  <div style={{ marginTop: 8 }}>
-                    <div className="label">Количество дней хранения</div>
-                    <input type="number" min="0" value={storageDays} onChange={e => setStorageDays(e.target.value)} placeholder="0" />
+                  <div className="field" style={{ maxWidth: 320, marginBottom: 12 }}>
+                    <div className="label">Хранение</div>
+                    <select value={storageMode} onChange={e => setStorageMode(e.target.value)}>
+                      <option value="">Без хранения</option>
+                      <option value="weight">По весу</option>
+                      <option value="cube">По кубам</option>
+                    </select>
+                    {storageMode && (
+                      <div style={{ marginTop: 8 }}>
+                        <div className="label">Количество дней хранения</div>
+                        <input type="number" min="0" value={storageDays} onChange={e => setStorageDays(e.target.value)} placeholder="0" />
+                      </div>
+                    )}
                   </div>
-                )}
+                </div>
+
+                <div style={{ flex: 1, minWidth: 340 }}>
+
+                  <div style={{ marginBottom: 12, padding: 14, background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 10 }}>📦 Складские услуги</div>
+
+                    {whGroups.every(g => g.services.length === 0) ? (
+                      <div className="muted" style={{ fontSize: "0.85rem" }}>
+                        Прейскурант не заведён. Раздел «Тарифы» → вкладка «Складские услуги».
+                      </div>
+                    ) : (
+                      <>
+                        {/* ТЗ: у групп С ДИАПАЗОНАМИ (упаковка, палеты) — строка
+                            с выбором и добавлением по одной: одну услугу берут
+                            в разных диапазонах (скотч на 5 мест 30×30×30 и на
+                            2 места 50×50×50), галочкой такое не выразить.
+                            У «Прочих» диапазонов нет — там галочки и несколько
+                            услуг сразу, как просил заказчик. */}
+                        {whGroups.filter(g => (g.ranges || []).length > 0).map(g => (
+                          <WarehouseGroupRow
+                            key={g.key}
+                            group={g}
+                            draft={whDraft[g.key] || {}}
+                            onChange={patch => setWhDraft(p => ({ ...p, [g.key]: { ...(p[g.key] || {}), ...patch } }))}
+                            onAdd={() => addWarehousePosition(g)}
+                          />
+                        ))}
+
+                        {whGroups.filter(g => (g.ranges || []).length === 0 && g.services.length > 0).map(g => (
+                          <div key={g.key} style={{ marginTop: 10, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
+                            <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: 6 }}>
+                              {g.name}
+                              <span className="muted" style={{ fontWeight: 400, fontSize: "0.75rem", marginLeft: 8 }}>
+                                отметьте нужные и укажите количество
+                              </span>
+                            </div>
+                            {g.services.map(s => {
+                              const qty = whFlat[s.key] ?? "";
+                              const on = Number(qty) > 0;
+                              const sum = (Number(qty) || 0) * (Number(s.price) || 0);
+                              return (
+                                <div key={s.key} style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 0" }}>
+                                  <input
+                                    type="checkbox"
+                                    checked={on}
+                                    onChange={e => setWhFlat(p => ({ ...p, [s.key]: e.target.checked ? 1 : 0 }))}
+                                  />
+                                  <div style={{ flex: 1, minWidth: 0, fontWeight: on ? 600 : 400 }}>
+                                    {s.name}
+                                    <span className="muted" style={{ fontSize: "0.75rem", marginLeft: 6 }}>
+                                      {s.price != null ? `${Number(s.price).toLocaleString()} тг` : "цена не задана"}
+                                    </span>
+                                  </div>
+                                  <input
+                                    type="number" min="0" value={qty} placeholder="кол-во"
+                                    onChange={e => setWhFlat(p => ({ ...p, [s.key]: e.target.value }))}
+                                    style={{ width: 80 }}
+                                  />
+                                  <div style={{ width: 100, textAlign: "right", fontWeight: on ? 700 : 400 }}>
+                                    {sum ? `${sum.toLocaleString()} тг` : "—"}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                            <button type="button" className="btn btn--sm btn--accent" style={{ marginTop: 6 }}
+                              onClick={() => addPickedFlat(g)}>
+                              + Добавить отмеченные
+                            </button>
+                          </div>
+                        ))}
+
+                        {whPositions.length > 0 && (
+                          <div style={{ marginTop: 12, borderTop: "1px solid #e2e8f0", paddingTop: 10 }}>
+                            {whPositions.map(r => (
+                              <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "3px 0", fontSize: "0.88rem" }}>
+                                <span style={{ flex: 1 }}>{r.name}</span>
+                                <span className="muted">{r.qty} × {r.price.toLocaleString()}</span>
+                                <strong style={{ width: 100, textAlign: "right" }}>{r.total.toLocaleString()} тг</strong>
+                                <button type="button" className="btn btn--sm btn--danger"
+                                  onClick={() => setWhPositions(p => p.filter(x => x.id !== r.id))}>✕</button>
+                              </div>
+                            ))}
+                            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 10, flexWrap: "wrap" }}>
+                              <div style={{ flex: 1, fontWeight: 700, minWidth: 180 }}>
+                                Итого: {draftTotal(whPositions).toLocaleString()} тг
+                              </div>
+                              <button type="button" className="btn btn--accent" onClick={addWarehouseToAct}>
+                                Добавить в накладную →
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
               </div>
 
               {(SHOW_CITY_DELIVERY || SHOW_REGION_DELIVERY) && (
@@ -1451,6 +1693,7 @@ export default function ActCreatePage() {
                 )}
               </div>
               )}
+
 
               <div className="table_wrap">
                 <table className="table_fixed">
@@ -1600,6 +1843,18 @@ export default function ActCreatePage() {
                     <div className="field">
                       <div className="label">Водитель (Ф.И.О.)</div>
                       <input value={docAttrs.driver} onChange={(e) => setDocAttrs({ ...docAttrs, driver: e.target.value })} />
+                    </div>
+                    {/* ТЗ: телефон водителя — только для базы, в накладную не идёт.
+                        В заявке ничего не обязательно: машину назначают позже,
+                        проверка стоит на формировании ТТН/СМР. */}
+                    <div className="field">
+                      <div className="label">Телефон водителя</div>
+                      <input
+                        value={docAttrs.driverPhone || ""}
+                        onChange={(e) => setDocAttrs({ ...docAttrs, driverPhone: e.target.value })}
+                        placeholder="+7 777 123 45 67"
+                        title="Сохраняется в базе, в ТТН/СМР не выводится"
+                      />
                     </div>
                     <div className="field" style={{ gridColumn: "span 1" }}>
                       <label className="label_checkbox" style={{ marginTop: 32 }}>

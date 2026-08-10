@@ -92,6 +92,8 @@ export const login = async (req: Request, res: Response) => {
         // 🆕 ТЗ v2: чтоб PRIVATE на фронте знал свою компанию
         assignedCompanyId: (user as any).assignedCompanyId || null,
         contactPhone: (user as any).contactPhone || null,
+        // ТЗ: город курьера — по нему интерфейс фильтрует его доставки.
+        city: (user as any).city || '',
       }
     });
   } catch (error: any) {
@@ -116,6 +118,8 @@ export const getMe = async (req: any, res: Response) => {
         // 🆕 ТЗ v2
         assignedCompanyId: true,
         contactPhone: true,
+        // ТЗ: город курьера
+        city: true,
       }
     });
     if (!user) {

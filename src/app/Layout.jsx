@@ -586,6 +586,15 @@ export default function Layout() {
                         <span className="menu_text">Отчёт</span>
                       </NavLink>
                     )}
+                    {/* ТЗ: последний шаг цепочки частных — «Завершённые» по факту
+                        оплаты, и отмечает его бухгалтер. Без этого пункта он
+                        до раздела просто не доберётся: своего меню у частных
+                        для него не было. Открыт только список накладных —
+                        «Партии» и создание заявок бухгалтеру по-прежнему не нужны. */}
+                    <NavLink to="/simple" className={({ isActive }) => (isActive ? "selected_menu" : "")} title="Частные лица">
+                      <span className="menu_icon">📋</span>
+                      <span className="menu_text">Частные лица</span>
+                    </NavLink>
                   </div>
                 )}
 
