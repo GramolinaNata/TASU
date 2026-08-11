@@ -351,6 +351,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { calcDeliveryPrice } from "../../shared/tariff/calcTariff.js";
+import { readExtra, extraPatch, totalWithExtra, tariffPartOf } from "../../shared/acts/extraSum.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
 import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
 import {
@@ -391,6 +392,11 @@ export default function SimpleActDetailPage() {
   const [tariffs, setTariffs] = useState([]);
   const [autoCalc, setAutoCalc] = useState(false);   // сумма проставлена движком
   const [manualSum, setManualSum] = useState(false); // сумму правили руками — не затирать
+  // ТЗ: доп. сумма за нестандартный груз — отдельным слагаемым от тарифной части.
+  const [extra, setExtra] = useState({ on: false, sum: "", note: "" });
+  // ТЗ: выгрузка, сохранённая в накладной (для отчёта бухгалтера).
+  // null — пересчёт не состоялся, прежнее значение трогать нельзя.
+  const [unloadSum, setUnloadSum] = useState(null);
   const [calcPreview, setCalcPreview] = useState(null); // { sum, description, byWeightOnly }
 
   // Габариты сохраняются в накладной только с версии «групп размеров».
@@ -422,6 +428,20 @@ export default function SimpleActDetailPage() {
         totalSum: data.totalSum || details.totalSum || "",
         docNumber: details.docNumber || data.docNumber || data.id?.slice(0,8),
         transportType: details.transportType || data.transportType || "auto_console",
+        // Эти три поля лежат в details, а не в колонках Request. Без явного
+        // разбора они приходили undefined, и пересчёт в карточке шёл по
+        // умолчаниям: забор груза не применялся никогда, а выбранная категория
+        // габарита подменялась выведенной из размеров.
+        sizeCategory: details.sizeCategory || "",
+        withDelivery: details.withDelivery !== false,
+        withPickup: details.withPickup === true,
+        // ТЗ: доп. сумма за нестандартный груз.
+        extraSum: details.extraSum,
+        extraSumNote: details.extraSumNote,
+        // Признак ручной правки итога. Раньше жил только в памяти страницы,
+        // поэтому при переоткрытии карточки ручная сумма молча затиралась
+        // тарифной. Теперь переживает перезагрузку.
+        manualSum: details.manualSum === true,
       });
 
       if (data.companyId) {
@@ -465,7 +485,10 @@ export default function SimpleActDetailPage() {
       totalSum: act.totalSum || "",
     });
     setAutoCalc(false);
-    setManualSum(false);
+    // Признак ручной правки берём из накладной, а не сбрасываем в false: раньше
+    // именно этот сброс и затирал введённую вручную сумму при переоткрытии.
+    setManualSum(act.manualSum === true);
+    setExtra(readExtra(act));
     setCalcPreview(null);
     setEditing(true);
   };
@@ -522,13 +545,29 @@ export default function SimpleActDetailPage() {
       sizeCategory: "",
       category: "private",
       transport: (act?.transportType === "avia_console") ? "avia" : "auto",
+      // ТЗ: пересчёт идёт по флагам, СОХРАНЁННЫМ в накладной. У старых накладных
+      // поля нет — доставка считается включённой, как было до галочек,
+      // иначе сумма при открытии поехала бы вниз.
+      withDelivery: act?.withDelivery !== false,
+      withPickup: act?.withPickup === true,
     });
 
-    if (!res.ok) { setCalcPreview(null); setAutoCalc(false); return; }
+    // Тариф не найден — прежнюю сохранённую выгрузку не трогаем: обнулить её
+    // значило бы соврать, что выгрузки не было.
+    if (!res.ok) { setCalcPreview(null); setAutoCalc(false); setUnloadSum(null); return; }
+
+    // ТЗ: выгрузка держится в накладной отдельным полем. При правке веса или
+    // мест её надо пересчитать вместе с суммой — иначе в отчёте останется
+    // число от прежнего состава груза.
+    const unloadLine = (res.lines || []).find(l => l.key === "unload");
+    setUnloadSum(unloadLine ? Number(unloadLine.amount) || 0 : 0);
 
     // ТЗ: одна категория габарита на накладную × общее число мест.
-    const sum = res.sum + flatSizeSurcharge(res.tariff, form.sizeCategory, seatsManual);
-    setCalcPreview({ sum, description: res.description, byWeightOnly: !hasDimsNow });
+    const tariffSum = res.sum + flatSizeSurcharge(res.tariff, form.sizeCategory, seatsManual);
+    // ТЗ: доп. сумма прибавляется ПОСЛЕ тарифа и в пересчёте не участвует —
+    // поэтому правка веса или города её не сдвигает.
+    const sum = totalWithExtra(tariffSum, extra);
+    setCalcPreview({ sum, tariffSum, description: res.description, byWeightOnly: !hasDimsNow });
 
     // Молча пишем сумму только когда габариты известны и человек её не правил.
     if (hasDimsNow && !manualSum) {
@@ -538,7 +577,7 @@ export default function SimpleActDetailPage() {
       setAutoCalc(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, form?.toCity, form?.fromCity, form?.weight, form?.dimGroups, volumeM3, seatsManual, form?.sizeCategory, tariffs, manualSum, hasDimsNow]);
+  }, [editing, form?.toCity, form?.fromCity, form?.weight, form?.dimGroups, volumeM3, seatsManual, form?.sizeCategory, tariffs, manualSum, hasDimsNow, extra]);
 
   // Явное применение предложенной суммы (для старых накладных без габаритов).
   const applyCalc = () => {
@@ -574,6 +613,15 @@ export default function SimpleActDetailPage() {
         volumeM3,
         totalSum: form.totalSum,
         docNumber: act.docNumber,
+        // ТЗ: доп. сумма за нестандартный груз — отдельным слагаемым.
+        ...extraPatch(extra),
+        // ТЗ: выгрузка для отчёта бухгалтера. Пишем только при состоявшемся
+        // пересчёте: details сливаются, и пропуск ключа сохраняет прежнее
+        // значение — это и нужно, когда тариф не нашёлся.
+        ...(unloadSum != null ? { unloadSum } : {}),
+        // Признак ручной правки итога переносим в накладную: без него пересчёт
+        // при следующем открытии карточки затёр бы введённое вручную.
+        manualSum,
       };
 
       // details шлём ОБЪЕКТОМ. Строкой бэк её раньше молча терял (правки не
@@ -595,6 +643,10 @@ export default function SimpleActDetailPage() {
         dims: newDetails.dims,
         volumeM3: newDetails.volumeM3,
         totalSum: newDetails.totalSum,
+        sizeCategory: newDetails.sizeCategory,
+        extraSum: newDetails.extraSum,
+        extraSumNote: newDetails.extraSumNote,
+        manualSum: newDetails.manualSum,
       }));
       setEditing(false);
       setForm(null);
@@ -756,6 +808,17 @@ export default function SimpleActDetailPage() {
     const weight = act.totals?.weight ? `${act.totals.weight} кг` : "—";
     const sum = act.totalSum ? Number(act.totalSum).toLocaleString() : "—";
 
+    // ТЗ: доплата за нестандартный груз — отдельной строкой, чтобы клиент видел,
+    // за что доплатил. Тарифную часть НЕ пересчитываем движком: тарифы могли
+    // поменяться со дня оформления, и в чеке вышло бы одно, а в накладной
+    // другое. Берём итог минус доплату — ровно то, что было на момент выдачи.
+    const receiptExtra = readExtra(act);
+    const extraRows = receiptExtra.on && act.totalSum
+      ? `  <div class="row">Тариф: ${escapeHtml(tariffPartOf(act.totalSum, receiptExtra).toLocaleString())} тг</div>
+  <div class="row">Доп. за нестанд. груз: ${escapeHtml(receiptExtra.sum.toLocaleString())} тг</div>
+${receiptExtra.note ? `  <div class="row">(${escapeHtml(receiptExtra.note)})</div>\n` : ''}`
+      : '';
+
     const tt = act.transportType || act.docAttrs?.transportType;
     const transportLabel =
       tt === 'plane' ? 'Авиа' :
@@ -777,7 +840,7 @@ export default function SimpleActDetailPage() {
   <div class="sep">- - - - - - - - - - - - - - - - - -</div>
   <div class="row">Перевозка: ${escapeHtml(transportLabel)}</div>
   <div class="row">Мест: ${escapeHtml(String(seats))} | Вес: ${escapeHtml(String(weight))}</div>
-  <div class="row"><strong>Итого: ${escapeHtml(String(sum))} тг</strong></div>
+${extraRows}  <div class="row"><strong>Итого: ${escapeHtml(String(sum))} тг</strong></div>
   <div class="row">Дата: ${escapeHtml(dateStr)}</div>
   <div class="sep">- - - - - - - - - - - - - - - - - -</div>
   <div class="row"><strong>${escapeHtml(paymentLabel)}</strong></div>
@@ -931,6 +994,26 @@ ${receiptBlock}
 
               <div className="field"><div className="label">Характер груза</div><input value={form.cargoText} onChange={e => setForm({...form, cargoText: e.target.value})} /></div>
 
+              {/* ТЗ: доп. сумма за нестандартный груз. Как и в форме создания —
+                  перед итогом: тариф → доплата → итого. */}
+              <div className="field">
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: "pointer" }}>
+                  <input type="checkbox" checked={extra.on}
+                    onChange={e => setExtra(p => ({ ...p, on: e.target.checked }))} />
+                  Доп. сумма за нестандартный груз
+                </label>
+                {extra.on && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                    <input type="number" min="0" value={extra.sum} placeholder="сумма, тг"
+                      onChange={e => setExtra(p => ({ ...p, sum: e.target.value }))}
+                      style={{ width: 130 }} />
+                    <input type="text" value={extra.note} placeholder="причина (необязательно)"
+                      onChange={e => setExtra(p => ({ ...p, note: e.target.value }))}
+                      style={{ flex: 1, minWidth: 160 }} />
+                  </div>
+                )}
+              </div>
+
               <div className="field">
                 <div className="label">
                   Сумма (тг)
@@ -942,6 +1025,18 @@ ${receiptBlock}
                   value={form.totalSum}
                   onChange={e => { setForm({ ...form, totalSum: e.target.value }); setManualSum(true); setAutoCalc(false); }}
                 />
+
+                {/* Разбивка считается от того, что СЕЙЧАС в поле итога, а не от
+                    тарифа: если сумму правили руками, показывать посчитанный
+                    тариф было бы враньём — в накладной другое число. */}
+                {extra.on && totalWithExtra(0, extra) > 0 && (
+                  <div className="muted" style={{ marginTop: 6, fontSize: "0.75rem", lineHeight: 1.6 }}>
+                    Тариф: <strong>{tariffPartOf(form.totalSum, extra).toLocaleString()} тг</strong><br />
+                    Доп. сумма: <strong>{totalWithExtra(0, extra).toLocaleString()} тг</strong>
+                    {extra.note.trim() ? ` — ${extra.note.trim()}` : ""}<br />
+                    Итого: <strong>{Number(form.totalSum || 0).toLocaleString()} тг</strong>
+                  </div>
+                )}
 
                 {/* Старая накладная без сохранённых габаритов: сумму не трогаем молча.
                     Объём при пересчёте вышел бы 0, и цена, посчитанная по кубам, упала бы. */}

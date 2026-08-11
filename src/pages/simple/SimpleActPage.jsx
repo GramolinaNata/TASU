@@ -33,6 +33,7 @@ function ContactSuggest({ items, query, onPick }) {
   );
 }
 import { calcDeliveryPrice, findDeliveryTariff, cleanCityName, getTariffCategory, getDeliveryDestinations, getTariffOrigins } from "../../shared/tariff/calcTariff.js";
+import { extraPatch, totalWithExtra } from "../../shared/acts/extraSum.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
 import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
 import {
@@ -190,6 +191,11 @@ export default function SimpleActPage() {
   const [tariffs, setTariffs] = useState([]);
   const [saved, setSaved] = useState(false);
   const [autoCalc, setAutoCalc] = useState(false);
+  // ТЗ: доставка и забор груза — по галочкам, как у юрлиц. Доставка включена
+  // по умолчанию (её ставят почти всегда), забор — выключен. Выбор
+  // сохраняется в накладную: иначе пересчёт при открытии дал бы другую сумму.
+  const [withDelivery, setWithDelivery] = useState(true);
+  const [withPickup, setWithPickup] = useState(false);
   const [docNumber, setDocNumber] = useState("");
   const [form, setForm] = useState({
     senderName: "",
@@ -270,10 +276,34 @@ export default function SimpleActPage() {
   // надбавку Σ(ставка_i × мест_i) считаем по группам и прибавляем сверху.
   // Сам движок при этом не меняется.
   const [sizeExtra, setSizeExtra] = useState(0);
+
+  // ТЗ: доп. сумма за нестандартный груз (полкуба, нестандартная упаковка).
+  // Живёт ОТДЕЛЬНО от тарифной части: движок пересчитывает свою сумму сколько
+  // угодно раз, доплата при этом стоит на месте. Раньше единственным способом
+  // было перебить итог руками — и он пропадал при первой же правке веса.
+  const [extra, setExtra] = useState({ on: false, sum: "", note: "" });
+  // Тарифная часть отдельно — чтобы показать разбивку «тариф / доплата / итого».
+  const [tariffPart, setTariffPart] = useState(0);
+
+  // ТЗ: выгрузка сохраняется В НАКЛАДНОЙ. Раньше в частной оставался только
+  // итог, и отчёту бухгалтера приходилось восстанавливать выгрузку пересчётом
+  // по ТЕКУЩЕМУ тарифу — а он с тех пор мог поменяться. Записываем то число,
+  // которое движок реально положил в сумму, — тогда отчёт показывает факт.
+  //
+  // null — «не считали» (тариф не найден). Это не то же самое, что 0
+  // («ставка выгрузки не задана»), поэтому не сохраняем ноль вместо незнания.
+  const [unloadSum, setUnloadSum] = useState(null);
+
   useEffect(() => {
     if (!form.toCity || !form.weight) {
       setAutoCalc(false);
       setSizeExtra(0);
+      setTariffPart(0);
+      setUnloadSum(null);
+      // Тариф не посчитался, но доплата — самостоятельная величина: если её
+      // ввели, она должна попасть в итог и без тарифа.
+      const alone = totalWithExtra(0, extra);
+      if (alone > 0) setForm(prev => ({ ...prev, totalSum: String(alone) }));
       return;
     }
     const res = calcDeliveryPrice({
@@ -291,20 +321,32 @@ export default function SimpleActPage() {
       regionDelivery: form.regionEnabled ? (form.regionDelivery || "") : "",
       sizeCategory: "",
       category: "private",
+      withDelivery,
+      withPickup,
       transport: form.transportType === "avia_console" ? "avia" : "auto",
     });
     if (res.ok) {
       // ТЗ: одна категория габарита на всю накладную, надбавка = ставка × общее
       // количество мест. Разбивка по группам осталась только для объёма.
-      const extra = flatSizeSurcharge(res.tariff, form.sizeCategory, seatsManual);
-      setSizeExtra(extra);
-      setForm(prev => ({ ...prev, totalSum: String(res.sum + extra) }));
+      const sizeAdd = flatSizeSurcharge(res.tariff, form.sizeCategory, seatsManual);
+      setSizeExtra(sizeAdd);
+      // Тарифная часть — всё, что посчитал движок, плюс надбавка за габарит.
+      const byTariff = res.sum + sizeAdd;
+      setTariffPart(byTariff);
+      // Строки выгрузки может не быть вовсе — тариф без ставки или мест ноль.
+      // Тогда это честный ноль, а не пробел: движок выгрузку не начислял.
+      const unloadLine = (res.lines || []).find(l => l.key === "unload");
+      setUnloadSum(unloadLine ? Number(unloadLine.amount) || 0 : 0);
+      // totalSum остаётся ИТОГОМ: его читают список, чек, наклейка и отчёты.
+      setForm(prev => ({ ...prev, totalSum: String(totalWithExtra(byTariff, extra)) }));
       setAutoCalc(true);
     } else {
       setAutoCalc(false);
       setSizeExtra(0);
+      setTariffPart(0);
+      setUnloadSum(null);
     }
-  }, [form.toCity, form.fromCity, form.weight, form.transportType, form.prrType, form.pallets, form.storageMode, form.storageDays, form.cityDelivery, form.regionEnabled, form.regionDelivery, form.dimGroups, volumeM3, seatsManual, form.sizeCategory, tariffs]);
+  }, [form.toCity, form.fromCity, form.weight, form.transportType, form.prrType, form.pallets, form.storageMode, form.storageDays, form.cityDelivery, form.regionEnabled, form.regionDelivery, form.dimGroups, volumeM3, seatsManual, form.sizeCategory, tariffs, withDelivery, withPickup, extra]);
 
   // Список посёлков для «Доставки в регион» — из тарифов категории region_delivery.
   const regionOptions = useMemo(() => {
@@ -361,6 +403,11 @@ export default function SimpleActPage() {
     }));
     setSaved(false);
     setAutoCalc(false);
+    // Доплата — свойство КОНКРЕТНОГО груза, а не отправителя: на следующую
+    // накладную её тянуть нельзя, иначе перенесётся молча вместе с суммой.
+    setExtra({ on: false, sum: "", note: "" });
+    setTariffPart(0);
+    setUnloadSum(null);
     const next = await genNextSimpleNumber();
     setDocNumber(next);
   };
@@ -401,6 +448,17 @@ export default function SimpleActPage() {
           sizeCategory: form.sizeCategory || "",
           volumeM3,
           totalSum: form.totalSum,
+          // ТЗ: выбор «доставка / забор» — чтобы пересчёт при открытии дал ту же сумму.
+          withDelivery,
+          withPickup,
+          // ТЗ: доп. сумма за нестандартный груз. Хранится отдельным слагаемым,
+          // иначе при пересчёте её нельзя было бы отделить от тарифной части.
+          ...extraPatch(extra),
+          // ТЗ: выгрузка — отдельным полем, чтобы отчёт бухгалтера показывал её
+          // как факт, а не восстанавливал по текущему тарифу. Ключ пишем только
+          // когда расчёт состоялся: details на бэке сливаются, и null затёр бы
+          // ранее сохранённое значение ничем.
+          ...(unloadSum != null ? { unloadSum } : {}),
         }),
       });
 
@@ -536,7 +594,8 @@ export default function SimpleActPage() {
 
   // Подсказки городов: назначения — частные тарифы + посёлки; отправления — fromCity тарифов.
   const destinationCities = useMemo(() => getDeliveryDestinations(tariffs, "private"), [tariffs]);
-  const originCities = useMemo(() => getTariffOrigins(tariffs), [tariffs]);
+  // ТЗ: у частных — только города из тарифов частных, симметрично юрлицам.
+  const originCities = useMemo(() => getTariffOrigins(tariffs, "private"), [tariffs]);
 
   return (
     <>
@@ -811,12 +870,56 @@ export default function SimpleActPage() {
                   {TRANSPORT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>
               </div>
+              {/* ТЗ: доставка и забор — по галочкам. Пересчёт срабатывает сразу,
+                  чтобы менеджер видел итог, а не гадал. */}
+              <div className="field" style={{ display: "flex", gap: 16, alignItems: "center" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: "pointer" }}>
+                  <input type="checkbox" checked={withDelivery} onChange={e => setWithDelivery(e.target.checked)} />
+                  Доставка
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: "pointer" }}>
+                  <input type="checkbox" checked={withPickup} onChange={e => setWithPickup(e.target.checked)} />
+                  Забор груза
+                </label>
+              </div>
+
+              {/* ТЗ: доп. сумма за нестандартный груз. Стоит ПЕРЕД полем итога,
+                  потому что читается сверху вниз: тариф → доплата → итого. */}
+              <div className="field">
+                <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: "pointer" }}>
+                  <input type="checkbox" checked={extra.on}
+                    onChange={e => setExtra(p => ({ ...p, on: e.target.checked }))} />
+                  Доп. сумма за нестандартный груз
+                </label>
+                {extra.on && (
+                  <div style={{ display: "flex", gap: 8, marginTop: 6, flexWrap: "wrap" }}>
+                    <input type="number" min="0" value={extra.sum} placeholder="сумма, тг"
+                      onChange={e => setExtra(p => ({ ...p, sum: e.target.value }))}
+                      style={{ width: 130 }} />
+                    <input type="text" value={extra.note} placeholder="причина (необязательно)"
+                      onChange={e => setExtra(p => ({ ...p, note: e.target.value }))}
+                      style={{ flex: 1, minWidth: 160 }} />
+                  </div>
+                )}
+              </div>
+
               <div className="field">
                 <div className="label">
                   Сумма (тг)
                   {autoCalc && <span style={{ marginLeft: 8, fontSize: "0.75rem", color: "#389e0d" }}>⚡ Рассчитано автоматически</span>}
                 </div>
                 <input type="number" value={form.totalSum} onChange={e => { setForm({...form, totalSum: e.target.value}); setAutoCalc(false); }} placeholder="0" />
+
+                {/* Разбивка показывается только когда доплата есть: иначе это
+                    просто итог, и лишняя строка «тариф = итог» только мешает. */}
+                {autoCalc && extra.on && totalWithExtra(0, extra) > 0 && (
+                  <div className="muted" style={{ marginTop: 6, fontSize: "0.75rem", lineHeight: 1.6 }}>
+                    Тариф: <strong>{tariffPart.toLocaleString()} тг</strong><br />
+                    Доп. сумма: <strong>{totalWithExtra(0, extra).toLocaleString()} тг</strong>
+                    {extra.note.trim() ? ` — ${extra.note.trim()}` : ""}<br />
+                    Итого: <strong>{totalWithExtra(tariffPart, extra).toLocaleString()} тг</strong>
+                  </div>
+                )}
               </div>
             </div>
           </div>

@@ -5,6 +5,7 @@ import { api } from "../../shared/api/api.js";
 import { activeRequestIds, batchTotalsExcludingCanceled } from "../../shared/batch/batchTotals.js";
 import { vedomostRowForBatch, payoutsFromRow } from "../../shared/batch/vedomostPayouts.js";
 import { calcTax, taxSettingsOf } from "../../shared/tax/calcTax.js";
+import { unloadOfRequests } from "../../shared/report/unloadSum.js";
 
 const parseDetails = (raw) => {
   if (!raw) return {};
@@ -37,6 +38,9 @@ export default function BookkeeperReportPage() {
   const [representatives, setRepresentatives] = useState([]);
   const [companies, setCompanies] = useState([]);
   const [carrierVedomosts, setCarrierVedomosts] = useState([]);
+  // Тарифы нужны только для колонки «Выгрузка»: у накладных без сохранённой
+  // разбивки её приходится восстанавливать по ставке за место.
+  const [tariffs, setTariffs] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [dateFrom, setDateFrom] = useState('');
@@ -77,7 +81,7 @@ export default function BookkeeperReportPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const [b, r, e, c, rep, comp, cv] = await Promise.all([
+      const [b, r, e, c, rep, comp, cv, tf] = await Promise.all([
         api.batches.list().catch(() => []),
         api.requests.list().catch(() => []),
         api.expenses.list({}).catch(() => []),
@@ -85,6 +89,7 @@ export default function BookkeeperReportPage() {
         api.representatives.list().catch(() => []),
         api.companies.list().catch(() => []),
         api.carrierVedomosts.list().catch(() => []),
+        api.tariffs.list().catch(() => []),
       ]);
       setBatches(Array.isArray(b) ? b : []);
       setRequests(Array.isArray(r) ? r : []);
@@ -93,6 +98,7 @@ export default function BookkeeperReportPage() {
       setRepresentatives(Array.isArray(rep) ? rep : []);
       setCompanies(Array.isArray(comp) ? comp : []);
       setCarrierVedomosts(Array.isArray(cv) ? cv : []);
+      setTariffs(Array.isArray(tf) ? tf : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -101,6 +107,28 @@ export default function BookkeeperReportPage() {
   };
 
   useEffect(() => { load(); }, []);
+
+  // Ячейка выгрузки. Восстановленное значение помечаем звёздочкой: у частных
+  // накладных разбивка не сохранялась, и число пересчитано по ТЕКУЩЕМУ тарифу.
+  // Если тариф с тех пор менялся, оно разойдётся с тем, что в выручке, — и
+  // бухгалтер должен это видеть, а не принимать оценку за факт.
+  const unloadCell = (r) => {
+    if (!r.unloadKnown) {
+      return <span className="muted" title="Тариф для направления не найден — выгрузку восстановить не удалось">—</span>;
+    }
+    const text = `${fmt(r.unload)} тг`;
+    if (r.unloadExact) return text;
+    return (
+      <span
+        style={{ color: "#92400e" }}
+        title={"Восстановлено по текущему тарифу (ставка за место × количество мест).\n" +
+               "В самой накладной разбивка не сохранена, поэтому если тариф с тех пор\n" +
+               "менялся, число может отличаться от вошедшего в выручку."}
+      >
+        {text}<span style={{ opacity: 0.7 }}>*</span>
+      </span>
+    );
+  };
 
   const carrierName = (id) => carriers.find(c => c.id === id)?.name || "—";
   const repName = (id) => representatives.find(r => r.id === id)?.name || "—";
@@ -147,6 +175,22 @@ export default function BookkeeperReportPage() {
     return seats || Number(batch.totalSeats) || 0;
   };
 
+  // Вес партии — тем же способом, что и места. Значение уже считалось в
+  // batchTotalsExcludingCanceled и просто не выводилось: отчёт брал из него
+  // только income и seats. Расчёт не трогаем — добавляем вывод.
+  const batchWeight = (batch) => {
+    const weight = batchTotalsExcludingCanceled(batchIds(batch), getRequest).weight;
+    return weight || Number(batch.totalWeight) || 0;
+  };
+
+  // ТЗ: выгрузка отдельной колонкой — заказчик не находит её в отчёте, потому
+  // что она сидит внутри «Выручки». СПРАВОЧНАЯ величина: никуда не прибавляется,
+  // выручку/налог/прибыль не двигает — иначе выгрузка посчиталась бы дважды.
+  const batchUnload = (batch) => {
+    const reqs = batchActiveIds(batch).map(getRequest).filter(Boolean);
+    return unloadOfRequests(reqs, tariffs);
+  };
+
   // Компания партии = компания её накладных (у самих партий companyId пустой), без аннулированных
   const batchCompanyId = (batch) => {
     if (batch.companyId) return batch.companyId;
@@ -182,6 +226,8 @@ export default function BookkeeperReportPage() {
       const loaders = (vedRow && vedRow.loadersCount != null)
         ? Number(vedRow.loadersCount) || 0 : (b.loadersCount || 0);
       const seats = batchSeats(b);
+      const weight = batchWeight(b);
+      const unload = batchUnload(b);
 
       // ТЗ: налог считается от компании партии по её ставкам. Сам расчёт вынесен
       // в shared/tax/calcTax.js и покрыт тестами: в ОУР появился КПН, который
@@ -213,8 +259,14 @@ export default function BookkeeperReportPage() {
         carrier,
         loaders,
         seats,
+        weight,
         region: b.city || "—",
         income,
+        // Выгрузка — ЧАСТЬ income, не слагаемое к нему. В totalPayouts и profit
+        // ниже она намеренно не участвует.
+        unload: unload.sum,
+        unloadExact: unload.exact,
+        unloadKnown: unload.known,
         expense,
         carrierSum: payouts.carrierSum,
         loaderSum: payouts.loaderSum,
@@ -237,7 +289,7 @@ export default function BookkeeperReportPage() {
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [batches, requests, expenses, carriers, representatives, companies, carrierVedomosts, companyId, dateFrom, dateTo, tab]);
+  }, [batches, requests, expenses, carriers, representatives, companies, carrierVedomosts, tariffs, companyId, dateFrom, dateTo, tab]);
 
   // Если что-то отмечено — работаем только с отмеченными, иначе со всеми
   const activeRows = selected.length > 0 ? rows.filter(r => selected.includes(r.id)) : rows;
@@ -259,15 +311,20 @@ export default function BookkeeperReportPage() {
     const list = [...map.values()].map(g => {
       const agg = g.rows.reduce((a, r) => ({
         seats: a.seats + r.seats,
+        weight: a.weight + r.weight,
         loaders: a.loaders + r.loaders,
         income: a.income + r.income,
+        unload: a.unload + r.unload,
+        // Группа считается точной, только если точны ВСЕ её партии.
+        unloadExact: a.unloadExact && r.unloadExact,
+        unloadKnown: a.unloadKnown || r.unloadKnown,
         expense: a.expense + r.expense,
         carrierSum: a.carrierSum + r.carrierSum,
         loaderSum: a.loaderSum + r.loaderSum,
         representativeSum: a.representativeSum + r.representativeSum,
         taxAmount: a.taxAmount + r.taxAmount,
         profit: a.profit + r.profit,
-      }), { seats: 0, loaders: 0, income: 0, expense: 0, carrierSum: 0, loaderSum: 0, representativeSum: 0, taxAmount: 0, profit: 0 });
+      }), { seats: 0, weight: 0, loaders: 0, income: 0, unload: 0, unloadExact: true, unloadKnown: false, expense: 0, carrierSum: 0, loaderSum: 0, representativeSum: 0, taxAmount: 0, profit: 0 });
 
       // Перевозчик/представитель/регион в шапке группы: показываем, только если
       // он один на всю ведомость. Разные — «разные», чтобы не выдавать первый за общий.
@@ -318,6 +375,9 @@ export default function BookkeeperReportPage() {
 
   const totals = useMemo(() => ({
     income: activeRows.reduce((a, r) => a + r.income, 0),
+    // Справочный итог. В totalPayouts и profit не входит — выгрузка уже в income.
+    unload: activeRows.reduce((a, r) => a + r.unload, 0),
+    unloadExact: activeRows.every(r => r.unloadExact),
     expense: activeRows.reduce((a, r) => a + r.expense, 0),
     carrierSum: activeRows.reduce((a, r) => a + r.carrierSum, 0),
     loaderSum: activeRows.reduce((a, r) => a + r.loaderSum, 0),
@@ -361,8 +421,10 @@ export default function BookkeeperReportPage() {
       <td>${r.carrier}</td>
       <td style="text-align:center">${r.loaders || '—'}</td>
       <td style="text-align:center">${r.seats || '—'}</td>
+      <td style="text-align:center">${r.weight ? fmt(r.weight) : '—'}</td>
       <td>${r.region}</td>
       <td style="text-align:right">${fmt(r.income)} тг</td>
+      <td style="text-align:right">${r.unloadKnown ? fmt(r.unload) + " тг" + (r.unloadExact ? "" : "*") : "—"}</td>
       <td style="text-align:right">${fmt(r.expense)} тг</td>
       <td style="text-align:right">${fmt(r.carrierSum)} тг</td>
       <td style="text-align:right">${fmt(r.loaderSum)} тг</td>
@@ -392,8 +454,10 @@ export default function BookkeeperReportPage() {
         <th>Перевозчик</th>
         <th style="width:50px">Грузчик</th>
         <th style="width:50px">Мест</th>
+        <th style="width:60px">Вес (кг)</th>
         <th>Регион</th>
         <th>Выручка</th>
+        <th>Выгрузка</th>
         <th>Расходы</th>
         <th>Перевозчику</th>
         <th>Грузчикам</th>
@@ -403,8 +467,9 @@ export default function BookkeeperReportPage() {
       </tr></thead>
       <tbody>${trs}</tbody>
       <tfoot><tr>
-        <td colspan="8" style="text-align:right">ИТОГО:</td>
+        <td colspan="9" style="text-align:right">ИТОГО:</td>
         <td style="text-align:right">${fmt(totals.income)} тг</td>
+        <td style="text-align:right">${fmt(totals.unload)} тг${totals.unloadExact ? "" : "*"}</td>
         <td style="text-align:right">${fmt(totals.expense)} тг</td>
         <td style="text-align:right">${fmt(totals.carrierSum)} тг</td>
         <td style="text-align:right">${fmt(totals.loaderSum)} тг</td>
@@ -413,6 +478,11 @@ export default function BookkeeperReportPage() {
         <td style="text-align:right">${fmt(totals.profit)} тг</td>
       </tr></tfoot>
     </table>
+    <div style="margin-top:8px;font-size:9px;color:#333">
+      Колонка «Выгрузка» — справочная: эта сумма уже входит в «Выручку» и к итогам отдельно не прибавляется.
+      ${sortRows(activeRows).every(r => r.unloadExact) ? "" :
+        "<br>* Значение восстановлено по текущему тарифу (ставка за место × количество мест): в накладной разбивка не сохранена. Если тариф с тех пор менялся, число может отличаться от вошедшего в выручку."}
+    </div>
     <script>window.onload=function(){window.print();}</script>
     </body></html>`;
 
@@ -533,8 +603,12 @@ export default function BookkeeperReportPage() {
                 <SortTh field="carrier">Перевозчик</SortTh>
                 <SortTh field="loaders" style={{ width: 70, textAlign: "center" }}>Грузчик</SortTh>
                 <SortTh field="seats" style={{ width: 60, textAlign: "center" }}>Мест</SortTh>
+                <SortTh field="weight" style={{ width: 80, textAlign: "center" }}>Вес (кг)</SortTh>
                 <SortTh field="region">Регион</SortTh>
                 <SortTh field="income" style={{ textAlign: "right" }}>Выручка</SortTh>
+                <SortTh field="unload" style={{ textAlign: "right" }} >
+                  <span title="Справочно: выгрузка уже входит в «Выручку», отдельно к итогам не прибавляется">Выгрузка</span>
+                </SortTh>
                 <SortTh field="expense" style={{ textAlign: "right" }}>Расходы</SortTh>
                 <SortTh field="carrierSum" style={{ textAlign: "right" }}>Перевозчику</SortTh>
                 <SortTh field="loaderSum" style={{ textAlign: "right" }}>Грузчикам</SortTh>
@@ -546,7 +620,7 @@ export default function BookkeeperReportPage() {
             </thead>
             <tbody>
               {rows.length === 0 ? (
-                <tr><td colSpan={17} className="muted" style={{ padding: 16 }}>Нет данных за выбранный период</td></tr>
+                <tr><td colSpan={19} className="muted" style={{ padding: 16 }}>Нет данных за выбранный период</td></tr>
               ) : groups.map((g, gi) => {
                 const open = expandedVedomost === g.key;
                 return (
@@ -574,8 +648,10 @@ export default function BookkeeperReportPage() {
                       <td>{g.carrier}</td>
                       <td style={{ textAlign: "center" }}>{g.loaders || '—'}</td>
                       <td style={{ textAlign: "center" }}>{g.seats || '—'}</td>
+                      <td style={{ textAlign: "center" }}>{g.weight ? fmt(g.weight) : '—'}</td>
                       <td>{g.region}</td>
                       <td style={{ textAlign: "right" }}>{fmt(g.income)} тг</td>
+                      <td style={{ textAlign: "right" }}>{unloadCell(g)}</td>
                       <td style={{ textAlign: "right" }}>{fmt(g.expense)} тг</td>
                       <td style={{ textAlign: "right" }}>{fmt(g.carrierSum)} тг</td>
                       <td style={{ textAlign: "right" }}>{fmt(g.loaderSum)} тг</td>
@@ -606,8 +682,10 @@ export default function BookkeeperReportPage() {
                         <td>{r.carrier}</td>
                         <td style={{ textAlign: "center" }}>{r.loaders || '—'}</td>
                         <td style={{ textAlign: "center" }}>{r.seats || '—'}</td>
+                        <td style={{ textAlign: "center" }}>{r.weight ? fmt(r.weight) : '—'}</td>
                         <td>{r.region}</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.income)} тг</td>
+                        <td style={{ textAlign: "right" }}>{unloadCell(r)}</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.expense)} тг</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.carrierSum)} тг</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.loaderSum)} тг</td>

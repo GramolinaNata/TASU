@@ -14,6 +14,12 @@ const SHOW_CITY_DELIVERY = false;
 // Отдельная вкладка/категория region_delivery скрыта, но код оставлен — вернуть: true.
 const SHOW_REGION_DELIVERY = false;
 
+// ТЗ: «близлежащий город» (посёлки внутри тарифа, _regionalDeliveries) заказчик
+// не использует — вместо него введён забор груза. Блок СКРЫТ, но данные и
+// расчёт целы: в семи тарифах посёлки заполнены, и стирание их молча изменило
+// бы суммы по уже оформленным направлениям. Вернуть — поставить true.
+const SHOW_POSELOK = false;
+
 // 🆕 ТЗ v2: Стандартные диапазоны весов для частных лиц
 const WEIGHT_RANGES = [
   { key: 'r10', label: 'до 10 кг' },
@@ -158,11 +164,16 @@ function RangeChips({ wr }) {
   return <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>{items}</div>;
 }
 
-// Полный редактор диапазонов (Диапазон | Тип | Значение | Тип дост. | Доставка | ✕).
+// Полный редактор диапазонов
+// (Диапазон | Тип | Значение | Тип дост. | Доставка | Тип забора | Забор | ✕).
 // Переиспользуется основным тарифом И посёлками внутри тарифа — чтобы вид не расходился.
-// rows: [{ maxWeight, mode, value, delivery, deliveryMode }]; onUpdate(idx, field, val).
+// rows: [{ maxWeight, mode, value, delivery, deliveryMode, pickup, pickupMode }].
+//
+// ТЗ: ЗАБОР ГРУЗА — третий тариф рядом с доставкой, со своей градацией по тем же
+// диапазонам и своим типом расчёта. У старых диапазонов полей забора нет —
+// читаются как пустые, суммы прежних тарифов не меняются.
 function RangesEditor({ rows, onUpdate, onAdd, onRemove }) {
-  const grid = '1fr 96px 76px 96px 76px 26px';
+  const grid = '1fr 96px 76px 96px 76px 96px 76px 26px';
   const hdr = { fontWeight: 700, fontSize: '0.72rem', color: '#666' };
   return (
     <>
@@ -172,6 +183,8 @@ function RangesEditor({ rows, onUpdate, onAdd, onRemove }) {
         <div style={hdr}>Значение</div>
         <div style={hdr}>Тип дост.</div>
         <div style={hdr}>Доставка</div>
+        <div style={hdr}>Тип забора</div>
+        <div style={hdr}>Забор груза</div>
         <div />
       </div>
       {(rows || []).map((r, idx) => {
@@ -199,6 +212,11 @@ function RangesEditor({ rows, onUpdate, onAdd, onRemove }) {
               <option value="perKg">За кг</option>
             </select>
             <input type="number" value={r.delivery ?? ''} onChange={e => onUpdate(idx, 'delivery', e.target.value)} placeholder={r.deliveryMode === 'perKg' ? 'тг/кг' : 'тг'} style={{ padding: '4px 6px' }} />
+            <select value={r.pickupMode || 'fixed'} onChange={e => onUpdate(idx, 'pickupMode', e.target.value)} style={{ padding: '4px 4px' }}>
+              <option value="fixed">Фикс.</option>
+              <option value="perKg">За кг</option>
+            </select>
+            <input type="number" value={r.pickup ?? ''} onChange={e => onUpdate(idx, 'pickup', e.target.value)} placeholder={r.pickupMode === 'perKg' ? 'тг/кг' : 'тг'} style={{ padding: '4px 6px' }} />
             <button type="button" className="btn btn-sm btn-danger" onClick={() => onRemove(idx)} title="Удалить диапазон">✕</button>
           </div>
         );
@@ -484,6 +502,9 @@ const tabCounts = useMemo(() => ({
         value: r.value ?? '',
         delivery: r.delivery ?? '',
         deliveryMode: r.deliveryMode === 'perKg' ? 'perKg' : 'fixed',
+        // ТЗ: забор груза. У старых диапазонов поля нет — поле остаётся пустым.
+        pickup: r.pickup ?? '',
+        pickupMode: r.pickupMode === 'perKg' ? 'perKg' : 'fixed',
       }));
     } else {
       Object.keys(wr).forEach((k) => {
@@ -578,9 +599,14 @@ const tabCounts = useMemo(() => ({
             value: parseFloat(r.value) || 0,
             delivery: parseFloat(r.delivery) || 0,
             deliveryMode: r.deliveryMode === 'perKg' ? 'perKg' : 'fixed',
+            // ТЗ: забор груза — третий тариф со своей градацией.
+            pickup: parseFloat(r.pickup) || 0,
+            pickupMode: r.pickupMode === 'perKg' ? 'perKg' : 'fixed',
           };
         })
-        .filter(r => r.value > 0 || r.delivery > 0)
+        // Диапазон сохраняется, если заполнено ХОТЬ ЧТО-ТО из трёх сумм:
+        // раньше строка с одним только забором отбрасывалась бы как пустая.
+        .filter(r => r.value > 0 || r.delivery > 0 || r.pickup > 0)
         .sort((a, b) => (a.maxWeight == null ? Infinity : a.maxWeight) - (b.maxWeight == null ? Infinity : b.maxWeight));
 
       const wrWithExtras = {
@@ -1095,7 +1121,10 @@ const tabCounts = useMemo(() => ({
                 </div>
               )}
 
-              {(form.category === 'legal' || form.category === 'private') && (
+              {/* ТЗ: «близлежащий город» заказчик не использует — вместо него
+                  забор груза. Блок скрыт флагом SHOW_POSELOK, данные и расчёт
+                  целы: в семи тарифах посёлки заполнены. */}
+              {SHOW_POSELOK && (form.category === 'legal' || form.category === 'private') && (
               <div className="field" style={{ marginBottom: 24, padding: 12, background: '#fef9ff', borderRadius: 8, border: '1px dashed #c084fc' }}>
                 <div className="label" style={{ marginBottom: 4 }}>🚐 Доставка в регионы (посёлки рядом с {form.city || 'этим городом'})</div>
                 <div className="muted" style={{ fontSize: '0.72rem', marginBottom: 12 }}>

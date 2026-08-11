@@ -188,43 +188,87 @@ function emptyServiceRow() {
  * Услуга → диапазон размера → количество → сумма → «+».
  * У группы «Прочие» диапазонов нет, селект диапазона скрыт.
  */
-function WarehouseGroupRow({ group, draft, onChange, onAdd }) {
-  const service = group.services.find(x => x.key === draft.serviceKey) || null;
-  const hasRanges = (group.ranges || []).length > 0;
-  const price = service
-    ? (hasRanges ? service.prices?.[draft.rangeKey] : service.price)
-    : null;
-  const qty = Number(draft.qty) || 0;
-  const sum = price != null && qty > 0 ? price * qty : null;
-
+// ТЗ (замечание заказчика): «где упаковка — плюсик должен быть, который точно
+// такой же диапазон может добавиться, там в куче может быть».
+//
+// БЫЛО. На группу — ОДНА строка выбора. Чтобы набрать скотч 30×30, скотч 50×50
+// и стрейч 100×100, менеджер трижды перевыбирал услугу и размер в одном и том же
+// поле, а добавленное сразу уходило вниз, в список, где количество уже не
+// поправить — только удалить и набрать заново.
+//
+// СТАЛО. Строк в группе столько, сколько нужно. «＋» рядом со строкой добавляет
+// СЛЕДУЮЩУЮ с тем же размером и услугой (повторяется обычно как раз размер),
+// количество пустое — его и вводят. Вся «куча» видна разом и правится до
+// переноса в список, а в список уходит одной кнопкой.
+function WarehouseGroupRow({ group, rows, onChange, onAddRow, onRemoveRow, onCommit }) {
   if (group.services.length === 0) return null;
+  const hasRanges = (group.ranges || []).length > 0;
+
+  const priceOfRow = (r) => {
+    const service = group.services.find(x => x.key === r.serviceKey) || null;
+    if (!service) return { service: null, price: null };
+    return { service, price: hasRanges ? service.prices?.[r.rangeKey] : service.price };
+  };
+
+  // Сколько строк готово к переносу. Полупустые (услуга выбрана, количество не
+  // введено) не считаем ошибкой: это заготовка следующей позиции.
+  const ready = rows.filter(r => Number(r.qty) > 0 && priceOfRow(r).price != null).length;
+  const readySum = rows.reduce((acc, r) => {
+    const { price } = priceOfRow(r);
+    const qty = Number(r.qty) || 0;
+    return price != null && qty > 0 ? acc + price * qty : acc;
+  }, 0);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", flexWrap: "wrap" }}>
-      <div style={{ width: 110, fontWeight: 600, fontSize: "0.85rem" }}>{group.name}</div>
+    <div style={{ padding: "6px 0" }}>
+      <div style={{ fontWeight: 600, fontSize: "0.85rem", marginBottom: 4 }}>{group.name}</div>
 
-      <select value={draft.serviceKey || ""} onChange={e => onChange({ serviceKey: e.target.value })}
-        style={{ flex: 1, minWidth: 150 }}>
-        <option value="">— услуга —</option>
-        {group.services.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
-      </select>
+      {rows.map((r) => {
+        const { service, price } = priceOfRow(r);
+        const qty = Number(r.qty) || 0;
+        const sum = price != null && qty > 0 ? price * qty : null;
+        return (
+          <div key={r.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", flexWrap: "wrap" }}>
+            <select value={r.serviceKey || ""} onChange={e => onChange(r.id, { serviceKey: e.target.value })}
+              style={{ flex: 1, minWidth: 150 }}>
+              <option value="">— услуга —</option>
+              {group.services.map(x => <option key={x.key} value={x.key}>{x.name}</option>)}
+            </select>
 
-      {hasRanges && (
-        <select value={draft.rangeKey || ""} onChange={e => onChange({ rangeKey: e.target.value })}
-          style={{ width: 150 }}>
-          <option value="">— размер —</option>
-          {group.ranges.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
-        </select>
+            {hasRanges && (
+              <select value={r.rangeKey || ""} onChange={e => onChange(r.id, { rangeKey: e.target.value })}
+                style={{ width: 150 }}>
+                <option value="">— размер —</option>
+                {group.ranges.map(x => <option key={x.key} value={x.key}>{x.label}</option>)}
+              </select>
+            )}
+
+            <input type="number" min="0" value={r.qty ?? ""} placeholder="кол-во"
+              onChange={e => onChange(r.id, { qty: e.target.value })} style={{ width: 80 }} />
+
+            <div style={{ width: 110, textAlign: "right", fontWeight: sum ? 700 : 400 }}>
+              {sum != null ? `${sum.toLocaleString()} тг` : (service && price == null ? "цена не задана" : "—")}
+            </div>
+
+            <button type="button" className="btn btn--sm btn--accent"
+              onClick={() => onAddRow(r.id)}
+              title="Ещё одна позиция с этим же размером">+</button>
+            {/* Строку можно убрать, но последнюю не даём: пустой группы быть
+                не должно, иначе добавлять станет некуда. */}
+            <button type="button" className="btn btn--sm"
+              onClick={() => onRemoveRow(r.id)}
+              disabled={rows.length === 1}
+              title={rows.length === 1 ? "Единственную строку убрать нельзя" : "Убрать строку"}
+              style={{ opacity: rows.length === 1 ? 0.35 : 1 }}>✕</button>
+          </div>
+        );
+      })}
+
+      {ready > 0 && (
+        <button type="button" className="btn btn--sm btn--accent" style={{ marginTop: 6 }} onClick={onCommit}>
+          Добавить в список ({ready}) · {readySum.toLocaleString()} тг
+        </button>
       )}
-
-      <input type="number" min="0" value={draft.qty ?? ""} placeholder="кол-во"
-        onChange={e => onChange({ qty: e.target.value })} style={{ width: 80 }} />
-
-      <div style={{ width: 110, textAlign: "right", fontWeight: sum ? 700 : 400 }}>
-        {sum != null ? `${sum.toLocaleString()} тг` : (service && price == null ? "цена не задана" : "—")}
-      </div>
-
-      <button type="button" className="btn btn--sm btn--accent" onClick={onAdd} title="Добавить позицию">+</button>
     </div>
   );
 }
@@ -315,6 +359,10 @@ export default function ActCreatePage() {
   const [pallets, setPallets] = useState(""); // кол-во палет для ПРР «палетная»
   const [storageMode, setStorageMode] = useState(""); // '' | 'weight' | 'cube'
   const [storageDays, setStorageDays] = useState("");
+  // ТЗ: галочки «доставка» и «забор груза». Состояние сохраняется в заявку,
+  // иначе при повторном открытии пересчёт дал бы другую сумму.
+  const [withDelivery, setWithDelivery] = useState(true);
+  const [withPickup, setWithPickup] = useState(false);
   const [cityDelivery, setCityDelivery] = useState(false); // доставка до адреса в городе
   const [regionEnabled, setRegionEnabled] = useState(false);
   const [regionDelivery, setRegionDelivery] = useState(""); // название посёлка (region_delivery)
@@ -420,8 +468,11 @@ export default function ActCreatePage() {
   // ПОСЁЛКИ из _regionalDeliveries (с пометкой «посёлок · Родитель»). Отправления = fromCity.
   // ТЗ: прейскурант складских услуг живёт в тарифах отдельной записью.
   const whGroups = useMemo(() => readWarehouseGroups(allTariffs), [allTariffs]);
-  const destinationCities = useMemo(() => getDeliveryDestinations(allTariffs), [allTariffs]);
-  const originCities = useMemo(() => getTariffOrigins(allTariffs), [allTariffs]);
+  // ТЗ: тарифы юрлиц и частных РАЗДЕЛЬНЫЕ. В заявке юрлица показываем только
+  // города из тарифов юрлиц: раньше сюда протекали города, заведённые
+  // в частных (Актау, Жанаозен), и по ним же считался тариф.
+  const destinationCities = useMemo(() => getDeliveryDestinations(allTariffs, "legal"), [allTariffs]);
+  const originCities = useMemo(() => getTariffOrigins(allTariffs, "legal"), [allTariffs]);
 
   // ============================================================
   // ЗАГРУЗКА ДАННЫХ
@@ -483,6 +534,10 @@ export default function ActCreatePage() {
               if (["ttn", "smr"].includes(act.type)) setDocType(act.type);
             }
             if (details.docAttrs) setDocAttrs((prev) => ({ ...prev, ...details.docAttrs }));
+            // Старые заявки поля не имеют: доставка считается включённой,
+            // как было до появления галочек, — иначе суммы поехали бы.
+            setWithDelivery(details.withDelivery !== false);
+            setWithPickup(details.withPickup === true);
 
             setInsured(!!details.insured);
             setCargoValue(details.cargoValue || "");
@@ -560,8 +615,12 @@ export default function ActCreatePage() {
       cityDelivery: cityDelivery,
       regionDelivery: regionEnabled ? regionDelivery : "",
       transport: tariffTransport, // авто/авиа — выбор рядом с кнопкой
-      // category не ограничиваем: берётся legal или private (что найдётся).
-      // Если юр НИКОГДА не должен ловить частный тариф — добавь: category: "legal",
+      // ТЗ: юрлицо считает ТОЛЬКО по тарифам юрлиц. Раньше ограничения не было,
+      // и при отсутствии своего тарифа по городу подхватывался частный —
+      // заказчик увидел это на городах, заведённых в частных лицах.
+      category: "legal",
+      withDelivery,
+      withPickup,
     });
 
     if (!res.ok) {
@@ -569,11 +628,29 @@ export default function ActCreatePage() {
       return;
     }
 
+    // ТЗ (замечание заказчика): раньше сюда падала ОДНА строка, где именем
+    // служила вся расшифровка («Доставка Алматы → Костанай (до 20 кг) +
+    // доставка диапазона … + забор груза … + хранение …»), а суммой — итог.
+    // Заказчику нужно видеть каждую услугу отдельной строкой со своей суммой.
+    // Движок теперь возвращает составляющие в res.lines — раскладываем их.
+    //
+    // Старый формат (одна строка) поддерживаем: если движок по какой-то
+    // причине не отдал lines, поведение остаётся прежним, а не ломается.
+    const calcLines = Array.isArray(res.lines) && res.lines.length
+      ? res.lines.map((l) => ({ id: safeUuid(), calcKey: l.key, name: l.name, qty: 1, price: l.amount, total: l.amount }))
+      : [{ id: safeUuid(), calcKey: "transport", name: res.description, qty: 1, price: res.sum, total: res.sum }];
+
     setWarehouseServices((prev) => {
-      const filtered = prev.filter((s) => s.name || s.price);
-      return [...filtered, { id: safeUuid(), name: res.description, qty: 1, price: res.sum, total: res.sum }];
+      // Пересчёт ЗАМЕНЯЕТ прежние строки тарифа, а не дописывает новые.
+      // Иначе менеджер, поправив вес и нажав «Рассчитать» второй раз,
+      // получил бы двойной счёт: пять строк поверх пяти прежних.
+      // Ручные и складские строки (без calcKey) остаются нетронутыми.
+      const kept = prev.filter((s) => !s.calcKey && (s.name || s.price));
+      return [...kept, ...calcLines];
     });
-    alert(`Добавлена услуга: ${res.description}\nСумма: ${res.sum.toLocaleString()} тг`);
+    alert(
+      `Расчёт по тарифу:\n\n${calcLines.map((l) => `• ${l.name} — ${Number(l.price).toLocaleString()} тг`).join("\n")}\n\nИтого: ${res.sum.toLocaleString()} тг`
+    );
   }, [route.toCity, cargoVolumeM3, cargoWeightKg, allTariffs, tariffTransport, prrType, pallets, storageMode, storageDays, cityDelivery, regionEnabled, regionDelivery]);
 
   // Перевод заявки на другой ИП: старая аннулируется (номер остаётся за ней),
@@ -690,16 +767,90 @@ export default function ActCreatePage() {
     );
   }, []);
 
-  // Добавление позиции в черновой список. Причину отказа показываем словами:
-  // «цена не задана» — ошибка настройки прейскуранта, молча считать нулём нельзя.
-  const addWarehousePosition = useCallback((group) => {
-    const d = whDraft[group.key] || {};
-    const service = group.services.find(x => x.key === d.serviceKey);
-    const res = buildPosition(group, service, d.rangeKey, d.qty, safeUuid);
-    if (!res.ok) { alert(res.reason); return; }
-    setWhPositions(prev => [...prev, res.row]);
-    setWhDraft(prev => ({ ...prev, [group.key]: { serviceKey: d.serviceKey, rangeKey: d.rangeKey, qty: "" } }));
+  // ---------- Черновые строки групп с диапазонами ----------
+  // whDraft: { [groupKey]: [ { id, serviceKey, rangeKey, qty } ] }.
+  // Раньше здесь лежал один объект на группу — теперь список строк, чтобы
+  // упаковку можно было набирать «в кучу» (см. WarehouseGroupRow).
+
+  const blankDraftRow = (groupKey) => ({ id: `${groupKey}-0`, serviceKey: "", rangeKey: "", qty: "" });
+
+  // Группа всегда показывает хотя бы одну строку, даже пока в состоянии пусто.
+  const draftRowsOf = useCallback((groupKey) => {
+    const rows = whDraft[groupKey];
+    return Array.isArray(rows) && rows.length ? rows : [blankDraftRow(groupKey)];
   }, [whDraft]);
+
+  // Все изменения строк идут через одну точку: она же и создаёт список при
+  // первом обращении, поэтому обработчикам ниже не нужно про это помнить.
+  const setDraftRows = useCallback((groupKey, fn) => {
+    setWhDraft(prev => {
+      const cur = Array.isArray(prev[groupKey]) && prev[groupKey].length
+        ? prev[groupKey]
+        : [blankDraftRow(groupKey)];
+      return { ...prev, [groupKey]: fn(cur) };
+    });
+  }, []);
+
+  const changeDraftRow = useCallback((groupKey, id, patch) => {
+    setDraftRows(groupKey, rows => rows.map(r => (r.id === id ? { ...r, ...patch } : r)));
+  }, [setDraftRows]);
+
+  // ТЗ: «плюсик, который точно такой же диапазон может добавиться».
+  // Новая строка встаёт СРАЗУ ПОД той, от которой её добавили, и наследует
+  // услугу с размером — их обычно и повторяют. Количество пустое: это
+  // единственное, что реально меняется от позиции к позиции.
+  const addDraftRow = useCallback((groupKey, afterId) => {
+    setDraftRows(groupKey, rows => {
+      const i = rows.findIndex(r => r.id === afterId);
+      const src = rows[i] || {};
+      const next = [...rows];
+      next.splice(i + 1, 0, {
+        id: safeUuid(),
+        serviceKey: src.serviceKey || "",
+        rangeKey: src.rangeKey || "",
+        qty: "",
+      });
+      return next;
+    });
+  }, [setDraftRows]);
+
+  const removeDraftRow = useCallback((groupKey, id) => {
+    setDraftRows(groupKey, rows => (rows.length <= 1 ? rows : rows.filter(r => r.id !== id)));
+  }, [setDraftRows]);
+
+  // Перенос набранных строк группы в черновой список. Причину отказа показываем
+  // словами: «цена не задана» — ошибка настройки прейскуранта, молча считать
+  // нулём нельзя. Строки без количества пропускаем молча: это заготовки
+  // следующих позиций, а не забытые данные.
+  const addWarehousePositions = useCallback((group) => {
+    const rows = draftRowsOf(group.key);
+    const built = [];
+    const skipped = [];
+    const okIds = new Set();
+
+    for (const r of rows) {
+      if (!(Number(r.qty) > 0)) continue;
+      const service = group.services.find(x => x.key === r.serviceKey);
+      const res = buildPosition(group, service, r.rangeKey, r.qty, safeUuid);
+      if (res.ok) { built.push(res.row); okIds.add(r.id); }
+      else skipped.push(res.reason);
+    }
+
+    if (built.length === 0 && skipped.length === 0) {
+      alert("Укажите количество хотя бы в одной строке.");
+      return;
+    }
+    if (built.length) {
+      setWhPositions(prev => [...prev, ...built]);
+      // Убираем только те строки, что ушли в список. Неудавшиеся остаются
+      // заполненными, чтобы менеджер видел, с чем разбираться.
+      setDraftRows(group.key, rs => {
+        const rest = rs.filter(r => !okIds.has(r.id));
+        return rest.length ? rest : [blankDraftRow(group.key)];
+      });
+    }
+    if (skipped.length) alert("Не добавлено:\n\n" + skipped.map(x => "• " + x).join("\n"));
+  }, [draftRowsOf, setDraftRows]);
 
   // Перенос набранных позиций в таблицу услуг накладной. Формат строк совпадает
   // с ручным вводом, поэтому печать складской накладной и итог работают без правок.
@@ -849,6 +1000,10 @@ export default function ActCreatePage() {
       cargoValue,
       docType,
       docAttrs,
+      // ТЗ: выбор «доставка / забор» сохраняется в заявку — иначе при
+      // повторном открытии пересчёт дал бы другую сумму.
+      withDelivery,
+      withPickup,
       totalSum,
       isWarehouse,
       warehouseServices,
@@ -1503,6 +1658,17 @@ export default function ActCreatePage() {
 
               {/* Правка ТЗ: расчёт по тарифу доступен и при складских услугах (раньше блок прятался под !isWarehouse) */}
               <div style={{ marginBottom: 16, padding: 12, background: "#f0f9ff", border: "1px dashed #60a5fa", borderRadius: 8, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  {/* ТЗ: доставка и забор груза — по галочкам. Раньше доставка
+                      считалась всегда, теперь её можно снять. Доставка включена
+                      по умолчанию (её ставят почти всегда), забор — выключен. */}
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: "pointer" }}>
+                    <input type="checkbox" checked={withDelivery} onChange={e => setWithDelivery(e.target.checked)} />
+                    Доставка
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 600, cursor: "pointer" }}>
+                    <input type="checkbox" checked={withPickup} onChange={e => setWithPickup(e.target.checked)} />
+                    Забор груза
+                  </label>
                   <button type="button" className="btn btn--accent" onClick={calculateByTariff}>
                     💰 Рассчитать по тарифу
                   </button>
@@ -1575,19 +1741,22 @@ export default function ActCreatePage() {
                       </div>
                     ) : (
                       <>
-                        {/* ТЗ: у групп С ДИАПАЗОНАМИ (упаковка, палеты) — строка
-                            с выбором и добавлением по одной: одну услугу берут
-                            в разных диапазонах (скотч на 5 мест 30×30×30 и на
-                            2 места 50×50×50), галочкой такое не выразить.
+                        {/* ТЗ: у групп С ДИАПАЗОНАМИ (упаковка, палеты) — список
+                            строк с плюсиком: одну услугу берут в разных
+                            диапазонах (скотч на 5 мест 30×30×30 и на 2 места
+                            50×50×50), галочкой такое не выразить, а набирают их
+                            «в кучу» — сразу по нескольку.
                             У «Прочих» диапазонов нет — там галочки и несколько
                             услуг сразу, как просил заказчик. */}
                         {whGroups.filter(g => (g.ranges || []).length > 0).map(g => (
                           <WarehouseGroupRow
                             key={g.key}
                             group={g}
-                            draft={whDraft[g.key] || {}}
-                            onChange={patch => setWhDraft(p => ({ ...p, [g.key]: { ...(p[g.key] || {}), ...patch } }))}
-                            onAdd={() => addWarehousePosition(g)}
+                            rows={draftRowsOf(g.key)}
+                            onChange={(id, patch) => changeDraftRow(g.key, id, patch)}
+                            onAddRow={(id) => addDraftRow(g.key, id)}
+                            onRemoveRow={(id) => removeDraftRow(g.key, id)}
+                            onCommit={() => addWarehousePositions(g)}
                           />
                         ))}
 

@@ -42,9 +42,16 @@ export function printLabelViaIframe(html, opts = {}) {
   frame.setAttribute("aria-hidden", "true");
   frame.title = opts.title || "Печать наклейки";
   // Не display:none: часть браузеров не печатает скрытый таким образом
-  // документ. Убираем за пределы экрана нулевым размером.
+  // документ. Уводим за пределы экрана — но с РЕАЛЬНЫМИ размерами.
+  //
+  // Раньше здесь стояло width:0;height:0;visibility:hidden — и наклейка
+  // печаталась на два листа: в вырожденном вьюпорте браузер считал раскладку
+  // непредсказуемо, блок с flex:1 распирало выше листа, и хвост (QR) уезжал
+  // на вторую страницу. Размер под этикетку 100×150 мм (≈378×567 px при 96 dpi)
+  // даёт документу нормальный вьюпорт, а @page внутри всё равно решает,
+  // каким будет физический лист.
   frame.style.cssText =
-    "position:fixed;left:-10000px;top:0;width:0;height:0;border:0;visibility:hidden;";
+    "position:fixed;left:-10000px;top:0;width:378px;height:567px;border:0;";
 
   document.body.appendChild(frame);
 

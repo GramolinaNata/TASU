@@ -238,10 +238,13 @@ const printLabel = async () => {
   @page { size: 100mm 150mm; margin: 0; }
   @media print {
     body { margin: 0; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-    html, body { width: 100mm; height: 150mm; overflow: hidden; }
+    /* max-height, а НЕ height: высота ровно в размер листа при малейшем
+       округлении вниз давала браузеру вторую страницу, и на неё уезжал
+       последний блок наклейки — QR. Контент и так короче листа. */
+    html, body { width: 100mm; max-height: 150mm; overflow: hidden; }
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 100mm; height: 150mm; overflow: hidden; }
+  html, body { width: 100mm; max-height: 150mm; overflow: hidden; }
   body {
     font-family: Arial, Helvetica, sans-serif;
     background: #fff;
@@ -249,7 +252,10 @@ const printLabel = async () => {
   }
   .label {
     width: 100mm;
-    height: 150mm;
+    /* Было height: 150mm — ровно в лист. Вместе с рамкой и округлением это
+       и порождало вторую страницу. Теперь высота по содержимому, с потолком
+       в размер этикетки. */
+    max-height: 150mm;
     border: 1.5mm solid #000;
     display: flex;
     flex-direction: column;
@@ -303,19 +309,23 @@ const printLabel = async () => {
   .receiver-label { font-size: 2.6mm; text-transform: uppercase; margin-bottom: 1mm; font-weight: 700; color: #000; }
   .receiver-name { font-size: 5mm; font-weight: 900; line-height: 1.2; }
 
-  /* Нижний блок для QR-кода: гарантирует, что код не "убежит" вниз */
+  /* Нижний блок для QR-кода.
+     Было flex: 1 — блок забирал ВЕСЬ остаток листа (около 76 мм из 150),
+     и итоговая высота зависела от того, как браузер посчитает этот остаток.
+     Теперь высота фиксированная: сумма блоков перестаёт "плавать",
+     и наклейка гарантированно укладывается в один лист. */
   .qr-block {
-    flex: 1;
+    flex: 0 0 auto;
+    height: 34mm;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 2mm;
-    min-height: 0;
     background: #fff;
   }
   .qr-block img {
-    max-height: 100%;
-    max-width: 38mm;
+    max-height: 30mm;
+    max-width: 30mm;
     width: auto;
     height: auto;
     aspect-ratio: 1 / 1;

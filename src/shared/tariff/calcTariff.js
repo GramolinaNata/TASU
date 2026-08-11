@@ -22,6 +22,13 @@ function toNum(v) {
   return isNaN(n) ? 0 : n;
 }
 
+// Округление до копеек. Нужно построчной разбивке: слагаемые складываются
+// в двоичной арифметике, и без этого «сумма строк = итог» держалось бы
+// с точностью до 1e-12 — то есть не держалось бы.
+function round2(v) {
+  return Math.round((toNum(v) + Number.EPSILON) * 100) / 100;
+}
+
 // Город отправления по умолчанию: старые тарифы и заявки без явного отправления
 // считаются как «Алматы» (обратная совместимость).
 export const DEFAULT_FROM_CITY = "Алматы";
@@ -92,11 +99,26 @@ export function getDeliveryDestinations(tariffs, category) {
 }
 
 // Список городов ОТПРАВЛЕНИЯ (fromCity) из тарифов доставки — для подсказок.
-export function getTariffOrigins(tariffs) {
+/**
+ * Города отправления.
+ *
+ * ТЗ: тарифы юрлиц и частных раздельные — город, заведённый в частных, не
+ * должен показываться у юрлиц и наоборот. Поэтому здесь появился фильтр
+ * category, как он давно есть у getDeliveryDestinations.
+ *
+ * Без category ведёт себя как раньше (обе категории) — на справочники
+ * перевозчиков и представителей это не влияет: им нужны все города,
+ * они привязывают исполнителей, а не считают тариф.
+ *
+ * @param {Array} tariffs
+ * @param {string} [category] — 'legal' | 'private' | undefined (не ограничивать)
+ */
+export function getTariffOrigins(tariffs, category) {
   const set = new Set();
   (tariffs || []).forEach((t) => {
     const cat = getTariffCategory(t);
     if (cat !== "legal" && cat !== "private") return;
+    if (category && cat !== category) return;
     const from = cityDisplayName(t.fromCity || DEFAULT_FROM_CITY) || DEFAULT_FROM_CITY;
     if (from) set.add(from);
   });
@@ -222,6 +244,11 @@ function weightPrice(wr, weightKg, isPrivate) {
           value: toNum(r && r.value),
           delivery: toNum(r && r.delivery),
           deliveryMode: r && r.deliveryMode === "perKg" ? "perKg" : "fixed",
+          // ТЗ: забор груза — третий тариф рядом с доставкой, со своей
+          // градацией по тем же диапазонам и своим типом расчёта.
+          // У старых диапазонов поля нет — читается как ноль, суммы не меняются.
+          pickup: toNum(r && r.pickup),
+          pickupMode: r && r.pickupMode === "perKg" ? "perKg" : "fixed",
         };
       })
       .sort((a, b) => a.maxW - b.maxW);
@@ -236,7 +263,12 @@ function weightPrice(wr, weightKg, isPrivate) {
         : range.maxW === Infinity
           ? "макс. диапазон"
           : `до ${range.maxW} кг`;
-    return { sum, delivery: range.delivery, deliveryMode: range.deliveryMode, label };
+    return {
+      sum,
+      delivery: range.delivery, deliveryMode: range.deliveryMode,
+      pickup: range.pickup, pickupMode: range.pickupMode,
+      label,
+    };
   }
 
   // --- Старый формат: rN (цена) + dN (доставка), всегда фикс. сумма ---
@@ -252,17 +284,18 @@ function weightPrice(wr, weightKg, isPrivate) {
   steps.sort((a, b) => a.maxW - b.maxW);
 
   if (steps.length === 0) {
-    return { sum: 0, delivery: 0, label: "нет диапазонов" };
+    return { sum: 0, delivery: 0, pickup: 0, label: "нет диапазонов" };
   }
 
   for (const st of steps) {
     if (weightKg <= st.maxW) {
-      return { sum: st.price, delivery: st.delivery, label: `до ${st.maxW} кг` };
+      // Старый формат rN/dN забора не знает — pickup всегда 0.
+      return { sum: st.price, delivery: st.delivery, pickup: 0, label: `до ${st.maxW} кг` };
     }
   }
 
   const last = steps[steps.length - 1];
-  return { sum: last.price, delivery: last.delivery, label: `свыше ${last.maxW} кг (макс. диапазон)` };
+  return { sum: last.price, delivery: last.delivery, pickup: 0, label: `свыше ${last.maxW} кг (макс. диапазон)` };
 }
 
 /**
@@ -274,7 +307,12 @@ function weightPrice(wr, weightKg, isPrivate) {
  * @param {string}   [category]— 'legal' | 'private' | undefined (не ограничивать)
  * @returns {{ ok:boolean, sum?:number, description?:string, tariff?:object, error?:string }}
  */
-export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, volumeM3 = 0, seats = 0, prrType = '', pallets = 0, storageMode = '', storageDays = 0, cityDelivery = false, regionDelivery = '', sizeCategory = '', category, transport }) {
+export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, volumeM3 = 0, seats = 0, prrType = '', pallets = 0, storageMode = '', storageDays = 0, cityDelivery = false, regionDelivery = '', sizeCategory = '', category, transport,
+  // ТЗ: доставка и забор груза включаются галочками при оформлении.
+  // withDelivery по умолчанию TRUE — раньше доставка считалась безусловно,
+  // и без этого дефолта все прежние заявки при пересчёте подешевели бы.
+  // withPickup по умолчанию FALSE — забор берут не всегда.
+  withDelivery = true, withPickup = false }) {
   const cityClean = cleanCityName(city);
   if (!cityClean) return { ok: false, error: "Не указан город получателя" };
 
@@ -353,16 +391,49 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
   const baseWhere = regionParent ? `${regionParent} → ${city}` : (hubPoselok ? `${hubCityName} → ${city}` : `${fromCity || DEFAULT_FROM_CITY} → ${city}`);
   let description = `Доставка ${baseWhere} (${baseLabel})`;
 
-  if (rangeDelivery > 0) {
-    sum += rangeDelivery;
+  // ТЗ (замечание заказчика): каждая услуга должна идти В НАКЛАДНОЙ ОТДЕЛЬНОЙ
+  // СТРОКОЙ со своей суммой, а не одной строкой с длинной расшифровкой.
+  //
+  // Составляющие и раньше считались по отдельности, но наружу отдавались
+  // схлопнутыми: одно число `sum` и склеенный текст `description`. Теперь
+  // рядом отдаётся `lines` — те же составляющие списком.
+  //
+  // ПОЧЕМУ ЧЕРЕЗ add(). Соблазн был дописать lines.push() рядом с каждым
+  // существующим `sum += …`. Так разбивка гарантированно разъехалась бы с
+  // итогом при первой же правке: кто-то поправит слагаемое и забудет строку.
+  // Разбивка, которая не сходится с итогом, хуже одной строки — она врёт
+  // молча. Поэтому прибавление к сумме и добавление строки — одно действие.
+  //
+  // `sum` и `description` остаются как были: их читают пересчёт, карточка
+  // частной и отчёты. Поле только добавляется.
+  const lines = [{ key: "transport", name: `Перевозка ${baseWhere} (${baseLabel})`, amount: base }];
+  const add = (key, name, amount) => {
+    sum += amount;
+    lines.push({ key, name, amount });
+  };
+
+  // ТЗ: доставка теперь по галочке. Раньше прибавлялась безусловно.
+  if (withDelivery && rangeDelivery > 0) {
+    add("delivery", "Доставка", rangeDelivery);
     description += wp.deliveryMode === "perKg"
       ? ` + доставка диапазона ${toNum(wp.delivery).toLocaleString()} тг/кг × ${weightKg} кг`
       : ` + доставка диапазона ${rangeDelivery.toLocaleString()} тг`;
   }
 
+  // ТЗ: ЗАБОР ГРУЗА — третий тариф со своей градацией по тем же диапазонам.
+  // Считается ровно как доставка и добавляется ОТДЕЛЬНОЙ строкой в описание,
+  // чтобы в чеке было видно, из чего сложилась сумма.
+  const rangePickup = wp.pickupMode === "perKg" ? toNum(wp.pickup) * weightKg : toNum(wp.pickup);
+  if (withPickup && rangePickup > 0) {
+    add("pickup", "Забор груза", rangePickup);
+    description += wp.pickupMode === "perKg"
+      ? ` + забор груза ${toNum(wp.pickup).toLocaleString()} тг/кг × ${weightKg} кг`
+      : ` + забор груза ${rangePickup.toLocaleString()} тг`;
+  }
+
   // 2) Доплата за посёлок внутри тарифа (_regionalDeliveries) — приоритетный механизм.
   if (regionalExtra > 0) {
-    sum += regionalExtra;
+    add("region", `Регион «${regionLabel}»`, regionalExtra);
     description += ` + ${regionalExtra.toLocaleString()} тг регион «${regionLabel}»`;
   }
 
@@ -372,7 +443,7 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
     if (cd) {
       const s = toNum(weightPrice(cd.weightRanges || {}, weightKg).sum);
       if (s > 0) {
-        sum += s;
+        add("city_delivery", "Доставка по городу", s);
         description += ` + доставка по городу ${s.toLocaleString()} тг`;
       }
     }
@@ -387,7 +458,7 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
     if (rd) {
       const s = toNum(weightPrice(rd.weightRanges || {}, weightKg).sum);
       if (s > 0) {
-        sum += s;
+        add("region_delivery", `Доставка в регион «${regionPoselok}»`, s);
         description += ` + доставка в регион «${regionPoselok}» ${s.toLocaleString()} тг`;
       }
     }
@@ -398,14 +469,14 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
   if (sizeCategory === "medium" || sizeCategory === "large") {
     const extra = sizeCategory === "large" ? toNum(wr._sizeLarge) : toNum(wr._sizeMedium);
     if (extra > 0) {
-      sum += extra;
+      add("size", `Габарит: ${sizeCategory === "large" ? "большая" : "средняя"}`, extra);
       description += ` + габарит ${sizeCategory === "large" ? "большая" : "средняя"} ${extra.toLocaleString()} тг`;
     }
   }
 
   const unloadPerSeat = toNum(wr._unloadPerSeat);
   if (unloadPerSeat > 0 && seats > 0) {
-    sum += unloadPerSeat * seats;
+    add("unload", `Выгрузка, ${seats} мест`, unloadPerSeat * seats);
     description += ` + выгрузка ${seats} мест × ${unloadPerSeat.toLocaleString()} тг`;
   }
 
@@ -414,13 +485,13 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
   if (prrType === 'manual') {
     const rate = toNum(wr._prrManual);
     if (rate > 0 && weightKg > 0) {
-      sum += rate * weightKg;
+      add("prr", "ПРР ручная", rate * weightKg);
       description += ` + ПРР ручная ${rate.toLocaleString()} тг/кг × ${weightKg} кг`;
     }
   } else if (prrType === 'pallet') {
     const rate = toNum(wr._prrPallet);
     if (rate > 0 && pallets > 0) {
-      sum += rate * pallets;
+      add("prr", `ПРР палетная, ${pallets} пал.`, rate * pallets);
       description += ` + ПРР палетная ${rate.toLocaleString()} тг × ${pallets} пал.`;
     }
   }
@@ -431,24 +502,39 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
     if (storageMode === 'weight') {
       const rate = toNum(wr._storagePerKg);
       if (rate > 0 && weightKg > 0) {
-        sum += weightKg * rate * storageDays;
+        add("storage", `Хранение, ${storageDays} дн.`, weightKg * rate * storageDays);
         description += ` + хранение ${weightKg} кг × ${rate.toLocaleString()} тг × ${storageDays} дн.`;
       }
     } else if (storageMode === 'cube') {
       const rate = toNum(wr._storagePerCubic);
       if (rate > 0 && volumeM3 > 0) {
-        sum += volumeM3 * rate * storageDays;
+        add("storage", `Хранение, ${storageDays} дн.`, volumeM3 * rate * storageDays);
         description += ` + хранение ${volumeM3} м³ × ${rate.toLocaleString()} тг × ${storageDays} дн.`;
       }
     }
   }
 
+  const raw = sum;
   sum = Math.ceil(sum); // округление в большую сторону (Правила ТЭУ)
   if (sum <= 0) {
     return { ok: false, error: "Не удалось рассчитать стоимость (проверьте суммы в тарифе)." };
   }
 
-  return { ok: true, sum, description, tariff };
+  // Итог округляется вверх, а строки — нет. Копейки округления надо куда-то
+  // деть, иначе сумма строк в накладной не сойдётся с «Итого», и менеджер
+  // будет объяснять клиенту недостающий тенге. Отдаём их «Перевозке»: это
+  // база, и именно она чаще прочих даёт дробь (ставка × вес).
+  if (lines.length) {
+    lines[0].amount = round2(lines[0].amount + (sum - raw));
+    // Остальные слагаемые могли накопить хвост двоичной арифметики
+    // (0.1 + 0.2). Подчищаем, чтобы инвариант «сумма строк = sum» держался
+    // точно, а не «почти».
+    for (let i = 1; i < lines.length; i++) lines[i].amount = round2(lines[i].amount);
+    const drift = round2(sum - lines.reduce((a, l) => a + l.amount, 0));
+    if (drift !== 0) lines[0].amount = round2(lines[0].amount + drift);
+  }
+
+  return { ok: true, sum, description, tariff, lines };
 }
 
 // ============================================================

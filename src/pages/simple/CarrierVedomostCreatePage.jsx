@@ -62,6 +62,8 @@ export default function CarrierVedomostCreatePage() {
   const [loading, setLoading] = useState(true);
   const [selectedIds, setSelectedIds] = useState({});
   const [batchWeights, setBatchWeights] = useState({}); // реальный вес партии из накладных
+  // Пока вес не догрузился, показанные суммы неполные — формировать нельзя.
+  const [weightsLoading, setWeightsLoading] = useState(false);
   // Оверрайды перевозчика/представителя по партии (id из справочника).
   // undefined => берём из партии (b.carrierId / b.representativeId).
   const [rowCarrier, setRowCarrier] = useState({});
@@ -131,28 +133,54 @@ export default function CarrierVedomostCreatePage() {
 
   // Реальный вес и МЕСТА партии считаем из накладных (как грузовая ведомость):
   // поля totalWeight/totalSeats у партии часто не заполнены. Грузим накладные и суммируем.
+  //
+  // Вынесено в отдельную функцию, потому что вес нужен ДВАЖДЫ: фоновому эффекту
+  // (показать суммы на экране) и сохранению (заморозить их в снапшот). Раньше
+  // сохранение полагалось на результат эффекта — и если человек нажимал
+  // «Сформировать» раньше, чем эффект успевал, в снапшот попадал ноль.
+  // Один и тот же код в обоих местах гарантирует, что считают они одинаково.
+  const fetchBatchWeights = async (list) => {
+    const entries = await Promise.all((list || []).map(async (b) => {
+      let ids = [];
+      try { ids = JSON.parse(b.requestIds || "[]"); } catch { /* ignore */ }
+      // Партия без накладных — законный случай (вес берётся из полей самой
+      // партии). Именно поэтому нулевой вес сам по себе не ошибка: ошибкой он
+      // становится только когда накладные есть, см. проверку в handleCreate.
+      if (!ids.length) return [b.id, { weight: toNum(b.totalWeight), seats: toNum(b.totalSeats), invoices: 0 }];
+      const reqs = await Promise.all(ids.map(id => api.requests.get(id).catch(() => null)));
+      let w = 0, s = 0, invoices = 0;
+      // Аннулированные накладные не считаем в вес/места ведомости перевозчика.
+      reqs.filter(r => r && r.status !== 'canceled').forEach(r => {
+        let d = {};
+        try { d = JSON.parse(r.details || "{}"); } catch { /* ignore */ }
+        const t = (d && d.totals) ? d.totals : {};
+        w += Number(t.weight) || 0;
+        s += Number(t.seats) || 0;
+        invoices += 1;
+      });
+      return [b.id, { weight: w, seats: s, invoices }];
+    }));
+    return Object.fromEntries(entries);
+  };
+
   useEffect(() => {
     let cancelled = false;
+    if (!(batches || []).length) { setBatchWeights({}); setWeightsLoading(false); return; }
+    setWeightsLoading(true);
     (async () => {
-      const entries = await Promise.all((batches || []).map(async (b) => {
-        let ids = [];
-        try { ids = JSON.parse(b.requestIds || "[]"); } catch { /* ignore */ }
-        if (!ids.length) return [b.id, { weight: toNum(b.totalWeight), seats: toNum(b.totalSeats) }];
-        const reqs = await Promise.all(ids.map(id => api.requests.get(id).catch(() => null)));
-        let w = 0, s = 0;
-        // Аннулированные накладные не считаем в вес/места ведомости перевозчика.
-        reqs.filter(r => r && r.status !== 'canceled').forEach(r => {
-          let d = {};
-          try { d = JSON.parse(r.details || "{}"); } catch { /* ignore */ }
-          const t = (d && d.totals) ? d.totals : {};
-          w += Number(t.weight) || 0;
-          s += Number(t.seats) || 0;
-        });
-        return [b.id, { weight: w, seats: s }];
-      }));
-      if (!cancelled) setBatchWeights(Object.fromEntries(entries));
+      try {
+        const map = await fetchBatchWeights(batches);
+        if (!cancelled) setBatchWeights(map);
+      } catch (e) {
+        console.error("Не удалось загрузить вес партий:", e);
+      } finally {
+        // Флаг снимаем в любом случае: иначе кнопка «Сформировать» осталась бы
+        // заблокированной навсегда после одной сетевой ошибки.
+        if (!cancelled) setWeightsLoading(false);
+      }
     })();
     return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batches]);
 
   const findCarrierTariff = (city) => {
@@ -180,13 +208,20 @@ export default function CarrierVedomostCreatePage() {
     [batches, selectedIds]
   );
 
-  // Разбивка по каждой выбранной партии + итоги — единая точка расчёта
-  const breakdown = useMemo(() => {
-    const rows = selectedBatches.map(b => {
-      // Вес и места из накладных (batchWeights); fallback на поля партии, пока грузятся.
-      const bt = batchWeights[b.id];
+  // Разбивка по каждой выбранной партии + итоги — единая точка расчёта.
+  //
+  // Вес приходит ПАРАМЕТРОМ, а не берётся из состояния: сохранение считает по
+  // только что загруженным числам, экран — по состоянию. Формула у обоих одна,
+  // поэтому напечатанное совпадёт с показанным.
+  const computeBreakdown = (list, weights) => {
+    const rows = (list || []).map(b => {
+      // Вес и места из накладных; fallback на поля партии, пока грузятся.
+      const bt = (weights || {})[b.id];
       const weight = bt != null ? bt.weight : toNum(b.totalWeight);
       const seats = bt != null ? bt.seats : toNum(b.totalSeats);
+      // Сколько неаннулированных накладных в партии — нужно, чтобы отличить
+      // «партия без накладных» (ноль законен) от «вес не догрузился».
+      const invoices = bt != null ? (bt.invoices || 0) : 0;
 
       // Перевозчик. Приоритет (согласован с заказчиком):
       //   ручной выбор в этой форме → назначенный в партии → автоподстановка по городу.
@@ -234,6 +269,7 @@ export default function CarrierVedomostCreatePage() {
         city: b.city,
         weight,
         seats,
+        invoices,
         carrierId,
         carrierName,
         carrierRate,
@@ -261,7 +297,13 @@ export default function CarrierVedomostCreatePage() {
     const representativeSum = rows.reduce((acc, r) => acc + r.representativeSum, 0);
 
     return { rows, totalWeight, totalSeats, carrierSum, loaderSum, representativeSum };
-  }, [selectedBatches, tariffs, carriers, representatives, rowCarrier, rowRep, batchWeights]);
+  };
+
+  const breakdown = useMemo(
+    () => computeBreakdown(selectedBatches, batchWeights),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectedBatches, tariffs, carriers, representatives, rowCarrier, rowRep, batchWeights]
+  );
 
   const hasMissingTariffs = breakdown.rows.some(r => r.carrierMissing || r.loaderMissing || r.repMissing);
 
@@ -296,15 +338,48 @@ export default function CarrierVedomostCreatePage() {
     }
 
     setSaving(true);
+
+    // Вес партий грузится асинхронно. Кнопка на это время заблокирована, но
+    // полагаться только на блокировку нельзя: перечитываем вес ПРЯМО СЕЙЧАС и
+    // снапшот строим из свежих чисел. Иначе достаточно нажать раньше времени —
+    // и в ведомость замерзает нулевой вес, а с ним обнуляются ВСЕ ТРИ выплаты:
+    // перевозчику, грузчикам и представителю (так появилась ВП000007 —
+    // 0 кг при фактических 4 534).
+    let freshWeights;
+    try {
+      freshWeights = await fetchBatchWeights(selectedBatches);
+    } catch (e) {
+      setSaving(false);
+      alert("Не удалось получить вес партий: " + (e.message || e) + "\n\nВедомость не сформирована — попробуйте ещё раз.");
+      return;
+    }
+    setBatchWeights(prev => ({ ...prev, ...freshWeights }));
+    const snapBreakdown = computeBreakdown(selectedBatches, freshWeights);
+
+    // Нулевой вес при живых накладных — всегда сбой, а не факт. Пропустить его
+    // молча нельзя: ведомость уйдёт в выплаты с нулями и разойдётся с грузом.
+    // У партии БЕЗ накладных ноль законен, поэтому смотрим на количество.
+    const zeroWeight = snapBreakdown.rows.filter(r => toNum(r.weight) <= 0 && (r.invoices || 0) > 0);
+    if (zeroWeight.length > 0) {
+      setSaving(false);
+      alert(
+        "Не удалось определить вес по некоторым партиям — ведомость не сформирована.\n\n" +
+        zeroWeight.map(r => `• партия ${r.number}: накладных ${r.invoices}, вес 0 кг`).join("\n") +
+        "\n\nСуммы перевозчику, грузчикам и представителю считаются от веса — с нулём ведомость была бы пустой. " +
+        "Обновите страницу и попробуйте ещё раз; если повторяется — проверьте, указан ли вес в этих накладных."
+      );
+      return;
+    }
+
     try {
       const snapshot = {
-        rows: breakdown.rows,
+        rows: snapBreakdown.rows,
         companyName: company?.name || "",
-        totalSeats: breakdown.totalSeats,
-        totalWeight: breakdown.totalWeight,
-        carrierSum: breakdown.carrierSum,
-        loaderSum: breakdown.loaderSum,
-        representativeSum: breakdown.representativeSum,
+        totalSeats: snapBreakdown.totalSeats,
+        totalWeight: snapBreakdown.totalWeight,
+        carrierSum: snapBreakdown.carrierSum,
+        loaderSum: snapBreakdown.loaderSum,
+        representativeSum: snapBreakdown.representativeSum,
         createdAt: new Date().toISOString(),
       };
 
@@ -312,10 +387,10 @@ export default function CarrierVedomostCreatePage() {
         companyId: company?.id,
         batchIds: selectedBatches.map(b => b.id),
         data: snapshot,
-        totalWeight: breakdown.totalWeight,
-        carrierSum: breakdown.carrierSum,
-        loaderSum: breakdown.loaderSum,
-        representativeSum: breakdown.representativeSum,
+        totalWeight: snapBreakdown.totalWeight,
+        carrierSum: snapBreakdown.carrierSum,
+        loaderSum: snapBreakdown.loaderSum,
+        representativeSum: snapBreakdown.representativeSum,
       });
 
       // ТЗ: остаёмся на странице, даём распечатать сразу
@@ -499,9 +574,24 @@ export default function CarrierVedomostCreatePage() {
             </div>
 
             <div style={{ marginTop: 20 }}>
-              <button className="btn btn--accent btn--lg" onClick={handleCreate} disabled={saving}>
-                {saving ? "Формирование..." : "✓ Сформировать ведомость перевозчика"}
+              {/* Пока вес не догрузился, суммы на экране неполные (частично нули).
+                  Раньше кнопка была доступна и в этот момент — нажатие замораживало
+                  нули в ведомость. Теперь ждём и говорим, чего именно ждём. */}
+              <button
+                className="btn btn--accent btn--lg"
+                onClick={handleCreate}
+                disabled={saving || weightsLoading}
+                title={weightsLoading ? "Идёт загрузка веса партий из накладных" : ""}
+              >
+                {weightsLoading
+                  ? "⏳ Считаю вес партий…"
+                  : (saving ? "Формирование..." : "✓ Сформировать ведомость перевозчика")}
               </button>
+              {weightsLoading && (
+                <div className="muted" style={{ fontSize: "0.75rem", marginTop: 6 }}>
+                  Суммы считаются от веса — дождитесь загрузки, иначе ведомость уйдёт с нулями.
+                </div>
+              )}
             </div>
           </div>
         </div>
