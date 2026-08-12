@@ -127,3 +127,22 @@ export const denyLimitedOperator = denyRoles('MANAGER2');
  * Разрешает доступ бухгалтерам (ACCOUNTANT, ACCOUNTANT2) и админу.
  */
 export const requireAccountant = requireRole('ACCOUNTANT', 'ACCOUNTANT2');
+
+/**
+ * Отметка «обработано» (complete-by-accountant).
+ *
+ * ТЗ (заказчик): обработка — действие МЕНЕДЖЕРА: наклеил, загрузил, отправил
+ * груз — отметил обработанным. Бухгалтер потом только ЗАВЕРШАЕТ.
+ *
+ * Раньше эндпоинт стоял под requireAccountant, и получалось бессмысленно:
+ * раздел «Отработанные» бухгалтеру вообще недоступен (маршрут /sent уводит
+ * его прочь), то есть отметить не мог никто — у кого было право, тот не видел
+ * страницу, а кто видел, у того не было права.
+ *
+ * ВАЖНО: это НЕ завершение. mark-fully-completed остаётся под requireAccountant,
+ * и путать их нельзя — обработать может любой, кто ведёт заявки, завершить
+ * только бухгалтер.
+ *
+ * ADMIN проходит всегда (см. requireRole).
+ */
+export const requireCanProcess = requireRole('MANAGER', 'MANAGER2', 'ACCOUNTANT', 'ACCOUNTANT2');

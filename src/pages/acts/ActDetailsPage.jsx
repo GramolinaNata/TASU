@@ -34,7 +34,7 @@ export default function ActDetailsPage() {
   const nav = useNavigate();
   const { id } = useParams();
   const location = useLocation();
-  const { isAdmin, isAccountant, isManager } = useAuth();
+  const { isAdmin, isAccountant, isManager, isManager2 } = useAuth();
   const [act, setAct] = useState(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
@@ -921,7 +921,10 @@ const printLabel = async () => {
 
   const canSendToAccountant = hasFormedDocument();
   const isActualAccountant = isAccountant;
-  const canCompleteByAccountant = isActualAccountant;
+  // ТЗ: обработка — менеджерское действие. Право здесь ДОЛЖНО совпадать с
+  // кнопкой в списке «Отработанных»: иначе из списка отметить можно, а в
+  // карточке той же накладной — нет.
+  const canCompleteByAccountant = isManager || isManager2 || isAdmin || isActualAccountant;
 
   const blockReasonText = (() => {
     if (!act) return "";

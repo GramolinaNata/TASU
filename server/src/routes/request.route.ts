@@ -50,7 +50,7 @@ import {
   issueAccessLink,
   revokeAccessLink,
 } from '../controllers/request.controller';
-import { authenticateToken, requireAccountant } from '../middlewares/auth.middleware';
+import { authenticateToken, requireAccountant, requireCanProcess } from '../middlewares/auth.middleware';
 
 const router = Router();
 
@@ -69,7 +69,9 @@ router.put('/:id', updateRequest);
 router.delete('/:id', deleteRequest);
 
 // ТЗ: Кнопка "Заявка отработана бухгалтером" только у бухгалтера
-router.post('/:id/complete-by-accountant', requireAccountant, completeByAccountant);
+// ТЗ: обработка — менеджерское действие, не бухгалтерское. Завершение
+// (mark-fully-completed ниже) по-прежнему только под бухгалтером.
+router.post('/:id/complete-by-accountant', requireCanProcess, completeByAccountant);
 
 // ТЗ: При переносе из отработанных дата должна быть актуальной
 router.post('/:id/restore', restoreRequest);

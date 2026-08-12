@@ -7,6 +7,7 @@ import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 import { getActSection, sectionPatch, sectionAfterAccountant, SECTION } from "../../shared/acts/section.js";
+import { mergeRequest } from "../../shared/acts/mergeRequest.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -48,9 +49,35 @@ function getSortValue(act, field) {
   }
 }
 
+/**
+ * Вкладка, в которой живёт заявка.
+ *
+ * ТЗ (заказчик): цепочка должна быть видна тремя вкладками —
+ * Активные → Обработанные → Завершённые. Вкладок было две, и «Завершённые»
+ * на самом деле показывали ОБРАБОТАННЫЕ (isProcessedByAccountant): средний шаг
+ * выдавался за последний, а настоящее завершение (isFullyCompleted) в этом
+ * разделе не различалось вовсе.
+ *
+ * Признаки уже есть, схему не трогаем:
+ *   active    — ещё не отработана и не завершена;
+ *   processed — бухгалтер отметил «Отработано», но не завершил;
+ *   completed — isFullyCompleted, последний шаг.
+ *
+ * Завершение бьёт обработку: завершённая всегда в последней вкладке, даже если
+ * галочку «Отработано» ей не ставили (на проде такая есть).
+ *
+ * Одна точка решения — иначе фильтр списка и счётчики на вкладках разъедутся,
+ * и на кнопке будет одно число, а в таблице другое.
+ */
+const TAB_OF = (a) => {
+  if (a && a.isFullyCompleted) return "completed";
+  if (a && a.isProcessedByAccountant === true) return "processed";
+  return "active";
+};
+
 export default function SentToAccountantPage() {
   const { openCompanySelector } = useOutletContext();
-  const { isAdmin, isAccountant } = useAuth();
+  const { isAdmin, isAccountant, isAccountant2, isManager, isManager2 } = useAuth();
   // ТЗ: суммы скрыты от ограниченного менеджера — единый флаг из AuthContext.
   const canSeeMoney = useCanSeeMoney();
   const moneyColSpan = useMoneyColSpan();
@@ -69,7 +96,17 @@ export default function SentToAccountantPage() {
   const [companies, setCompanies] = useState([]);
   const [companyFilter, setCompanyFilter] = useState("all");
 
-  // ТЗ: вкладки Активные / Завершённые
+  // ТЗ (заказчик): обработка — действие МЕНЕДЖЕРА (наклеил, загрузил,
+  // отправил → отметил обработанным), а не бухгалтера. Бухгалтер потом только
+  // ЗАВЕРШАЕТ, и это отдельное право — см. mark-fully-completed.
+  //
+  // Прежнее canProcess = isAccountant было ошибкой вдвойне: раздел «Отработанные»
+  // бухгалтеру недоступен (маршрут /sent уводит его прочь), так что кнопку
+  // не видел вообще никто.
+  const canProcess = isManager || isManager2 || isAdmin || isAccountant || isAccountant2;
+  const [selected, setSelected] = useState([]);
+
+  // ТЗ: вкладки Активные / Обработанные / Завершённые — см. TAB_OF.
   const [tab, setTab] = useState("active");
   // ТЗ Отработанные: Сортировка основных параметров по возрастанию/убыванию
   const [sortBy, setSortBy] = useState("date");
@@ -85,12 +122,12 @@ export default function SentToAccountantPage() {
     return <span style={{ marginLeft: 4, color: "#2563eb", fontWeight: 700 }}>{sortOrder === "asc" ? "↑" : "↓"}</span>;
   };
 
-  const filtered = useMemo(() => {
+  const scoped = useMemo(() => {
     let list = acts.filter(a => getActSection(a) === SECTION.ACCOUNTANT);
 
     // ТЗ: аннулированные НЕ убираем из списка — показываем серым (см. рендер строки).
-    if (tab === "completed") list = list.filter(a => a.isProcessedByAccountant === true);
-    else list = list.filter(a => a.isProcessedByAccountant !== true);
+    // Отбор по вкладке делается НИЖЕ, отдельно: из этого списка считаются
+    // счётчики на вкладках, поэтому вкладку здесь применять нельзя.
 
     // Раньше здесь было «нет выбранной компании — показать пусто». Теперь
     // разделение делает фильтр, а «Все» — законное значение, а не пустой экран.
@@ -123,17 +160,42 @@ export default function SentToAccountantPage() {
       });
     }
 
-    // Сортировка
-    const sorted = [...list].sort((a, b) => {
+    return list;
+  }, [acts, q, companyFilter, dateFrom, dateTo, docTypeFilter, esfFilter]);
+
+  // Счётчики на вкладках — по тому же набору, что и таблица, но до отбора
+  // по вкладке. Иначе на кнопке было бы одно число, а в списке другое.
+  const tabCounts = useMemo(() => {
+    const c = { active: 0, processed: 0, completed: 0 };
+    for (const a of scoped) c[TAB_OF(a)] += 1;
+    return c;
+  }, [scoped]);
+
+  const filtered = useMemo(() => {
+    const list = scoped.filter(a => TAB_OF(a) === tab);
+    return [...list].sort((a, b) => {
       const va = getSortValue(a, sortBy);
       const vb = getSortValue(b, sortBy);
       if (va < vb) return sortOrder === "asc" ? -1 : 1;
       if (va > vb) return sortOrder === "asc" ? 1 : -1;
       return 0;
     });
+  }, [scoped, tab, sortBy, sortOrder]);
 
-    return sorted;
-  }, [acts, q, tab, companyFilter, dateFrom, dateTo, docTypeFilter, esfFilter, sortBy, sortOrder]);
+  // Колонка выбора нужна только там, где есть что отмечать: во вкладке
+  // «Активные» и только тому, кто вправе отмечать. На остальных вкладках
+  // таблица остаётся ровно такой, какой была.
+  const showSelect = canProcess && tab === "active";
+
+  // Из отмеченного — то, что РЕАЛЬНО можно обработать. Считать по selected.length
+  // нельзя: галочка остаётся стоять на заявке, которая уже ушла из списка
+  // (вернули в работу, отложили), и кнопка обещала бы больше, чем сделает.
+  // Аннулированные исключаем здесь же — построчная кнопка их и так не показывает.
+  const selectable = useMemo(
+    () => filtered.filter(a =>
+      selected.includes(a.id) && TAB_OF(a) === "active" && a.status !== "canceled"),
+    [filtered, selected]
+  );
 
   const totals = useMemo(() => {
     return filtered.reduce((acc, a) => {
@@ -158,14 +220,10 @@ export default function SentToAccountantPage() {
       ]);
       if (Array.isArray(compList)) setCompanies(compList);
       if (Array.isArray(list)) {
-        const parsed = list.map(a => {
-           let details = {};
-           if (a.details) {
-              try { details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details; }
-              catch (e) { console.error("Parse error", e); }
-           }
-           return { ...a, ...details };
-        });
+        // Признаки завершения/оплаты берутся из КОЛОНОК, а не из details:
+        // копия в details перекрывала колонку и оставляла накладную
+        // в «Завершённых» даже после возврата бухгалтером. См. mergeRequest.
+        const parsed = list.map(mergeRequest);
         setActs(parsed);
       } else {
         setActs([]);
@@ -190,10 +248,51 @@ export default function SentToAccountantPage() {
         isProcessedByAccountant: false,
       });
       await api.requests.restore(id);
+      setSelected([]);
       loadActs();
     } catch (e) {
        console.error(e);
        alert("Ошибка при возврате: " + e.message);
+    }
+  };
+
+  // ТЗ (заказчик): переводить в «Обработанные» прямо из списка, не открывая
+  // карточку. Раньше это была только галочка «Отработано» внутри накладной.
+  //
+  // Зовём ТОТ ЖЕ эндпоинт, что и галочка в карточке: он закрыт requireAccountant
+  // и сам ставит признак в details. Второй вызов update, который делает карточка,
+  // здесь не повторяем — он дублирующий, эндпоинт уже всё записал.
+  //
+  // Доступ НЕ расширяем: кнопка показывается по тому же isAccountant, что и
+  // галочка (ActDetailsPage: canCompleteByAccountant = isActualAccountant).
+  const markProcessed = async (id, number) => {
+    if (!window.confirm(`Отметить заявку №${number} как обработанную? Она перейдёт во вкладку «Обработанные».`)) return;
+    try {
+      await api.requests.completeByAccountant(id);
+      // Обновляем на месте, чтобы строка сразу ушла в свою вкладку и не
+      // пришлось перезагружать весь список.
+      setActs(prev => prev.map(a => a.id === id ? { ...a, isProcessedByAccountant: true } : a));
+    } catch (e) {
+      console.error(e);
+      alert("Не удалось отметить обработанной: " + (e.message || e));
+    }
+  };
+
+  // Массовая отметка по галочкам. Частичный отказ показываем поимённо:
+  // «отмечено 3 из 5» без списка оставляет гадать, что не прошло.
+  const bulkMarkProcessed = async () => {
+    const ids = selectable.map(a => a.id);
+    if (ids.length === 0) return alert("Выберите заявки во вкладке «Активные».");
+    if (!window.confirm(`Отметить ${ids.length} заявок как обработанные? Они перейдут во вкладку «Обработанные».`)) return;
+
+    const results = await Promise.allSettled(ids.map(id => api.requests.completeByAccountant(id)));
+    const failed = results.map((r, i) => (r.status === "rejected" ? ids[i] : null)).filter(Boolean);
+    const ok = ids.filter(id => !failed.includes(id));
+    if (ok.length) setActs(prev => prev.map(a => ok.includes(a.id) ? { ...a, isProcessedByAccountant: true } : a));
+    setSelected([]);
+    if (failed.length) {
+      const nums = filtered.filter(a => failed.includes(a.id)).map(a => a.docNumber || a.number).join(", ");
+      alert(`Отмечено ${ok.length} из ${ids.length}.\nНе удалось: ${nums}`);
     }
   };
 
@@ -210,6 +309,7 @@ export default function SentToAccountantPage() {
         ...sectionPatch(SECTION.DEFERRED),
         isProcessedByAccountant: false,
       });
+      setSelected([]);
       loadActs();
     } catch (e) {
       console.error(e);
@@ -222,6 +322,7 @@ export default function SentToAccountantPage() {
     if (!window.confirm(`Аннулировать заявку №${number || ""}?`)) return;
     try {
       await api.requests.update(id, { status: "canceled" });
+      setSelected([]);
       loadActs();
     } catch (e) {
       console.error(e);
@@ -329,19 +430,34 @@ export default function SentToAccountantPage() {
             в таблице и вернуть плашку — это добавить сюда один блок. */}
       </div>
 
+      {/* ТЗ: цепочка Активные → Обработанные → Завершённые отдельными вкладками.
+          Порядок кнопок = порядок шагов, средний шаг больше не выдаётся
+          за последний. Счётчики считаются по тому же TAB_OF, что и список. */}
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-        <button
-          className={`btn ${tab === 'active' ? 'btn--accent' : ''}`}
-          onClick={() => setTab('active')}
-        >
-          🟢 Активные
-        </button>
-        <button
-          className={`btn ${tab === 'completed' ? 'btn--accent' : ''}`}
-          onClick={() => setTab('completed')}
-        >
-          ✅ Завершённые
-        </button>
+        {[
+          { key: 'active', label: '🟢 Активные' },
+          { key: 'processed', label: '📦 Обработанные' },
+          { key: 'completed', label: '✅ Завершённые' },
+        ].map(t => (
+          <button
+            key={t.key}
+            className={`btn ${tab === t.key ? 'btn--accent' : ''}`}
+            onClick={() => { setTab(t.key); setSelected([]); }}
+          >
+            {t.label}{' '}
+            <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts[t.key]})</span>
+          </button>
+        ))}
+
+        {showSelect && selectable.length > 0 && (
+          <button
+            className="btn"
+            style={{ background: '#52c41a', color: '#fff', border: 'none', fontWeight: 700, marginLeft: 'auto' }}
+            onClick={bulkMarkProcessed}
+          >
+            📦 В обработанные ({selectable.length})
+          </button>
+        )}
       </div>
 
       <div className="table_wrap" style={{ marginTop: 16 }}>
@@ -351,6 +467,15 @@ export default function SentToAccountantPage() {
           <table className="table_fixed">
             <thead>
               <tr>
+                {showSelect && (
+                  <th style={{ width: 36 }}>
+                    <input
+                      type="checkbox"
+                      checked={filtered.length > 0 && selected.length === filtered.length}
+                      onChange={() => setSelected(selected.length === filtered.length ? [] : filtered.map(a => a.id))}
+                    />
+                  </th>
+                )}
                 <SortableTh field="number" style={{ width: 100 }}>Номер</SortableTh>
                 <SortableTh field="date" style={{ width: 100 }}>Дата</SortableTh>
                 <SortableTh field="type" style={{ width: 90 }}>Тип</SortableTh>
@@ -371,7 +496,7 @@ export default function SentToAccountantPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={moneyColSpan(15)} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={moneyColSpan(showSelect ? 16 : 15)} className="muted" style={{ padding: 16 }}>
                     {companyFilter === "all"
                       ? "Нет отработанных заявок."
                       : "Нет отработанных заявок по этой компании — попробуйте «Все компании»."}
@@ -384,6 +509,16 @@ export default function SentToAccountantPage() {
                   const isCanceled = a.status === "canceled";
                   return (
                     <tr key={a.id} style={{ opacity: isCanceled ? 0.55 : 1, background: isCanceled ? "#f5f5f5" : "" }}>
+                      {showSelect && (
+                        <td style={{ textAlign: "center" }}>
+                          <input
+                            type="checkbox"
+                            checked={selected.includes(a.id)}
+                            onChange={() => setSelected(prev =>
+                              prev.includes(a.id) ? prev.filter(x => x !== a.id) : [...prev, a.id])}
+                          />
+                        </td>
+                      )}
                       <td className="num">
                         <Link to={`/sent/${a.id}`} style={{ textDecoration: isCanceled ? "line-through" : "none" }}>{a.docNumber || a.number}</Link>
                       </td>
@@ -436,7 +571,20 @@ export default function SentToAccountantPage() {
                           <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Новое</span>
                         )}
                       </td>
-                      <td style={{ textAlign: "right" }}>
+                      <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                        {/* ТЗ: отметить обработанной, не открывая карточку.
+                            Только во вкладке «Активные» — в остальных заявка
+                            уже обработана или завершена. */}
+                        {canProcess && !isCanceled && TAB_OF(a) === "active" && (
+                          <button
+                            className="btn btn--sm"
+                            style={{ background: '#52c41a', color: '#fff', border: 'none', marginRight: 6 }}
+                            onClick={() => markProcessed(a.id, a.docNumber || a.number)}
+                            title="Отметить обработанной — заявка перейдёт во вкладку «Обработанные»"
+                          >
+                            ✅ Обработать
+                          </button>
+                        )}
                         <details className="actions-dropdown">
                           <summary className="btn-actions">
                             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="12" cy="5" r="1" fill="currentColor"/><circle cx="12" cy="19" r="1" fill="currentColor"/></svg>
