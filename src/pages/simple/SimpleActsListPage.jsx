@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
+import { formatDocNumber } from "../../shared/acts/docNumber.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import Loader from "../../shared/components/Loader";
 import { useAuth } from "../../shared/auth/AuthContext";
@@ -196,7 +197,7 @@ export default function SimpleActsListPage() {
       .filter(Boolean);
     if (failed.length) {
       const nums = filtered.filter(a => failed.includes(a.id))
-        .map(a => a.docNumber || a.number).join(", ");
+        .map(a => formatDocNumber(a.docNumber || a.number)).join(", ");
       alert(`Переведено ${ids.length - failed.length} из ${ids.length}.\nНе удалось: ${nums}`);
     }
     setSelected([]);
@@ -235,7 +236,7 @@ export default function SimpleActsListPage() {
       .filter(Boolean);
     if (failed.length) {
       const nums = filtered.filter(a => failed.includes(a.id))
-        .map(a => a.docNumber || a.number).join(", ");
+        .map(a => formatDocNumber(a.docNumber || a.number)).join(", ");
       alert(`Переведено ${ids.length - failed.length} из ${ids.length}.\nНе удалось: ${nums}`);
     }
     setSelected([]);
@@ -252,7 +253,7 @@ export default function SimpleActsListPage() {
   };
 
   const cancelAct = async (act) => {
-    if (!window.confirm(`Аннулировать накладную №${act.docNumber || act.number}?\nЭто действие можно отменить из таба "Аннулированные".`)) return;
+    if (!window.confirm(`Аннулировать накладную №${formatDocNumber(act.docNumber || act.number)}?\nЭто действие можно отменить из таба "Аннулированные".`)) return;
     try {
       await api.requests.update(act.id, { status: 'canceled' });
       load();
@@ -266,7 +267,7 @@ export default function SimpleActsListPage() {
   // остаются как есть, иначе задним числом поедет отчёт.
   const deferAct = async (act) => {
     if (!window.confirm(
-      `Вернуть накладную №${act.docNumber || act.number} в «Отложенные»?\n\n` +
+      `Вернуть накладную №${formatDocNumber(act.docNumber || act.number)} в «Отложенные»?\n\n` +
       `Партия и грузовая ведомость, в которые она вошла, останутся без изменений — ` +
       `меняется только статус самой накладной.`
     )) return;
@@ -279,7 +280,7 @@ export default function SimpleActsListPage() {
   };
 
   const restoreAct = async (act) => {
-    if (!window.confirm(`Восстановить накладную №${act.docNumber || act.number}?`)) return;
+    if (!window.confirm(`Восстановить накладную №${formatDocNumber(act.docNumber || act.number)}?`)) return;
     try {
       await api.requests.update(act.id, { status: 'act' });
       load();
@@ -601,7 +602,7 @@ export default function SimpleActsListPage() {
                       </td>
                       <td className="num">
                         <Link to={`/simple/${a.id}`} style={{ textDecoration: isCanceled ? "line-through" : "none" }}>
-                          {a.docNumber || a.number || a.id?.slice(0, 8)}
+                          {formatDocNumber(a.docNumber || a.number) || a.id?.slice(0, 8)}
                         </Link>
                       </td>
                       <td>{formatDate(a.createdAt || a.date)}</td>

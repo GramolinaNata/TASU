@@ -1530,8 +1530,23 @@ export const findByDocNumber = async (req: AuthRequest, res: Response) => {
   try {
     const num = String(req.query.docNumber || '').trim();
     if (!num) return res.status(400).json({ message: 'Не указан номер' });
+
+    // ⚠️ ЗЕРКАЛО src/shared/acts/docNumber.js (docNumberVariants).
+    // Номер ПЕЧАТАЕТСЯ дополненным до шести знаков (000042), а ХРАНИТСЯ голым
+    // числом (42). Без этого поиск по напечатанной наклейке не находил бы
+    // ничего: человек вводит ровно то, что видит на бумаге.
+    // Ищем оба написания — и на случай, если часть записей когда-то сохранили
+    // уже дополненными.
+    const isPlain = /^\d+$/.test(num);
+    const variants = new Set<string>([num]);
+    if (isPlain) {
+      const plain = num.replace(/^0+/, '') || '0';
+      variants.add(plain);
+      variants.add(plain.padStart(6, '0'));
+    }
+
     const found = await prisma.request.findFirst({
-      where: { docNumber: num },
+      where: { docNumber: { in: [...variants] } },
       include: { company: true },
     });
     if (!found) return res.status(404).json({ message: `Накладная ${num} не найдена` });

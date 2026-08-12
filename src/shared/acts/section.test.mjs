@@ -202,5 +202,83 @@ test("sectionPath на мусоре не роняет — /acts", () => {
   assert.strictEqual(sectionPath("неттакого"), "/acts");
 });
 
+// ── РЕГРЕСС: объект С КЛЮЧОМ details (так его отдают списки) ─────
+// Списки строят элемент как { ...request, ...details } — ключ details в нём
+// ОСТАЁТСЯ. Раньше все тесты кормили уже плоские объекты, поэтому двойной
+// flatten не ловился: deriveSection флаттенил повторно и возвращал из details
+// флаги, погашенные вызывающим кодом. Кнопка «Вернуть в работу» не работала
+// на 23 боевых накладных. Эти тесты кормят именно такой объект.
+
+// Как элемент списка: колонки + склеенные details + сам ключ details.
+const listItem = (details, columns = {}) => ({
+  id: "x",
+  type: columns.type ?? "REQUEST",
+  status: "act",
+  ...columns,
+  ...details,
+  details: JSON.stringify(details),   // ← ключ остаётся, как в реальном коде
+});
+
+test("РЕГРЕСС: возврат от бухгалтера с ключом details ведёт в ТТН, а не обратно", () => {
+  const act = listItem({ docType: "ttn", readyForAccountant: true, section: SECTION.ACCOUNTANT }, { type: "ttn" });
+  assert.strictEqual(getActSection(act), SECTION.ACCOUNTANT, "исходное состояние");
+  assert.strictEqual(sectionAfterAccountant(act), SECTION.TTN,
+    "вернулось в accountant — details подмешался повторно");
+});
+
+test("РЕГРЕСС: возврат из отложенных с ключом details ведёт в СМР", () => {
+  const act = listItem({ docType: "smr", isDeferredForAccountant: true, section: SECTION.DEFERRED }, { type: "smr" });
+  assert.strictEqual(getActSection(act), SECTION.DEFERRED);
+  assert.strictEqual(sectionAfterAccountant(act), SECTION.SMR);
+});
+
+test("РЕГРЕСС: складская накладная возвращается на склад, а не в заявки", () => {
+  const act = listItem({ isWarehouse: true, readyForAccountant: true, section: SECTION.ACCOUNTANT });
+  assert.strictEqual(sectionAfterAccountant(act), SECTION.WAREHOUSE);
+});
+
+test("РЕГРЕСС: заявка без документа возвращается в заявки", () => {
+  const act = listItem({ readyForAccountant: true, section: SECTION.ACCOUNTANT });
+  assert.strictEqual(sectionAfterAccountant(act), SECTION.ACT);
+});
+
+test("РЕГРЕСС: patch после возврата реально снимает флаг бухгалтера", () => {
+  // Именно это и не срабатывало: patch писал readyForAccountant: true обратно.
+  const act = listItem({ docType: "ttn", readyForAccountant: true, section: SECTION.ACCOUNTANT }, { type: "ttn" });
+  const patch = sectionPatch(sectionAfterAccountant(act));
+  assert.strictEqual(patch.section, SECTION.TTN);
+  assert.strictEqual(patch.readyForAccountant, false, "флаг бухгалтера не снят — накладная застрянет");
+  assert.strictEqual(patch.isDeferredForAccountant, false);
+});
+
+test("details ОБЪЕКТОМ (не строкой) — то же поведение", () => {
+  const d = { docType: "ttn", readyForAccountant: true, section: SECTION.ACCOUNTANT };
+  const act = { id: "x", type: "ttn", ...d, details: d };
+  assert.strictEqual(sectionAfterAccountant(act), SECTION.TTN);
+});
+
+test("Записанный section в details не мешает возврату", () => {
+  // Миграция проставила details.section. Он не должен переживать возврат.
+  const act = listItem({ docType: "ttn", readyForAccountant: true, section: SECTION.ACCOUNTANT }, { type: "ttn" });
+  assert.notStrictEqual(sectionAfterAccountant(act), SECTION.ACCOUNTANT);
+});
+
+test("ИДЕМПОТЕНТНОСТЬ: повторный вывод не меняет результат", () => {
+  const act = listItem({ docType: "smr", readyForAccountant: true, section: SECTION.ACCOUNTANT }, { type: "smr" });
+  const once = sectionAfterAccountant(act);
+  assert.strictEqual(sectionAfterAccountant({ ...act, section: once }), once,
+    "второй проход дал другой ответ — flatten не идемпотентен");
+});
+
+test("getActSection с ключом details читает записанное состояние", () => {
+  const act = listItem({ docType: "ttn", section: SECTION.WAREHOUSE }, { type: "ttn" });
+  assert.strictEqual(getActSection(act), SECTION.WAREHOUSE, "записанное состояние приоритетнее флагов");
+});
+
+test("Битый JSON в details не роняет и не меняет вывод по колонкам", () => {
+  const act = { id: "x", type: "ttn", docType: "ttn", details: "{не json" };
+  assert.strictEqual(getActSection(act), SECTION.TTN);
+});
+
 console.log(`\nИтого (section): ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

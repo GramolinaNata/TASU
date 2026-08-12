@@ -48,10 +48,22 @@ function parseDetails(raw) {
 
 // Списки работают с уже склеенным объектом { ...request, ...details }, а скрипт
 // миграции — с сырой строкой из БД. Принимаем оба вида.
+// ВАЖНО: ключ details из результата УБИРАЕТСЯ, и это не косметика.
+//
+// Функции ниже флаттенят повторно (getActSection → deriveSection,
+// sectionAfterAccountant → deriveSection). Пока details оставался в объекте,
+// второй проход снова подмешивал его поверх — и гасил всё, что вызывающий код
+// успел переопределить. Так ломалась кнопка «Вернуть в работу»:
+// sectionAfterAccountant ставил readyForAccountant:false, второй flatten
+// возвращал из details true, накладная оставалась у бухгалтера.
+//
+// Без details функция идемпотентна: flatten(flatten(x)) === flatten(x),
+// и повторный вызов больше ничего не откатывает.
 function flatten(act) {
   if (!act || typeof act !== 'object') return {};
   if (!act.details) return act;
-  return { ...act, ...parseDetails(act.details) };
+  const { details, ...rest } = act;
+  return { ...rest, ...parseDetails(details) };
 }
 
 const isTtn = (a) => a.docType === 'ttn' || a.type === 'ttn' || a.type === 'TTN';
@@ -142,6 +154,8 @@ export function sectionPatch(section) {
  * восстанавливается по нему.
  */
 export function sectionAfterAccountant(act) {
+  // flatten возвращает объект БЕЗ ключа details — иначе deriveSection ниже
+  // подмешал бы его повторно и вернул погашенные здесь флаги обратно.
   return deriveSection({
     ...flatten(act),
     section: undefined,

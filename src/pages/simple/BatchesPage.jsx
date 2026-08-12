@@ -3,6 +3,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
+import { formatDocNumber } from "../../shared/acts/docNumber.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import Loader from "../../shared/components/Loader";
@@ -501,7 +502,7 @@ export default function BatchesPage() {
           const route = d.route || {};
           return {
             id: r.id,
-            number: d.docNumber || r.docNumber || r.number || "—",
+            number: formatDocNumber(d.docNumber || r.docNumber || r.number) || "—",
             city: route.toCity || "—",
             receiver: receiver.fio || receiver.companyName || "—",
             seats: Number(totals.seats) || 0,
@@ -700,7 +701,7 @@ export default function BatchesPage() {
       const route = d.route || {};
       const totals = d.totals || {};
       return {
-        docNumber: r.docNumber || d.docNumber || r.id || "—",
+        docNumber: formatDocNumber(r.docNumber || d.docNumber) || r.id || "—",
         receiver: recv.fio || recv.companyName || "—",
         phone: recv.phone || "—",
         seats: totals.seats || "",

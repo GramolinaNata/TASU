@@ -191,12 +191,28 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
     let typeToUse = String(rawType).toLowerCase();
 
     let templateFile = "/templates/template.docx";
-    // 🆕 ТЗ v2: ТТН на экспорт = СМР (используем шаблон СМР для обоих)
-    if (typeToUse === "ttn") templateFile = "/templates/template_smr.docx";
     if (typeToUse === "smr" || typeToUse === "cmr") templateFile = "/templates/template_smr.docx";
     if (act.isWarehouse || typeToUse === "warehouse") templateFile = "/templates/template_warehouse.docx";
     if (act.isContract && !templateOverride) {
       templateFile = act.type === "warehouse" ? "/templates/warehouse_contract.docx" : "/templates/transport_contract.docx";
+    }
+
+    // ТТН ПЕЧАТАЕТСЯ ТОЛЬКО СВОИМ БЛАНКОМ — Приложение 9, exportTtnToXlsx.
+    //
+    // Здесь стояло:  if (typeToUse === "ttn") templateFile = "template_smr.docx"
+    // с пометкой «ТЗ v2: ТТН на экспорт = СМР». Тогда официального бланка ТТН
+    // ещё не было, и СМР использовали как замену. Потом бланк появился, экспорт
+    // ТТН ушёл в xlsx, а эта строка осталась — и любой путь, доходивший до docx,
+    // молча выдавал СМР вместо ТТН. Заказчик получал не тот документ.
+    //
+    // Молчаливую подмену заменяем явной ошибкой: неверный перевозочный документ
+    // хуже, чем несостоявшаяся печать. Склад и договор проверку не задевают —
+    // у них свои бланки, выбранные выше.
+    if (typeToUse === "ttn" && !act.isWarehouse && !act.isContract) {
+      throw new Error(
+        "ТТН печатается официальным бланком (Приложение 9), а не документом Word. " +
+        "Используйте «Экспорт как ТТН» — файл придёт в формате Excel."
+      );
     }
 
     console.log("🔵 [Export] Шаблон:", templateFile);

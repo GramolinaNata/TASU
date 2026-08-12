@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
+import { formatDocNumber } from "../../shared/acts/docNumber.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
 import { printCarrierVedomost as printCarrierDoc } from "../../shared/print/vedomostPrint.js";
 import { useAuth } from "../../shared/auth/AuthContext";
@@ -236,7 +237,7 @@ export default function BatchDetailPage() {
                     return (
                       <tr key={req.id || i}>
                         <td>{i + 1}</td>
-                        <td style={{ fontWeight: 600 }}>{d.docNumber || req.docNumber || req.number || "—"}</td>
+                        <td style={{ fontWeight: 600 }}>{formatDocNumber(d.docNumber || req.docNumber || req.number) || "—"}</td>
                         <td>{receiver.fio || receiver.companyName || "—"}</td>
                         <td>{receiver.phone || "—"}</td>
                         <td style={{ textAlign: "center" }}>{Number(totals.seats) || "—"}</td>

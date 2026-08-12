@@ -35,6 +35,7 @@ function ContactSuggest({ items, query, onPick }) {
 import { calcDeliveryPrice, findDeliveryTariff, cleanCityName, getTariffCategory, getDeliveryDestinations, getTariffOrigins } from "../../shared/tariff/calcTariff.js";
 import { extraPatch, totalWithExtra } from "../../shared/acts/extraSum.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
+import { formatDocNumber } from "../../shared/acts/docNumber.js";
 import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
 import {
   emptyDimGroup, groupVolumeM3, groupsVolumeM3, groupsSeats,
@@ -83,7 +84,7 @@ function openReceipt(form, company, docNumber) {
   const companyBin = company?.bin || "";
   const companyPhones = (company?.phone || "").split(/[,\n;]/).map(s => s.trim()).filter(Boolean);
 
-  const docNum = docNumber || "—";
+  const docNum = formatDocNumber(docNumber) || "—";
   const senderFio = form.senderName || "—";
   const senderPhone = form.senderPhone || "";
   const receiverFio = form.receiverName || "—";
@@ -557,7 +558,7 @@ export default function SimpleActPage() {
       <div class="info-val">${form.weight ? escapeHtml(form.weight) + " кг" : "—"}</div>
     </div>
   </div>
-  <div class="num-row">№ ${escapeHtml(assignedNumber)}</div>
+  <div class="num-row">№ ${escapeHtml(formatDocNumber(assignedNumber))}</div>
   <div class="receiver-block">
     <div class="receiver-label">получатель</div>
     <div class="receiver-name">${escapeHtml(receiverDisplay)}</div>
@@ -571,7 +572,7 @@ export default function SimpleActPage() {
 
       // Печать через общий хелпер (скрытый iframe) — тот же способ, что у юрлиц.
       // Вид, размер и содержимое наклейки не меняются.
-      printLabelViaIframe(label, { title: `Наклейка ${assignedNumber || ""}` });
+      printLabelViaIframe(label, { title: `Наклейка ${formatDocNumber(assignedNumber)}` });
 
       // 🆕 ТЗ: чек всплывает сразу при сохранении
       openReceipt(form, company, assignedNumber);
@@ -607,7 +608,7 @@ export default function SimpleActPage() {
           </div>
           {docNumber && (
             <div className="chip" style={{ background: "#f0f7ff", borderColor: "#91caff", color: "#0050b3", fontWeight: 700 }}>
-              № {docNumber}
+              № {formatDocNumber(docNumber)}
             </div>
           )}
         </div>
@@ -616,7 +617,7 @@ export default function SimpleActPage() {
 
       {saved && (
         <div style={{ margin: "16px 0", padding: "10px 16px", background: "#f6ffed", border: "1px solid #b7eb8f", borderRadius: 8, color: "#389e0d", fontSize: "0.95rem" }}>
-          ✅ Накладная сохранена! Заполните следующую (№ {docNumber}).
+          ✅ Накладная сохранена! Заполните следующую (№ {formatDocNumber(docNumber)}).
         </div>
       )}
 

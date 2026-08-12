@@ -353,6 +353,7 @@ import { api } from "../../shared/api/api.js";
 import { calcDeliveryPrice } from "../../shared/tariff/calcTariff.js";
 import { readExtra, extraPatch, totalWithExtra, tariffPartOf } from "../../shared/acts/extraSum.js";
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
+import { formatDocNumber } from "../../shared/acts/docNumber.js";
 import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
 import {
   emptyDimGroup, normalizeDimGroups, groupVolumeM3, groupsVolumeM3, groupsSeats,
@@ -752,7 +753,7 @@ export default function SimpleActDetailPage() {
     <div class="info-cell"><div class="info-label">мест</div><div class="info-val">${escapeHtml(String(act.totals?.seats || "—"))}</div></div>
     <div class="info-cell"><div class="info-label">вес</div><div class="info-val">${act.totals?.weight ? escapeHtml(String(act.totals.weight)) + " кг" : "—"}</div></div>
   </div>
-  <div class="num-row">№ ${escapeHtml(act.docNumber || "")}</div>
+  <div class="num-row">№ ${escapeHtml(formatDocNumber(act.docNumber))}</div>
   <div class="receiver-block">
     <div class="receiver-label">получатель</div>
     <div class="receiver-name">${escapeHtml(receiverDisplay)}</div>
@@ -766,7 +767,7 @@ export default function SimpleActDetailPage() {
 
     // Печать через общий хелпер (скрытый iframe) — тот же способ, что у юрлиц.
     // Вид, размер и содержимое наклейки не меняются.
-    printLabelViaIframe(label, { title: `Наклейка ${act.docNumber || ""}` });
+    printLabelViaIframe(label, { title: `Наклейка ${formatDocNumber(act.docNumber)}` });
   };
 
   // Чек для клиента — компактный формат, 2 копии на странице
@@ -798,7 +799,7 @@ export default function SimpleActDetailPage() {
       .map(s => s.trim())
       .filter(Boolean);
 
-    const docNum = act.docNumber || act.number || "—";
+    const docNum = formatDocNumber(act.docNumber || act.number) || "—";
     const senderFio = act.customer?.fio || "—";
     const senderPhone = act.customer?.phone || "";
     const receiverFio = act.receiver?.fio || "—";
@@ -888,7 +889,7 @@ ${receiptBlock}
     <>
       <div className="navbar">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <h1>Накладная №{act.docNumber}</h1>
+          <h1>Накладная №{formatDocNumber(act.docNumber)}</h1>
           <div className="chip" style={{ background: "#e6f7ff", borderColor: "#91caff", color: "#0050b3" }}>Упрощённый режим</div>
         </div>
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1115,7 +1116,7 @@ ${receiptBlock}
         <div className="card_head"><div className="card_title">Информация</div></div>
         <div className="card_body">
           <div className="form_grid">
-            <div className="field"><div className="label">Номер накладной</div><div>{act.docNumber || "—"}</div></div>
+            <div className="field"><div className="label">Номер накладной</div><div>{formatDocNumber(act.docNumber) || "—"}</div></div>
             <div className="field"><div className="label">Дата</div><div>{formatDate(act.createdAt || act.date)}</div></div>
             <div className="field"><div className="label">Статус</div><div>{act.status === "act" ? "В стоке" : act.status === "sent" ? "Подано" : act.status === "done" ? "Отработано" : act.status}</div></div>
           </div>
