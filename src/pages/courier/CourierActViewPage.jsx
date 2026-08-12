@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
+import { cargoLabel, cargoActionLabel, nextCargoStatus } from "../../shared/cargo/cargoStatus.js";
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -11,6 +12,9 @@ function formatDisplayDate(val) {
   return d.toLocaleDateString();
 }
 
+// Статус ДОКУМЕНТА. Курьерские значения («Забрано», «Доставлено») оставлены
+// только для чтения старых записей: писать их сюда мы перестали — движение
+// груза живёт в отдельном поле cargoStatus (см. handleStatusUpdate).
 const STATUS_MAP = {
   'act': 'Акт',
   'draft': 'Черновик',
@@ -55,12 +59,25 @@ export default function CourierActViewPage() {
     loadAct();
   }, [id]);
 
-  const handleStatusUpdate = async (newStatus) => {
+  /**
+   * ТЗ: движение груза пишется В СВОЁ ПОЛЕ, а не в статус документа.
+   *
+   * Раньше здесь было `update(act.id, { status: newStatus })` — курьер писал
+   * «Забрано»/«Доставлено» в ТО ЖЕ поле, что и рабочая цепочка накладной.
+   * Накладная, дошедшая до «Обработанных», после касания курьером становилась
+   * «Забрано»: выпадала из вкладки и завершить её было уже нельзя никогда.
+   * На проде так залипли 6 частных накладных.
+   *
+   * Теперь зовём выделенный эндпоинт cargo-status: он пишет в колонку
+   * cargoStatus, проверяет роль и не даёт двигать цепочку назад. Статус
+   * документа курьер больше не трогает вовсе.
+   */
+  const handleStatusUpdate = async (cargoStatus) => {
     setUpdating(true);
     try {
-        await api.requests.update(act.id, { status: newStatus });
-        await loadAct(); // Перегружаем данные
-        alert(`Статус обновлен на: ${newStatus}`);
+        await api.requests.setCargoStatus(act.id, cargoStatus);
+        await loadAct();
+        alert(`Груз отмечен: ${cargoLabel(cargoStatus)}`);
     } catch (err) {
         alert("Ошибка обновления: " + err.message);
     } finally {
@@ -125,6 +142,10 @@ export default function CourierActViewPage() {
                     fontSize: '0.8rem'
                 }}>
                     {STATUS_MAP[act?.status] || act?.status}
+                </span>
+                {/* Движение груза — отдельной плашкой: это не статус документа. */}
+                <span className="badge" style={{ padding: '6px 16px', borderRadius: '20px', fontSize: '0.8rem', background: 'var(--card)', border: '1px solid var(--line)' }}>
+                    🚚 {cargoLabel(act?.cargoStatus || '')}
                 </span>
                 <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>
                     {formatDisplayDate(act?.date)}
@@ -193,24 +214,28 @@ export default function CourierActViewPage() {
             )}
 
             {/* КНОПКИ ДЛЯ КУРЬЕРА */}
+            {/* ТЗ: одна кнопка — СЛЕДУЮЩИЙ шаг цепочки груза.
+                Раньше кнопок было две («Забрал» / «Доставил»), но цепочка
+                пускает только на шаг вперёд: между забором и выдачей стоят
+                погрузка и приём представителем. Кнопка «Доставил» из начала
+                получила бы отказ «нельзя перескочить шаг». Подпись берётся из
+                общего модуля, поэтому шаг и его название не разъедутся. */}
             {user && isCourier && (
-              <section style={{ marginTop: '1rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <button 
-                      className="btn btn--primary" 
-                      disabled={updating || act.status === 'Забрано'} 
-                      onClick={() => handleStatusUpdate('Забрано')}
-                      style={{ background: 'var(--info)', borderColor: 'transparent', borderRadius: '12px', fontWeight: 700 }}
-                  >
-                      {updating ? 'wait...' : '📦 Забрал'}
-                  </button>
-                  <button 
-                      className="btn btn--primary" 
-                      disabled={updating || act.status === 'Доставлено'} 
-                      onClick={() => handleStatusUpdate('Доставлено')}
-                      style={{ background: 'var(--success)', borderColor: 'transparent', borderRadius: '12px', fontWeight: 700 }}
-                  >
-                      {updating ? 'wait...' : '🏁 Доставил'}
-                  </button>
+              <section style={{ marginTop: '1rem' }}>
+                  {nextCargoStatus(act.cargoStatus || '') ? (
+                    <button
+                        className="btn btn--primary"
+                        disabled={updating}
+                        onClick={() => handleStatusUpdate(nextCargoStatus(act.cargoStatus || ''))}
+                        style={{ width: '100%', background: 'var(--info)', borderColor: 'transparent', borderRadius: '12px', fontWeight: 700, padding: '12px' }}
+                    >
+                        {updating ? 'wait...' : cargoActionLabel(nextCargoStatus(act.cargoStatus || ''))}
+                    </button>
+                  ) : (
+                    <div style={{ textAlign: 'center', padding: '12px', color: 'var(--muted)', fontSize: '0.9rem' }}>
+                        🏁 Груз выдан получателю — цепочка завершена
+                    </div>
+                  )}
               </section>
             )}
 
