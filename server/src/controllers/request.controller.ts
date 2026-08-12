@@ -1561,12 +1561,45 @@ export const markPaid = async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { isPaid } = req.body;
+    const wantPaid = isPaid !== false;
+
+    // ⚠️ ЗЕРКАЛО src/shared/acts/completion.js (canComplete).
+    //
+    // ТЗ: цепочка строгая — Активные → (менеджер) Обработанные →
+    // (бухгалтер) Завершённые. Завершать можно ТОЛЬКО из «Обработанных».
+    //
+    // Проверка нужна ИМЕННО ЗДЕСЬ, а не только в интерфейсе: раньше правило
+    // сводилось к тому, на какой вкладке нарисована кнопка. Устаревший список
+    // в соседней вкладке браузера — и завершалась накладная, которую менеджер
+    // ещё не обработал, причём молча.
+    //
+    // Снятие отметки (wantPaid === false) не ограничиваем: это исправление
+    // ошибки бухгалтера, и запирать его нельзя.
+    if (wantPaid) {
+      const existing = await prisma.request.findUnique({ where: { id: id as string } });
+      if (!existing) return res.status(404).json({ message: 'Накладная не найдена' });
+
+      const status = String((existing as any).status || '').trim();
+      if (status === 'canceled') {
+        return res.status(409).json({ message: 'Накладная аннулирована — завершить нельзя' });
+      }
+      if (status !== 'done') {
+        const RU: Record<string, string> = {
+          act: 'В стоке', sent: 'Подано', done: 'Обработанные',
+          deferred: 'Отложенные', canceled: 'Аннулированные',
+        };
+        return res.status(409).json({
+          message: `Завершить нельзя: накладная сейчас «${RU[status] || status || 'без статуса'}». ` +
+                   `Сначала менеджер переводит её в «Обработанные».`,
+        });
+      }
+    }
 
     const updated = await prisma.request.update({
       where: { id: id as string },
       data: {
-        isPaid: isPaid !== false,
-        paidAt: isPaid !== false ? new Date() : null,
+        isPaid: wantPaid,
+        paidAt: wantPaid ? new Date() : null,
       } as any,
       include: { company: true },
     });

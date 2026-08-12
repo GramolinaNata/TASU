@@ -62,6 +62,12 @@ export default function SentToAccountantPage() {
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [esfFilter, setEsfFilter] = useState("all");
   const [loading, setLoading] = useState(true);
+  // ТЗ: «градацию добавить, чтобы можно было разделить по компаниям».
+  // Раздел был жёстко привязан к компании из общего переключателя: чтобы
+  // посмотреть другую, приходилось переключать её вверху и терять фильтры.
+  // Теперь список грузится по всем компаниям, а разделение — этим фильтром.
+  const [companies, setCompanies] = useState([]);
+  const [companyFilter, setCompanyFilter] = useState("all");
 
   // ТЗ: вкладки Активные / Завершённые
   const [tab, setTab] = useState("active");
@@ -86,8 +92,9 @@ export default function SentToAccountantPage() {
     if (tab === "completed") list = list.filter(a => a.isProcessedByAccountant === true);
     else list = list.filter(a => a.isProcessedByAccountant !== true);
 
-    if (company) list = list.filter(a => a.companyId === company.id);
-    else return [];
+    // Раньше здесь было «нет выбранной компании — показать пусто». Теперь
+    // разделение делает фильтр, а «Все» — законное значение, а не пустой экран.
+    if (companyFilter !== "all") list = list.filter(a => a.companyId === companyFilter);
 
     if (docTypeFilter !== "all") {
         if (docTypeFilter === "warehouse") list = list.filter(a => a.isWarehouse);
@@ -126,7 +133,7 @@ export default function SentToAccountantPage() {
     });
 
     return sorted;
-  }, [acts, q, tab, company, dateFrom, dateTo, docTypeFilter, esfFilter, sortBy, sortOrder]);
+  }, [acts, q, tab, companyFilter, dateFrom, dateTo, docTypeFilter, esfFilter, sortBy, sortOrder]);
 
   const totals = useMemo(() => {
     return filtered.reduce((acc, a) => {
@@ -141,7 +148,15 @@ export default function SentToAccountantPage() {
   const loadActs = async () => {
     setLoading(true);
     try {
-      const list = await api.requests.list(company?.id);
+      // Грузим ВСЕ компании — иначе фильтр ниже нечем было бы наполнить.
+      // Разделение делает companyFilter, он же по умолчанию встаёт на компанию
+      // из общего переключателя, поэтому при открытии раздел выглядит как
+      // раньше и никто не увидит внезапно чужие заявки.
+      const [list, compList] = await Promise.all([
+        api.requests.list(),
+        api.companies.list().catch(() => []),
+      ]);
+      if (Array.isArray(compList)) setCompanies(compList);
       if (Array.isArray(list)) {
         const parsed = list.map(a => {
            let details = {};
@@ -220,9 +235,17 @@ export default function SentToAccountantPage() {
     return unsubscribe;
   }, []);
 
+  // Список грузим один раз: он больше не зависит от выбранной компании.
   useEffect(() => {
-    if (company) loadActs();
-    else { setActs([]); setLoading(false); }
+    loadActs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Переключатель компании вверху теперь задаёт ЗНАЧЕНИЕ фильтра, а не объём
+  // загрузки. Так привычное поведение сохраняется: сменил компанию — увидел её
+  // заявки, но при этом можешь выбрать «Все» и сравнить.
+  useEffect(() => {
+    setCompanyFilter(company?.id || "all");
   }, [company]);
 
   const SortableTh = ({ field, children, style }) => (
@@ -236,15 +259,14 @@ export default function SentToAccountantPage() {
       <div className="navbar">
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <h1>Отработанные</h1>
-          {company ? (
-            <div className="chip" style={{ background: "#f6ffed", borderColor: "#b7eb8f", color: "#389e0d" }}>
-              Компания: {company.name}
-            </div>
-          ) : (
-            <div className="chip" style={{ background: "#fff1f0", borderColor: "#ffccc7", color: "#a8071a" }}>
-              Компания не выбрана
-            </div>
-          )}
+          {/* Показываем то, что реально применено к списку, — значение фильтра.
+              Раньше здесь стояла выбранная сверху компания, и после смены
+              фильтра шапка говорила одно, а список показывал другое. */}
+          <div className="chip" style={{ background: "#f6ffed", borderColor: "#b7eb8f", color: "#389e0d" }}>
+            Компания: {companyFilter === "all"
+              ? "все"
+              : (companies.find(c => c.id === companyFilter)?.name || company?.name || "—")}
+          </div>
           <button className="btn btn--sm btn--ghost" onClick={openCompanySelector}>Сменить</button>
         </div>
         <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
@@ -256,6 +278,13 @@ export default function SentToAccountantPage() {
         <div className="field" style={{ minWidth: 200, flex: 1 }}>
           <div className="label">Поиск</div>
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Номер, заказчик, компания, город..." />
+        </div>
+        <div className="field" style={{ width: 190 }}>
+           <div className="label">Компания</div>
+           <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)}>
+               <option value="all">Все компании</option>
+               {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+           </select>
         </div>
         <div className="field" style={{ width: 140 }}>
            <div className="label">Тип документа</div>
@@ -295,11 +324,9 @@ export default function SentToAccountantPage() {
         <div style={{ padding: '8px 16px', background: 'var(--card)', borderRadius: 8, border: '1px solid var(--line)', fontSize: '0.9rem' }}>
           Вес: <strong>{totals.weight} кг</strong>
         </div>
-        {canSeeMoney && (
-        <div style={{ padding: '8px 16px', background: '#fff2e8', borderRadius: 8, border: '1px solid #ffbb96', fontSize: '0.9rem', color: '#d4380d' }}>
-          Сумма: <strong>{totals.sum.toLocaleString()} тг</strong>
-        </div>
-        )}
+        {/* ТЗ: плашка «Сумма» сверху убрана по просьбе заказчика.
+            Сам подсчёт (totals.sum) оставлен: он используется колонкой «Сумма»
+            в таблице и вернуть плашку — это добавить сюда один блок. */}
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -345,7 +372,9 @@ export default function SentToAccountantPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={moneyColSpan(15)} className="muted" style={{ padding: 16 }}>
-                    {company ? "Нет отработанных заявок." : "Выберите компанию."}
+                    {companyFilter === "all"
+                      ? "Нет отработанных заявок."
+                      : "Нет отработанных заявок по этой компании — попробуйте «Все компании»."}
                   </td>
                 </tr>
               ) : (

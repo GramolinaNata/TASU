@@ -2,6 +2,7 @@ import React, { useEffect, useState, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { formatDocNumber } from "../../shared/acts/docNumber.js";
+import { canComplete, splitCompletable } from "../../shared/acts/completion.js";
 import { getSelectedCompany, subscribeSelectedCompany } from "../../shared/storage/companyStorage.js";
 import Loader from "../../shared/components/Loader";
 import { useAuth } from "../../shared/auth/AuthContext";
@@ -184,7 +185,34 @@ export default function SimpleActsListPage() {
   // Эндпоинт mark-paid уже существовал (используется в Аналитике), роль он не
   // ограничивает — доступ регулируем показом кнопки.
   const bulkPaid = async (paid) => {
-    const ids = filtered.filter(a => selected.includes(a.id) && a.status !== 'canceled').map(a => a.id);
+    const picked = filtered.filter(a => selected.includes(a.id));
+
+    // ТЗ: завершать можно ТОЛЬКО из «Обработанных». Раньше правило держалось
+    // на том, что кнопка рисуется лишь на нужной вкладке, — а сама проверка
+    // сводилась к «не аннулирована». Две открытые вкладки или устаревший
+    // список, и завершалась накладная, которую менеджер ещё не обработал.
+    let ids;
+    if (paid) {
+      const { allowed, blocked } = splitCompletable(picked);
+      if (blocked.length) {
+        const список = blocked
+          .map(b => `• №${formatDocNumber(b.act.docNumber || b.act.number)} — ${b.reason}`)
+          .join("\n");
+        if (allowed.length === 0) {
+          alert(`Завершить нельзя:\n\n${список}`);
+          return;
+        }
+        // Часть можно — спрашиваем явно, что именно уйдёт, а что останется.
+        const ok = window.confirm(
+          `Из ${picked.length} накл. завершить можно ${allowed.length}.\n\nНе будут завершены:\n${список}\n\nПродолжить с остальными?`
+        );
+        if (!ok) return;
+      }
+      ids = allowed.map(a => a.id);
+    } else {
+      ids = picked.filter(a => a.status !== 'canceled').map(a => a.id);
+    }
+
     if (ids.length === 0) return alert("Выберите накладные (аннулированные не переводятся).");
     const текст = paid
       ? `Отметить ${ids.length} накл. как оплаченные? Они уйдут в «Завершённые».`
@@ -206,7 +234,15 @@ export default function SimpleActsListPage() {
 
   // Построчная отметка оплаты — та же механика, что и массовая.
   const markPaidAct = async (act, paid) => {
-    const num = act.docNumber || act.number;
+    // Та же проверка, что и на массовой кнопке: правило одно на оба способа.
+    if (paid) {
+      const v = canComplete(act);
+      if (!v.ok) {
+        alert(`Завершить нельзя: ${v.reason}.`);
+        return;
+      }
+    }
+    const num = formatDocNumber(act.docNumber || act.number);
     const текст = paid
       ? `Завершить накладную №${num}? Оплата пришла, она уйдёт в «Завершённые».`
       : `Снять отметку об оплате с №${num}? Она вернётся в «Обработанные».`;
