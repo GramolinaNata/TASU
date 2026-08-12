@@ -1211,6 +1211,25 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
       const existingDetails = safeParseDetails((existing as any).details);
       const { status, date, type, docNumber, companyId, totalSum, ...bodyFields } = req.body;
 
+      // ⚠️ ЗЕРКАЛО src/shared/acts/mergeRequest.js (COLUMN_OWNED).
+      //
+      // Завершение и оплата живут в КОЛОНКАХ и меняются только выделенными
+      // эндпоинтами: mark-fully-completed (закрыт requireAccountant), mark-paid,
+      // restore. Обычный update не должен их касаться.
+      //
+      // Раньше любое такое поле в теле запроса просто проваливалось в details
+      // (оно не разбирается выше и попадает в bodyFields). Копия в details
+      // потом перекрывала колонку в списках — и накладная показывалась
+      // завершённой мимо бухгалтера. На проде такие копии уже есть у 5 записей.
+      // Убираем их из тела и заодно чистим уже накопленный мусор в details.
+      const COLUMN_OWNED = [
+        'isFullyCompleted', 'fullyCompletedAt', 'isPaid', 'paidAt', 'reEditedAfterCompletion',
+      ];
+      for (const key of COLUMN_OWNED) {
+        delete (bodyFields as any)[key];
+        delete (existingDetails as any)[key];
+      }
+
       // details может прийти ОБЪЕКТОМ (ActCreatePage шлёт поля плоско) либо СТРОКОЙ
       // JSON (форма редактирования частной накладной). Раньше строка молча терялась:
       // сырой ключ details подмешивался внутрь самих details, а слияние пропускалось
@@ -1618,13 +1637,18 @@ export const restoreRequest = async (req: AuthRequest, res: Response) => {
     if (!existing) return res.status(404).json({ message: 'Заявка не найдена' });
 
     const existingDetails = safeParseDetails((existing as any).details);
-    const newDetails = {
+    const newDetails: Record<string, any> = {
       ...existingDetails,
       readyForAccountant: false,
       isDeferredForAccountant: false,
       isProcessedByAccountant: false,
       isViewedByAccountant: false,
     };
+    // Возврат гасит КОЛОНКУ isFullyCompleted — но копия в details оставалась
+    // и перекрывала её в списках: накладная возвращалась в работу и при этом
+    // продолжала висеть в «Завершённых». Чистим копию здесь же.
+    delete newDetails.isFullyCompleted;
+    delete newDetails.fullyCompletedAt;
 
     const today = new Date().toISOString().split('T')[0];
 

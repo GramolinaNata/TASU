@@ -4,6 +4,7 @@ import { api } from "../../shared/api/api.js";
 import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { getActSection, SECTION } from "../../shared/acts/section.js";
+import { mergeRequest } from "../../shared/acts/mergeRequest.js";
 import { exportBundle } from "../../shared/export/exportBundle.js";
 
 function formatDisplayDate(val) {
@@ -121,15 +122,8 @@ export default function AccountantGeneralPage() {
       if (Array.isArray(expList)) setExpenses(expList);
 
       if (Array.isArray(list)) {
-        const parsed = list.map(a => {
-          let details = {};
-          if (a.details) {
-            try {
-              details = typeof a.details === 'string' ? JSON.parse(a.details) : a.details;
-            } catch (e) { console.error("Parse error", e); }
-          }
-          return { ...a, ...details };
-        });
+        // Завершение/оплата — из КОЛОНОК, details их перекрывать не должен.
+        const parsed = list.map(mergeRequest);
         setActs(parsed);
       } else {
         setActs([]);
