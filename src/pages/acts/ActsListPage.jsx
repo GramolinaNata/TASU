@@ -702,6 +702,9 @@ import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 import { getActSection, sectionPatch, SECTION } from "../../shared/acts/section.js";
+// Сумма накладной читается ОДНОЙ точкой: у старых частных накладных
+// колонка totalSum пуста, а сумма лежит в details (см. actSum.js).
+import { actTotalSum, actSumText, actSumOrZero } from '../../shared/acts/actSum.js';
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -735,7 +738,7 @@ function getSortValue(a, field) {
     case 'transport': return (a.docAttrs?.transportType || a.cargoText || '').toString().toLowerCase();
     case 'seats':     return Number(a.totals?.seats) || 0;
     case 'weight':    return Number(a.totals?.weight) || 0;
-    case 'totalSum':  return Number(a.totalSum) || 0;
+    case 'totalSum':  return actSumOrZero(a);
     default:          return '';
   }
 }
@@ -1067,7 +1070,7 @@ export default function ActsListPage() {
                     <td style={{ textAlign: 'center' }}>{a.totals?.seats || "—"}</td>
                     <td style={{ textAlign: 'center' }}>{a.totals?.weight || "—"}</td>
                     <MoneyTd style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                      {actSumText(a)}
                     </MoneyTd>
                     {(!isAccountant || isAdmin) && (
                       <td style={{ textAlign: "right" }}>

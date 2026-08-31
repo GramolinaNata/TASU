@@ -6,6 +6,9 @@ import Loader from "../../shared/components/Loader";
 import { getActSection, SECTION } from "../../shared/acts/section.js";
 import { mergeRequest } from "../../shared/acts/mergeRequest.js";
 import { exportBundle } from "../../shared/export/exportBundle.js";
+// Сумма накладной читается ОДНОЙ точкой: у старых частных накладных
+// колонка totalSum пуста, а сумма лежит в details (см. actSum.js).
+import { actTotalSum, actSumText, actSumOrZero } from '../../shared/acts/actSum.js';
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -48,7 +51,7 @@ function getSortValue(a, field, companies) {
     case 'customer': return (a.customer?.companyName || a.customer?.fio || '').toString().toLowerCase();
     case 'seats':    return Number(a.totals?.seats) || 0;
     case 'weight':   return Number(a.totals?.weight) || 0;
-    case 'totalSum': return Number(a.totalSum) || 0;
+    case 'totalSum': return actSumOrZero(a);
     case 'route':    return ((a.route?.fromCity || '') + ' ' + (a.route?.toCity || '')).toLowerCase();
     case 'sno':      return a.snoIssued ? 1 : 0;
     case 'avr':      return a.avrSent ? 1 : 0;
@@ -346,7 +349,7 @@ export default function AccountantGeneralPage() {
       acc.count += 1;
       acc.seats += Number(a.totals?.seats) || 0;
       acc.weight += Number(a.totals?.weight) || 0;
-      acc.sum += Number(a.totalSum) || 0;
+      acc.sum += actSumOrZero(a);
       return acc;
     }, { count: 0, seats: 0, weight: 0, sum: 0 });
   }, [filtered]);
@@ -363,7 +366,7 @@ export default function AccountantGeneralPage() {
           `${a.route?.fromCity || ''} → ${a.route?.toCity || ''}`,
           a.totals?.seats || '',
           a.totals?.weight || '',
-          a.totalSum ? parseFloat(a.totalSum).toLocaleString() : '',
+          actTotalSum(a) === null ? '' : actTotalSum(a).toLocaleString(),
           a.snoIssued ? 'Да' : 'Нет',
           a.avrSent ? 'Да' : 'Нет',
           a.esfIssued ? 'Да' : 'Нет',
@@ -636,7 +639,7 @@ export default function AccountantGeneralPage() {
                       <td><div style={{ fontWeight: 500 }}>{a.customer?.companyName || a.customer?.fio || "—"}</div></td>
                       <td>{a.totals?.seats || "—"}</td>
                       <td>{a.totals?.weight ? `${a.totals.weight} кг` : "—"}</td>
-                      <td style={{ fontWeight: 700 }}>{a.totalSum ? `${parseFloat(a.totalSum).toLocaleString()} тг` : "—"}</td>
+                      <td style={{ fontWeight: 700 }}>{actSumText(a, " тг")}</td>
                       <td>
                         {a.isWarehouse ? (
                           <span className="badge" style={{ background: '#e6f7ff', color: '#1890ff' }}>Склад</span>

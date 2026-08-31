@@ -613,6 +613,9 @@ import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 import { getActSection, SECTION } from "../../shared/acts/section.js";
+// Сумма накладной читается ОДНОЙ точкой: у старых частных накладных
+// колонка totalSum пуста, а сумма лежит в details (см. actSum.js).
+import { actTotalSum, actSumText, actSumOrZero } from '../../shared/acts/actSum.js';
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -644,7 +647,7 @@ function getSortValue(a, field) {
     case 'toCity':    return (a.route?.toCity || '').toString().toLowerCase();
     case 'customer':  return (a.customer?.fio || '').toString().toLowerCase();
     case 'transport': return (a.docAttrs?.transportType || a.cargoText || '').toString().toLowerCase();
-    case 'totalSum':  return Number(a.totalSum) || 0;
+    case 'totalSum':  return actSumOrZero(a);
     default:          return '';
   }
 }
@@ -912,7 +915,7 @@ export default function RequestsPage() {
                           a.docAttrs?.transportType === 'train' ? "Поезд" : (a.cargoText || "—")}
                     </td>
                     <MoneyTd style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                      {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                      {actSumText(a)}
                     </MoneyTd>
                     <td style={{ textAlign: "right" }}>
                       <details className="actions-dropdown">

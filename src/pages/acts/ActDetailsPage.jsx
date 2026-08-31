@@ -21,6 +21,9 @@ import { canFormDocument, signChainState } from "../../shared/sign/signChain.js"
 import { docKindForRoute, docKindMatches, DOC_LABELS } from "../../shared/acts/docKind.js";
 import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
 import CargoTrack from "../../shared/cargo/CargoTrack.jsx";
+// Сумма накладной читается ОДНОЙ точкой: у старых частных накладных
+// колонка totalSum пуста, а сумма лежит в details (см. actSum.js).
+import { actTotalSum, actSumText, actSumOrZero } from '../../shared/acts/actSum.js';
 import {
   getActSection, sectionPatch, sectionPath, sectionAfterAccountant, SECTION,
 } from "../../shared/acts/section.js";
@@ -1341,7 +1344,7 @@ const printLabel = async () => {
           <MoneyBlock>
             <div className="summary_item">
               <div className="label">Сумма</div>
-              <div className="v">{act.totalSum || "—"}</div>
+              <div className="v">{actSumText(act)}</div>
             </div>
           </MoneyBlock>
           {act.isWarehouse && (

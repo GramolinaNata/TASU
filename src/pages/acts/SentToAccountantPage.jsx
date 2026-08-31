@@ -8,6 +8,9 @@ import Loader from "../../shared/components/Loader";
 import { MoneyTd, useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 import { getActSection, sectionPatch, sectionAfterAccountant, SECTION } from "../../shared/acts/section.js";
 import { mergeRequest } from "../../shared/acts/mergeRequest.js";
+// Сумма накладной читается ОДНОЙ точкой: у старых частных накладных
+// колонка totalSum пуста, а сумма лежит в details (см. actSum.js).
+import { actTotalSum, actSumText, actSumOrZero } from '../../shared/acts/actSum.js';
 
 function formatDisplayDate(val) {
   if (!val) return "—";
@@ -36,7 +39,7 @@ function getSortValue(act, field) {
     case "type":            return act.isWarehouse ? "склад" : (act.docType || act.type || "заявка").toString().toLowerCase();
     case "customer":        return (act.customer?.fio || "").toLowerCase();
     case "customerCompany": return (act.customer?.companyName || "").toLowerCase();
-    case "totalSum":        return parseFloat(act.totalSum) || 0;
+    case "totalSum":        return actSumOrZero(act);
     case "fromCity":        return (act.route?.fromCity || "").toLowerCase();
     case "toCity":          return (act.route?.toCity || "").toLowerCase();
     case "seats":           return Number(act.totals?.seats) || 0;
@@ -202,7 +205,7 @@ export default function SentToAccountantPage() {
       acc.count += 1;
       acc.seats += Number(a.totals?.seats) || 0;
       acc.weight += Number(a.totals?.weight) || 0;
-      acc.sum += Number(a.totalSum) || 0;
+      acc.sum += actSumOrZero(a);
       return acc;
     }, { count: 0, seats: 0, weight: 0, sum: 0 });
   }, [filtered]);
@@ -533,7 +536,7 @@ export default function SentToAccountantPage() {
                       <td><div style={{ fontWeight: 500 }}>{customerFio}</div></td>
                       <td><div style={{ fontSize: '0.9rem' }}>{customerCompany}</div></td>
                       <MoneyTd style={{ fontWeight: 700 }}>
-                        {a.totalSum ? `${parseFloat(a.totalSum).toLocaleString()} тг` : "—"}
+                        {actSumText(a, " тг")}
                       </MoneyTd>
                       <td>{a.route?.fromCity || "—"}</td>
                       <td>{a.route?.toCity || "—"}</td>

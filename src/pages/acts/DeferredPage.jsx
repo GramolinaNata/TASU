@@ -280,6 +280,9 @@ import { useAuth } from "../../shared/auth/AuthContext";
 import Loader from "../../shared/components/Loader";
 import { useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 import { getActSection, sectionPatch, sectionAfterAccountant, SECTION } from "../../shared/acts/section.js";
+// Сумма накладной читается ОДНОЙ точкой: у старых частных накладных
+// колонка totalSum пуста, а сумма лежит в details (см. actSum.js).
+import { actTotalSum, actSumText, actSumOrZero } from '../../shared/acts/actSum.js';
 
 /**
  * Вкладки раздела: Отложенные и Аннулированные.
@@ -338,7 +341,7 @@ function getSortValue(a, field) {
     case 'route':    return ((a.route?.fromCity || '') + ' ' + (a.route?.toCity || '')).toLowerCase();
     case 'seats':    return Number(a.totals?.seats) || 0;
     case 'weight':   return Number(a.totals?.weight) || 0;
-    case 'totalSum': return Number(a.totalSum) || 0;
+    case 'totalSum': return actSumOrZero(a);
     case 'status':   return (a.status || '') + (a.isWarehouse ? '_warehouse' : '');
     default:         return '';
   }
@@ -627,7 +630,7 @@ export default function DeferredPage() {
                     <td style={{ textAlign: 'center', fontSize: '0.9rem' }}>{a.totals?.weight || "—"}</td>
                     {canSeeMoney && (
                       <td style={{ fontWeight: 500, whiteSpace: 'nowrap' }}>
-                        {a.totalSum ? Number(a.totalSum).toLocaleString() : "—"}
+                        {actSumText(a)}
                       </td>
                     )}
                     <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
