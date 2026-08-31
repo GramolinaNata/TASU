@@ -139,6 +139,12 @@ function getSortValue(t, field) {  switch (field) {
 }
 
 // Компактные чипсы диапазонов для таблицы: новый формат _ranges или legacy rN.
+//
+// ТЗ (замечание заказчика «в тарифах не всё высвечивается»): ЗАБОР ГРУЗА
+// добавили в редактор диапазонов, а сюда — нет. В списке тарифов колонка
+// «Диапазоны весов» показывала только значение и доставку, поэтому проверить
+// заведённый забор можно было лишь открыв тариф на правку. Теперь забор идёт
+// третьим слагаемым чипса, ровно как считает движок.
 function RangeChips({ wr }) {
   const chip = { padding: '2px 8px', background: '#eef2ff', color: '#3730a3', borderRadius: 4, fontSize: '0.75rem', fontWeight: 600 };
   let items = [];
@@ -153,7 +159,10 @@ function RangeChips({ wr }) {
         const dev = Number(r.delivery) > 0
           ? ` · дост. ${Number(r.delivery).toLocaleString()}${r.deliveryMode === 'perKg' ? '/кг' : ''}`
           : '';
-        return <span key={i} style={chip}>{bound}: {val}{dev}</span>;
+        const pick = Number(r.pickup) > 0
+          ? ` · забор ${Number(r.pickup).toLocaleString()}${r.pickupMode === 'perKg' ? '/кг' : ''}`
+          : '';
+        return <span key={i} style={chip}>{bound}: {val}{dev}{pick}</span>;
       });
   } else {
     items = WEIGHT_RANGES.filter(r => wr[r.key]).map(r => (
@@ -226,6 +235,34 @@ function RangesEditor({ rows, onUpdate, onAdd, onRemove }) {
   );
 }
 
+// Надбавки тарифа одной строкой: выгрузка, ПРР, хранение, габарит.
+// Всё это движок прибавляет к сумме, но в списке тарифов не показывалось —
+// заказчик видел «пусто» и не мог проверить, заведена ставка или нет.
+// Ноль и «не задано» здесь одно и то же: движок ноль всё равно не начисляет.
+function ExtrasChips({ wr, isPrivate }) {
+  const chip = { padding: '2px 8px', background: '#f0f7ff', color: '#0050b3', borderRadius: 4, fontSize: '0.72rem', fontWeight: 600, whiteSpace: 'nowrap' };
+  const n = (v) => Number(v) || 0;
+  const items = [];
+  if (n(wr._unloadPerSeat)) items.push(`выгрузка ${n(wr._unloadPerSeat).toLocaleString()}/место`);
+  if (n(wr._prrPallet)) items.push(`ПРР палет. ${n(wr._prrPallet).toLocaleString()}/пал.`);
+  if (n(wr._prrManual)) items.push(`ПРР ручн. ${n(wr._prrManual).toLocaleString()}/кг`);
+  if (n(wr._storagePerKg)) items.push(`хранение ${n(wr._storagePerKg).toLocaleString()}/кг·сут`);
+  if (n(wr._storagePerCubic)) items.push(`хранение ${n(wr._storagePerCubic).toLocaleString()}/м³·сут`);
+  if (isPrivate && n(wr._sizeMedium)) items.push(`габарит средн. +${n(wr._sizeMedium).toLocaleString()}`);
+  if (isPrivate && n(wr._sizeLarge)) items.push(`габарит больш. +${n(wr._sizeLarge).toLocaleString()}`);
+  // Посёлки внутри тарифа: блок в форме скрыт, но суммы по ним движок считает —
+  // значит в списке о них надо сказать, иначе доплата выглядит взявшейся ниоткуда.
+  const poselki = Array.isArray(wr._regionalDeliveries) ? wr._regionalDeliveries.filter(r => r && r.region) : [];
+  if (poselki.length) items.push(`посёлки: ${poselki.map(r => r.region).join(', ')}`);
+
+  if (!items.length) return <span className="muted" style={{ fontSize: '0.8rem' }}>—</span>;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+      {items.map((t, i) => <span key={i} style={chip}>{t}</span>)}
+    </div>
+  );
+}
+
 const EMPTY_FORM = {
   fromCity: "Алматы",
   city: "",
@@ -236,7 +273,16 @@ const EMPTY_FORM = {
   extraSum: 0,
   deliveryDays: "",
   transport: "auto",
+  // ТЗ: страна назначения решает, какой документ формировать — СМР или ТТН.
+  // Умолчание KZ: все существующие направления внутриказахстанские.
+  country: "KZ",
   pricePerCubic: "",
+  // Выгрузка и ПРР в EMPTY_FORM отсутствовали, хотя поля для них в форме есть:
+  // у НОВОГО тарифа value приходил undefined, и React вёл эти три инпута как
+  // неуправляемые — со своим предупреждением и без сброса при закрытии формы.
+  unloadPerSeat: "",
+  prrPallet: "",
+  prrManual: "",
   storagePerKg: "",
   storagePerCubic: "",
   sizeMedium: "",
@@ -532,6 +578,8 @@ const tabCounts = useMemo(() => ({
       extraSum: t.extraSum || 0,
       deliveryDays: wr._deliveryDays || "",
       transport: (/__AVIA$/.test(t.city || "") || wr._transport === "avia") ? "avia" : "auto",
+      // У старых тарифов поля нет — читаем как Казахстан, а не как «пусто».
+      country: wr._country === "RU" ? "RU" : "KZ",
       unloadPerSeat: wr._unloadPerSeat || "",
       prrPallet: wr._prrPallet || "",
       prrManual: wr._prrManual || "",
@@ -553,6 +601,8 @@ const tabCounts = useMemo(() => ({
           value: rg.value ?? rg.sum ?? rg.extra ?? rg.price ?? "",
           delivery: rg.delivery ?? "",
           deliveryMode: rg.deliveryMode === 'perKg' ? 'perKg' : 'fixed',
+          pickup: rg.pickup ?? "",
+          pickupMode: rg.pickupMode === 'perKg' ? 'perKg' : 'fixed',
         })),
       })),
       ranges,
@@ -579,9 +629,15 @@ const tabCounts = useMemo(() => ({
                 value: parseFloat(rg.value) || 0,
                 delivery: parseFloat(rg.delivery) || 0,
                 deliveryMode: rg.deliveryMode === 'perKg' ? 'perKg' : 'fixed',
+                // Посёлки редактируются тем же RangesEditor, что и основной
+                // тариф, — значит и поля забора у них на экране есть. Здесь их
+                // не сохраняли: менеджер вводил забор по посёлку, жал
+                // «Сохранить» и молча получал ноль.
+                pickup: parseFloat(rg.pickup) || 0,
+                pickupMode: rg.pickupMode === 'perKg' ? 'perKg' : 'fixed',
               };
             })
-            .filter(rg => rg.value > 0 || rg.delivery > 0)
+            .filter(rg => rg.value > 0 || rg.delivery > 0 || rg.pickup > 0)
             .sort((a, b) => (a.maxWeight == null ? Infinity : a.maxWeight) - (b.maxWeight == null ? Infinity : b.maxWeight));
           return { region: r.region.trim(), ranges };
         })
@@ -613,6 +669,11 @@ const tabCounts = useMemo(() => ({
         _category: form.category || (form.isPrivate ? 'private' : 'legal'),
         _deliveryDays: form.deliveryDays || "",
         _transport: (form.category === 'legal' || form.category === 'private') ? (form.transport || 'auto') : undefined,
+        // Страна назначения — только у направлений перевозки: по ней
+        // выбирается документ (Казахстан → СМР, Россия → ТТН).
+        _country: (form.category === 'legal' || form.category === 'private')
+          ? (form.country === 'RU' ? 'RU' : 'KZ')
+          : undefined,
         _pricePerCubic: parseFloat(form.pricePerCubic) || 0,
         _unloadPerSeat: parseFloat(form.unloadPerSeat) || 0,
         _prrPallet: parseFloat(form.prrPallet) || 0,
@@ -738,7 +799,13 @@ const tabCounts = useMemo(() => ({
     <div>
       <div className="navbar">
         <h1>Тарифные сетки</h1>
-        <button className="btn btn--accent" onClick={openCreate}>+ Добавить тариф</button>
+        {/* На вкладке складских услуг кнопка бессмысленна: прейскурант — одна
+            запись, её правят прямо в таблице. Нажатие открывало форму с
+            category='warehouse' и создавало пустой тариф-мусор, который потом
+            висел в списке ни в одной вкладке. */}
+        {tab !== 'warehouse' && (
+          <button className="btn btn--accent" onClick={openCreate}>+ Добавить тариф</button>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
@@ -809,10 +876,15 @@ const tabCounts = useMemo(() => ({
               <tr>
                 <SortableTh field="city">Направление</SortableTh>
                 <th style={{ width: 100 }}>Сроки</th>
-              {tab === 'legal' ? (
+              {/* ТЗ: «КУБ» и надбавки заводятся и у юрлиц, и у частных, а в
+                  таблице колонка КУБ была только у юрлиц — у частных ставка за
+                  м³ и надбавки за габарит нигде не показывались. Плюс выгрузка,
+                  ПРР и хранение не выводились ни там, ни там. */}
+              {(tab === 'legal' || tab === 'private') ? (
                   <>
                     <th>Диапазоны весов</th>
-                    <th style={{ width: 120 }}>КУБ (тг)</th>
+                    <th style={{ width: 110 }}>КУБ (тг/м³)</th>
+                    <th style={{ width: 260 }}>Доп. услуги</th>
                   </>
                 ) : (
                   <>
@@ -825,7 +897,7 @@ const tabCounts = useMemo(() => ({
             <tbody>
               {filteredTariffs.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="muted" style={{ padding: 16 }}>
+                  <td colSpan={(tab === 'legal' || tab === 'private') ? 6 : 4} className="muted" style={{ padding: 16 }}>
                     {tab === 'legal' ? 'Тарифы для юр. лиц не добавлены' : 'Тарифы не добавлены'}
                   </td>
                 </tr>
@@ -844,12 +916,21 @@ const tabCounts = useMemo(() => ({
                             ? <span style={{ marginLeft: 8, fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: '#fff7e6', color: '#fa8c16', fontWeight: 700 }}>✈️ авиа</span>
                             : <span style={{ marginLeft: 8, fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: '#e6f7ff', color: '#1890ff', fontWeight: 700 }}>🚗 авто</span>
                         )}
+                        {/* Российские направления помечаем явно: по ним
+                            формируется ТТН, а не СМР. Казахстанские не метим —
+                            их подавляющее большинство, метка стала бы шумом. */}
+                        {(tab === 'legal' || tab === 'private') && wr._country === 'RU' && (
+                          <span style={{ marginLeft: 6, fontSize: '0.7rem', padding: '1px 6px', borderRadius: 4, background: '#fff1f0', color: '#cf1322', fontWeight: 700 }}>
+                            🇷🇺 Россия · ТТН
+                          </span>
+                        )}
                       </td>
                       <td>{wr._deliveryDays || '—'}</td>
-                      {tab === 'legal' ? (
+                      {(tab === 'legal' || tab === 'private') ? (
                         <>
                           <td><RangeChips wr={wr} /></td>
                           <td>{wr._pricePerCubic ? Number(wr._pricePerCubic).toLocaleString() : '—'}</td>
+                          <td><ExtrasChips wr={wr} isPrivate={tab === 'private'} /></td>
                         </>
                       ) : (
                         <>
@@ -965,6 +1046,31 @@ const tabCounts = useMemo(() => ({
                       <input type="radio" name="transport" checked={form.transport === 'avia'} onChange={() => setForm({ ...form, transport: 'avia' })} style={{ display: 'none' }} />
                       ✈️ Авиа
                     </label>
+                  </div>
+                </div>
+              )}
+
+              {/* ТЗ: перевозки по Казахстану оформляются СМР, в Россию — ТТН.
+                  Страна задаётся ЗДЕСЬ, а не в заявке: список городов
+                  назначения и так строится из тарифов, поэтому достаточно
+                  отметить направление один раз — и документ подскажется сам
+                  по всем заявкам на этот город. */}
+              {(form.category === 'legal' || form.category === 'private') && (
+                <div className="field" style={{ marginBottom: 16 }}>
+                  <div className="label">Страна назначения</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <label style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, fontWeight: 700, background: form.country !== 'RU' ? '#f6ffed' : '#f3f4f6', border: `2px solid ${form.country !== 'RU' ? '#52c41a' : '#e5e7eb'}` }}>
+                      <input type="radio" name="country" checked={form.country !== 'RU'} onChange={() => setForm({ ...form, country: 'KZ' })} style={{ display: 'none' }} />
+                      🇰🇿 Казахстан
+                    </label>
+                    <label style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, cursor: 'pointer', padding: '10px 12px', borderRadius: 8, fontWeight: 700, background: form.country === 'RU' ? '#fff1f0' : '#f3f4f6', border: `2px solid ${form.country === 'RU' ? '#cf1322' : '#e5e7eb'}` }}>
+                      <input type="radio" name="country" checked={form.country === 'RU'} onChange={() => setForm({ ...form, country: 'RU' })} style={{ display: 'none' }} />
+                      🇷🇺 Россия
+                    </label>
+                  </div>
+                  <div className="muted" style={{ fontSize: '0.72rem', marginTop: 4 }}>
+                    По стране подсказывается документ: Казахстан — СМР, Россия — ТТН.
+                    Окончательный выбор остаётся за менеджером в карточке заявки.
                   </div>
                 </div>
               )}

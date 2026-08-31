@@ -151,6 +151,10 @@ import DeferredPage from "../pages/acts/DeferredPage.jsx";
 import SentToAccountantPage from "../pages/acts/SentToAccountantPage.jsx";
 import CourierActViewPage from "../pages/courier/CourierActViewPage.jsx";
 import CourierPage from "../pages/courier/CourierPage.jsx";
+import PendingCabinetPage from "../pages/cabinet/PendingCabinetPage.jsx";
+import CargoCabinetPage from "../pages/cabinet/CargoCabinetPage.jsx";
+import { needsPendingCabinet, PENDING_CABINET_PATH, roleHome, isRestrictedRole } from "../shared/auth/roles.js";
+import { CABINET_ROUTES } from "../shared/cargo/cabinets.js";
 
 export default function App() {
   const { user } = useAuth();
@@ -170,14 +174,22 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
+        {/* Ветка для ролей без кабинета добавлена ПЕРВОЙ и проверяет вхождение
+            в набор из четырёх новых строк — семь существующих ролей идут по
+            прежним веткам, они ниже и не изменены. Без неё новая роль
+            провалилась бы в финальный /acts, то есть в интерфейс менеджера. */}
         <Route path="/" element={
-          user?.role === 'PRIVATE'
-            ? <Navigate to="/simple" replace />
-            : user?.role === 'ACCOUNTANT' || user?.role === 'ACCOUNTANT2'
-              ? <Navigate to="/accountant/general" replace />
-              : user?.role === 'COURIER'
-                ? <Navigate to="/courier" replace />
-                : <Navigate to="/acts" replace />
+          needsPendingCabinet(user?.role)
+            ? <Navigate to={PENDING_CABINET_PATH} replace />
+            : isRestrictedRole(user?.role)
+            ? <Navigate to={roleHome(user?.role)} replace />
+            : user?.role === 'PRIVATE'
+              ? <Navigate to="/simple" replace />
+              : user?.role === 'ACCOUNTANT' || user?.role === 'ACCOUNTANT2'
+                ? <Navigate to="/accountant/general" replace />
+                : user?.role === 'COURIER'
+                  ? <Navigate to="/courier" replace />
+                  : <Navigate to="/acts" replace />
         } />
         <Route path="/acts" element={<ActsListPage />} />
         <Route path="/acts/new" element={<ActCreatePage />} />
@@ -228,6 +240,36 @@ export default function App() {
         <Route path="/scan/:id" element={<ScanActPage />} />
       </Route>
       <Route path="/courier/acts/:id" element={<CourierActViewPage />} />
+
+      {/* Заглушка кабинета для ролей, экраны которых ещё не написаны
+          (кладовщик, местный и региональный курьер, операционный менеджер).
+          ВНЕ группы с Layout сознательно: внутри неё общий RequireAuth
+          отправил бы такую роль обратно на /cabinet — вышла бы петля.
+          Заодно роль не видит меню менеджера, которого ей всё равно нельзя. */}
+      <Route
+        path="/cabinet"
+        element={
+          <RequireAuth allowPendingCabinet>
+            <PendingCabinetPage />
+          </RequireAuth>
+        }
+      />
+
+      {/* Кабинеты движения груза: кладовщик, местный и региональный курьер,
+          операционный менеджер. ВНЕ группы с Layout — меню менеджера этим
+          ролям не положено, а RequireAuth в группе увёл бы их домой.
+          Экран один, различия описаны данными в shared/cargo/cabinets.js. */}
+      {CABINET_ROUTES.map((c) => (
+        <Route
+          key={c.path}
+          path={c.path}
+          element={
+            <RequireAuth>
+              <CargoCabinetPage />
+            </RequireAuth>
+          }
+        />
+      ))}
 
       {/* ТЗ: одноразовые ссылки для наёмных водителей и получателей.
           ВНЕ RequireAuth: у них нет учёток и кабинетов. Доступ ограничен

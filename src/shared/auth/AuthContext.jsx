@@ -58,6 +58,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { api } from '../api/api';
+import { ROLE, isCourierFamily } from './roles.js';
 
 const AuthContext = createContext(null);
 
@@ -121,6 +122,20 @@ export const AuthProvider = ({ children }) => {
   //   и чек клиенту: без них роль нерабочая.
   const canSeeMoney = !isManager2;
 
+  // ТЗ (роли и цепочка подписей): четыре новые роли. Флаги ДОБАВЛЕНЫ рядом,
+  // существующие выше не тронуты — в частности isCourier остаётся строго
+  // role === 'COURIER', иначе поехал бы фильтр курьера по городу и весь
+  // кабинет /courier у тех, кто работает с этой ролью сегодня.
+  //
+  // isAnyCourier — для будущих мест, где нужны «курьеры вообще». Сейчас его
+  // никто не читает: перевод существующих проверок на семейства — отдельный
+  // шаг, здесь только фундамент.
+  const isWarehouseKeeper = user?.role === ROLE.WAREHOUSE_KEEPER;
+  const isCourierLocal = user?.role === ROLE.COURIER_LOCAL;
+  const isCourierRegion = user?.role === ROLE.COURIER_REGION;
+  const isOpsManager = user?.role === ROLE.OPS_MANAGER;
+  const isAnyCourier = isCourierFamily(user?.role);
+
   return (
     <AuthContext.Provider
       value={{
@@ -136,6 +151,11 @@ export const AuthProvider = ({ children }) => {
         isManager,
         isManager2,
         canSeeMoney,
+        isWarehouseKeeper,
+        isCourierLocal,
+        isCourierRegion,
+        isOpsManager,
+        isAnyCourier,
       }}
     >
       {!loading && children}

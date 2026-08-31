@@ -711,6 +711,13 @@ export default function ContractsPage() {
           company: comp,
           contractNumber: contract.number,
           contractDate: contract.date,
+          // Директор и должность передаются ровно как в карточке договора
+          // (ContractDetailsPage). Раньше этот путь их не передавал, и один
+          // и тот же договор печатался по-разному: из карточки — с ФИО
+          // директора, из списка — без.
+          directorName: contract.directorName || "",
+          directorPosition: contract.directorPosition || "Директор",
+          counterpartyId: contract.counterpartyId || "",
           isContract: true,
           type: contract.type
         });

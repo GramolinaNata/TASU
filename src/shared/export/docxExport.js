@@ -237,9 +237,12 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
     // 🆕 ТЗ v2: Печать компании
     const companyStamp = act.company?.stamp || "";
     // Подпись получателя из Request.signatures (роль receiver).
-    const receiverSignature = (Array.isArray(act.signatures) ? act.signatures : [])
-      .filter((s) => s && s.role === "receiver" && typeof s.image === "string")
-      .slice(-1)[0]?.image || "";
+    // Подпись роли: последняя, если расписывались повторно.
+    const sigByRole = (role) =>
+      (Array.isArray(act.signatures) ? act.signatures : [])
+        .filter((s) => s && s.role === role && typeof s.image === "string")
+        .slice(-1)[0]?.image || "";
+    const receiverSignature = sigByRole("receiver");
 // 🆕 ТЗ v2: водяной знак — текст ТТН/СМР в круге, не логотип
     const docType = (act.docType || act.type || '').toString().toUpperCase();
     let watermarkText = '';
@@ -271,7 +274,7 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
         // ТЗ: электронная подпись получателя в СМР. Ниже печати — это роспись
         // от руки, а не оттиск; 1,5 см хватает, чтобы читалась и не наезжала
         // на соседние графы бланка.
-        if (tagName === "signature_receiver") {
+        if (tagName === "signature_receiver" || tagName === "signature_client" || tagName === "signature_driver") {
           return sizeByHeight(img, 1.5, 1);
         }
         return [120, 39]; // лого в шапке (уменьшено)
@@ -295,6 +298,12 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
       // Вставляется тем же механизмом, что и печать: {%signature_receiver}.
       // Подписи нет — тег пустой, графа остаётся под ручную роспись.
       signature_receiver: receiverSignature,
+      // ТЗ, цепочка подписей: клиент подписывает документ, водитель —
+      // приём груза к перевозке. Вставляются тем же механизмом, что и
+      // подпись получателя: {%signature_client} и {%signature_driver}.
+      // Подписи нет — тег пустой, графа остаётся под ручную роспись.
+      signature_client: sigByRole("client_document"),
+      signature_driver: sigByRole("driver"),
       company_stamp: companyStamp,
       has_stamp: !!companyStamp,
 
@@ -330,7 +339,16 @@ watermark: watermarkImage,
       customer_kbe: act.customer?.kbe || "",
       customer_email: act.customer?.email || "",
       customer_name: act.customer?.companyName || act.customer?.fio || "",
-      customer_director_name: act.customer?.fio || "",
+      // ДОГОВОР: графа «в лице директора …». Раньше сюда шло act.customer?.fio,
+      // то есть печаталось имя/название самого контрагента, а не его директора.
+      // ФИО директора карточка договора передаёт отдельным полем
+      // (Contract.directorName, подставляется из справочника контрагентов) —
+      // но его никто не читал, тега под него не было.
+      // Порядок: поле договора → директор контрагента → прежний запасной
+      // вариант. Последняя ступень оставлена ради заявок (template.docx тоже
+      // несёт этот тег), где директора нет вовсе — там поведение не меняется.
+      customer_director_name: act.directorName || act.customer?.director || act.customer?.fio || "",
+      customer_director_position: act.directorPosition || "Директор",
 
       is_sender_same: !!act.isSenderSameAsCustomer,
       is_sender_different: !act.isSenderSameAsCustomer,

@@ -260,9 +260,16 @@ setCargoStatus: (id, cargoStatus) => request(`/requests/${id}/cargo-status`, {
   body: JSON.stringify({ cargoStatus }),
 }),
 
-issueAccessLink: (id, purpose, days = 3) => request(`/requests/${id}/access-link`, {
+// Груз для кабинета кладовщика / курьеров / операционного менеджера.
+// Урезанная выдача: движение и габариты, без сумм и персональных данных.
+// Область видимости (город) определяет СЕРВЕР по роли.
+cabinetList: () => request('/requests/cabinet'),
+
+// signRole — какую именно подпись собирает ссылка (цепочка подписей).
+// Не передан — сервер подставит 'receiver', то есть прежнее поведение.
+issueAccessLink: (id, purpose, days = 3, signRole) => request(`/requests/${id}/access-link`, {
   method: 'POST',
-  body: JSON.stringify({ purpose, days }),
+  body: JSON.stringify(signRole ? { purpose, days, signRole } : { purpose, days }),
 }),
 
 revokeAccessLink: (id, token) => request(`/requests/${id}/access-link/${token}/revoke`, {

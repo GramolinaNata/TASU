@@ -281,6 +281,34 @@ import Loader from "../../shared/components/Loader";
 import { useCanSeeMoney, useMoneyColSpan } from "../../shared/money/Money.jsx";
 import { getActSection, sectionPatch, sectionAfterAccountant, SECTION } from "../../shared/acts/section.js";
 
+/**
+ * Вкладки раздела: Отложенные и Аннулированные.
+ *
+ * ТЗ (заказчик): «в Отложенных добавить подкатегорию Аннулированные, куда
+ * автоматически попадают все аннулированные — как в Отработанных».
+ *
+ * ПОЧЕМУ ЭТО НЕ ФИЛЬТР «Статус: Аннулированные», который тут уже был.
+ * Тот фильтр работает ВНУТРИ отложенных: он показывает аннулированную
+ * накладную, только если её вдобавок откладывали. Аннулировать же можно из
+ * любого раздела, и такая накладная оставалась лежать в своём — в Заявках,
+ * ТТН, СМР — где её приходилось искать глазами. Вкладка собирает их все.
+ *
+ * ЧАСТНЫЕ СЮДА НЕ ЗАХОДЯТ. У накладных частных лиц свой контур (/simple) со
+ * своей механикой статусов; смешивать их с юрлицами в этом разделе значило
+ * бы показать менеджеру две разные системы в одной таблице.
+ *
+ * ИЗ ДРУГИХ РАЗДЕЛОВ АННУЛИРОВАННЫЕ НЕ ПРОПАДАЮТ: вкладка их СОБИРАЕТ, а не
+ * забирает. Убрать их из Заявок и ТТН — отдельное решение с последствиями
+ * для отчётов, и заказчик о нём не просил.
+ */
+const TAB = { DEFERRED: 'deferred', CANCELED: 'canceled' };
+
+// Аннулирование бьёт откладывание: аннулированная отложенная накладная
+// живёт в «Аннулированных» и только там — иначе она задвоится на одной
+// странице и счётчики вкладок перестанут сходиться со списком.
+const tabOfAct = (a) => (a && a.status === 'canceled' ? TAB.CANCELED : TAB.DEFERRED);
+
+
 function formatDisplayDate(val) {
   if (!val) return "—";
   const d = new Date(val);
@@ -326,6 +354,7 @@ export default function DeferredPage() {
   const [dateTo, setDateTo] = useState("");
   const [docTypeFilter, setDocTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [tab, setTab] = useState(TAB.DEFERRED);
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -388,12 +417,28 @@ export default function DeferredPage() {
     loadActs();
   }, [location.key]);
 
-  const filtered = useMemo(() => {
-    // Условие !readyForAccountant убрано: его роль теперь играет приоритет
-    // в getActSection (отложено выше «у бухгалтера»). Именно оно и прятало
+  // Всё, что вообще относится к этому разделу: отложенные плюс
+  // аннулированные откуда угодно. Отбор по вкладке — ниже: из ЭТОГО набора
+  // считаются счётчики на вкладках, поэтому вкладку здесь применять нельзя,
+  // иначе на кнопке будет одно число, а в таблице другое.
+  const scoped = useMemo(() => acts.filter((a) => {
+    const section = getActSection(a);
+    if (section === SECTION.SIMPLE) return false;
+    // Условие !readyForAccountant убрано: его роль играет приоритет в
+    // getActSection (отложено выше «у бухгалтера»). Именно оно и прятало
     // накладные, отложенные из «Отработанных», — они лежали в базе, но не
     // показывались ни здесь, ни у бухгалтера.
-    let list = acts.filter(a => getActSection(a) === SECTION.DEFERRED);
+    return section === SECTION.DEFERRED || a.status === 'canceled';
+  }), [acts]);
+
+  const tabCounts = useMemo(() => {
+    const c = { [TAB.DEFERRED]: 0, [TAB.CANCELED]: 0 };
+    for (const a of scoped) c[tabOfAct(a)] += 1;
+    return c;
+  }, [scoped]);
+
+  const filtered = useMemo(() => {
+    let list = scoped.filter(a => tabOfAct(a) === tab);
 
     if (docTypeFilter !== "all") {
         if (docTypeFilter === "warehouse") {
@@ -407,7 +452,11 @@ export default function DeferredPage() {
         }
     }
 
-    if (statusFilter !== "all") {
+    // На вкладке «Аннулированные» фильтр статуса не применяется: там все
+    // строки по определению аннулированы, и выбор «Активные» дал бы пустой
+    // список — экран выглядел бы сломанным. Сам фильтр на этой вкладке
+    // спрятан, но состояние у него общее и могло остаться от прошлой.
+    if (tab !== TAB.CANCELED && statusFilter !== "all") {
         if (statusFilter === "canceled") {
             list = list.filter(a => a.status === "canceled");
         } else if (statusFilter === "active") {
@@ -445,7 +494,7 @@ export default function DeferredPage() {
     });
 
     return sorted;
-  }, [acts, q, dateFrom, dateTo, docTypeFilter, statusFilter, sortBy, sortOrder]);
+  }, [scoped, tab, q, dateFrom, dateTo, docTypeFilter, statusFilter, sortBy, sortOrder]);
 
   const handleReturn = async (id, number) => {
     if (window.confirm(`Вернуть документ №${number} из отложенных?`)) {
@@ -469,6 +518,25 @@ export default function DeferredPage() {
         </div>
       </div>
 
+      {/* Порядок и вид кнопок повторяют «Отработанные»: тот же раздел
+          интерфейса, и переучиваться менеджеру не на чем. Счётчики считаются
+          тем же tabOfAct, что и список. */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+        {[
+          { key: TAB.DEFERRED, label: '⏸ Отложенные' },
+          { key: TAB.CANCELED, label: '🚫 Аннулированные' },
+        ].map(t => (
+          <button
+            key={t.key}
+            className={`btn ${tab === t.key ? 'btn--accent' : ''}`}
+            onClick={() => setTab(t.key)}
+          >
+            {t.label}{' '}
+            <span style={{ opacity: 0.7, fontSize: '0.85rem' }}>({tabCounts[t.key]})</span>
+          </button>
+        ))}
+      </div>
+
       <div className="filter" style={{ marginTop: 16, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <div className="field" style={{ minWidth: 200, flex: 1 }}>
           <div className="label">Поиск</div>
@@ -488,6 +556,9 @@ export default function DeferredPage() {
                <option value="warehouse">Склад</option>
            </select>
         </div>
+        {/* На вкладке «Аннулированные» выбирать статус не из чего — прячем,
+            чтобы фильтр не обещал отбор, которого там нет. */}
+        {tab !== TAB.CANCELED && (
         <div className="field" style={{ width: 140 }}>
            <div className="label">Статус</div>
            <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
@@ -497,6 +568,7 @@ export default function DeferredPage() {
                <option value="draft">Черновики</option>
            </select>
         </div>
+        )}
 
         <div className="field" style={{ width: 140 }}>
            <div className="label">Дата с</div>
@@ -529,7 +601,7 @@ export default function DeferredPage() {
               {filtered.length === 0 ? (
                 <tr>
                   <td colSpan={moneyColSpan(10)} className="muted" style={{ padding: 16 }}>
-                    Нет отложенных заявок.
+                    {tab === TAB.CANCELED ? 'Аннулированных заявок нет.' : 'Нет отложенных заявок.'}
                   </td>
                 </tr>
               ) : (
@@ -588,10 +660,16 @@ export default function DeferredPage() {
                             Просмотр
                           </Link>
 
+                          {/* Возврат в работу предлагаем только тому, что реально
+                              отложено. У аннулированной накладной возвращать нечего:
+                              статус остался бы «аннулирован», и кнопка обещала бы
+                              больше, чем делает. Аннулирование снимается в карточке. */}
+                          {getActSection(a) === SECTION.DEFERRED && a.status !== 'canceled' && (
                           <button className="actions-item danger" onClick={() => handleReturn(a.id, a.docNumber || a.number)}>
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                             Вернуть в работу
                           </button>
+                          )}
                         </div>
                       </details>
                     </td>

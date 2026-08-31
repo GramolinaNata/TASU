@@ -46,6 +46,8 @@ import {
   // ТЗ: сканирование QR — движение груза
   setCargoStatus,
   findByDocNumber,
+  // ТЗ: кабинеты кладовщика и курьеров — урезанная выдача движения груза
+  getCabinetRequests,
   // ТЗ: одноразовые ссылки
   issueAccessLink,
   revokeAccessLink,
@@ -62,6 +64,10 @@ router.get('/', getRequests);
 // ОБЯЗАТЕЛЬНО до '/:id': express разбирает маршруты по порядку и принял бы
 // слово 'find' за идентификатор накладной.
 router.get('/find', findByDocNumber);
+
+// Кабинеты движения груза. Тоже ДО '/:id' — иначе 'cabinet' примут
+// за идентификатор накладной. Выдача урезана и ограничена городом роли.
+router.get('/cabinet', getCabinetRequests);
 
 router.get('/:id', getRequest);
 router.post('/', createRequest);

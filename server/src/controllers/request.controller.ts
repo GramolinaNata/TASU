@@ -897,6 +897,8 @@ import prisma from '../lib/prisma';
 import { AuthRequest } from '../middlewares/auth.middleware';
 // ТЗ: токены одноразовых ссылок генерируются на сервере — клиентский был бы предсказуем.
 import { randomUUID } from 'crypto';
+// Цепочка подписей. Зеркало src/shared/sign/signChain.js — см. комментарий там.
+import { SIGN_ROLE, isKnownSignRole, canSign, canFormDocument, hasDocument } from '../lib/signChain';
 
 const STATUS = {
   REQUEST: 'Заявка',
@@ -1032,6 +1034,96 @@ export const getRequests = async (req: AuthRequest, res: Response) => {
   } catch (error: any) {
     console.error('Get requests error:', error);
     res.status(500).json({ message: 'Ошибка при получении заявок', details: error.message });
+  }
+};
+
+// ============================================================
+// ВЫДАЧА ДЛЯ КАБИНЕТОВ ДВИЖЕНИЯ ГРУЗА.
+//
+// ЗАЧЕМ ОТДЕЛЬНЫЙ ЭНДПОИНТ, А НЕ ФИЛЬТР В getRequests. Кабинету кладовщика и
+// курьеров нужно ровно движение: номер, направление, адреса, места, вес,
+// статус. Суммы, реквизиты, телефоны сторон и состав услуг им не нужны — и не
+// должны доезжать. Спрятать колонку в интерфейсе ограничением не является:
+// данные всё равно ушли бы в браузер и лежали в ответе API. Тот же принцип
+// уже применён к публичным ссылкам (accessLink.publicCargoView).
+//
+// ⚠️ ЗЕРКАЛО ФРОНТА: src/shared/cargo/cabinets.js (CABINETS[].scope).
+// ============================================================
+const CABINET_SCOPE: Record<string, 'fromCity' | 'toCity' | 'all'> = {
+  // Склад и местный курьер работают с грузом ДО отправки — их город
+  // отправления. Региональный принимает и выдаёт — его город назначения.
+  WAREHOUSE_KEEPER: 'fromCity',
+  COURIER_LOCAL: 'fromCity',
+  COURIER_REGION: 'toCity',
+  OPS_MANAGER: 'all',
+};
+
+/** Урезанный вид накладной для кабинета. Ни сумм, ни персональных данных. */
+function cabinetView(r: any) {
+  const d = safeParseDetails(r.details);
+  const route = d.route || {};
+  const totals = d.totals || {};
+  return {
+    id: r.id,
+    docNumber: r.docNumber || '',
+    date: r.date || '',
+    fromCity: route.fromCity || '',
+    toCity: route.toCity || '',
+    fromAddress: route.fromAddress || '',
+    toAddress: route.toAddress || '',
+    cargoText: d.cargoText || '',
+    seats: Number(totals.seats) || 0,
+    weight: Number(totals.weight) || 0,
+    cargoStatus: normalizeCargo(r.cargoStatus),
+    cargoStatusAt: r.cargoStatusAt || null,
+    cargoEvents: parseCargoEvents(r.cargoEvents),
+  };
+}
+
+export const getCabinetRequests = async (req: AuthRequest, res: Response) => {
+  try {
+    const role = req.user?.role || '';
+    const scope = CABINET_SCOPE[role];
+    if (!scope) {
+      return res.status(403).json({ message: 'У этой роли нет кабинета движения груза' });
+    }
+
+    let city = '';
+    if (scope !== 'all') {
+      const me = await prisma.user.findUnique({
+        where: { id: req.user!.id },
+        select: { city: true },
+      });
+      city = normalizeCity((me as any)?.city);
+      // Город не назначен — пустой список, а не «всё». Пустое поле означает
+      // «доступ не настроен»: иначе новый кладовщик до настройки видел бы
+      // весь груз всех компаний. То же правило, что у курьера.
+      if (!city) return res.json({ city: '', scope, items: [] });
+    }
+
+    const rows = await prisma.request.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+
+    const items = rows
+      .filter((r: any) => {
+        // Аннулированные не показываем НИКОМУ, включая операционного
+        // менеджера: груза по такой накладной нет, а в урезанной выдаче
+        // кабинета поля status нет вовсе — отличить живую от аннулированной
+        // на экране было бы нечем. Кладовщик успел провести аннулированную
+        // через приёмку и отпуск склада именно из-за этого.
+        if (CARGO_BLOCKING_DOC_STATUSES.includes(String(r.status || ''))) return false;
+        if (scope === 'all') return true;
+        const d: any = safeParseDetails(r.details);
+        return normalizeCity(d?.route?.[scope]) === city;
+      })
+      .map(cabinetView);
+
+    res.json({ city, scope, items });
+  } catch (error: any) {
+    console.error('getCabinetRequests error:', error);
+    res.status(500).json({ message: 'Ошибка при получении груза', details: error.message });
   }
 };
 
@@ -1210,6 +1302,26 @@ export const updateRequest = async (req: AuthRequest, res: Response) => {
 
       const existingDetails = safeParseDetails((existing as any).details);
       const { status, date, type, docNumber, companyId, totalSum, ...bodyFields } = req.body;
+
+      // ВОРОТА ЦЕПОЧКИ ПОДПИСЕЙ: перевозочный документ не формируется, пока
+      // клиент не подписал заявку.
+      //
+      // Проверяем именно ПЕРЕХОД «не документ → документ», а не «стало
+      // документом». Иначе редактирование уже сформированной ТТН падало бы с
+      // отказом: форма правки шлёт type в каждом запросе, и «целевое значение
+      // — ттн» стоит там всегда.
+      //
+      // Проверка на сервере, а не только кнопкой: скрытая кнопка ограничением
+      // не является, эндпоинт открыт для любого запроса с токеном.
+      const becomingDoc =
+        !hasDocument(existing) &&
+        hasDocument({ docType: (bodyFields as any).docType, type });
+      if (becomingDoc) {
+        const gate = canFormDocument(existing);
+        if (!gate.ok) {
+          return res.status(409).json({ message: gate.reason });
+        }
+      }
 
       // ⚠️ ЗЕРКАЛО src/shared/acts/mergeRequest.js (COLUMN_OWNED).
       //
@@ -1465,21 +1577,116 @@ export const markFullyCompleted = async (req: AuthRequest, res: Response) => {
  * ролей менять в ОБОИХ местах. Общий модуль сделать нельзя — образ бэка
  * собирается из каталога server/ и до src/ не достаёт.
  */
-const CARGO_CHAIN = ['picked_up', 'loaded', 'rep_received', 'delivered'];
-const CARGO_ROLES = ['COURIER', 'MANAGER', 'ADMIN'];
-const CARGO_REVERT_ROLES = ['MANAGER', 'ADMIN'];
+// ПОЛНЫЙ МАРШРУТ. Прежние четыре шага остались опорными (optional:false) и на
+// своих местах, новые вставлены между ними необязательными: не всякий груз
+// проходит склад — часть едет от отправителя сразу на фуру. Правило перехода:
+// вперёд можно на шаг, между которым и текущим лежат ТОЛЬКО необязательные
+// шаги; перескок через опорный запрещён, как и раньше.
+// entry — шагом можно НАЧАТЬ цепочку, когда груз ещё «не в пути». Их два:
+// курьер забрал у отправителя ЛИБО клиент привёз груз на склад сам. Без
+// второго у кладовщика не было ни одной доступной кнопки.
+const CARGO_FLOW: { key: string; optional: boolean; entry?: boolean; roles: string[] }[] = [
+  { key: 'picked_up',    optional: false, entry: true, roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'COURIER_LOCAL'] },
+  { key: 'wh_accepted',  optional: true,  entry: true, roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'WAREHOUSE_KEEPER'] },
+  { key: 'wh_released',  optional: true,  roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'WAREHOUSE_KEEPER'] },
+  { key: 'courier_took', optional: true,  roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'COURIER_LOCAL'] },
+  { key: 'loaded',       optional: false, roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'COURIER_LOCAL', 'WAREHOUSE_KEEPER'] },
+  { key: 'in_transit',   optional: true,  roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'COURIER_REGION'] },
+  { key: 'region_took',  optional: true,  roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'COURIER_REGION'] },
+  { key: 'rep_received', optional: false, roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'COURIER_REGION'] },
+  { key: 'delivered',    optional: false, roles: ['COURIER', 'MANAGER', 'ADMIN', 'OPS_MANAGER', 'COURIER_REGION'] },
+];
+const CARGO_FLOW_KEYS = CARGO_FLOW.map((s) => s.key);
+// Статусы ДОКУМЕНТА, при которых груз двигать нельзя.
+// ⚠️ ЗЕРКАЛО src/shared/cargo/cargoStatus.js (CARGO_BLOCKING_DOC_STATUSES).
+const CARGO_BLOCKING_DOC_STATUSES = ['canceled'];
+const CARGO_CHAIN = CARGO_FLOW.filter((s) => !s.optional).map((s) => s.key);
+const CARGO_ALL_ROLES = Array.from(new Set(CARGO_FLOW.reduce<string[]>((a, s) => a.concat(s.roles), [])));
+// Операционный менеджер контролирует все этапы — контроль без права исправить
+// чужую ошибку контролем не является.
+const CARGO_REVERT_ROLES = ['MANAGER', 'ADMIN', 'OPS_MANAGER'];
+
+const cargoIndex = (key: string) => CARGO_FLOW_KEYS.indexOf(key);
+const cargoStep = (key: string) => CARGO_FLOW.find((s) => s.key === key);
+
+// КАРТА СТАРЫХ ЗНАЧЕНИЙ. Прежняя четвёрка — тождественно (обещание записано
+// буквами: первый же переименованный шаг обязан появиться здесь, а не тихо
+// оборвать историю едущего груза). Плюс протечка из Request.status: до
+// появления cargoStatus курьерский экран писал движение прямо в статус
+// документа значениями «Забрано»/«Доставлено».
+// ⚠️ ЗЕРКАЛО src/shared/cargo/cargoStatus.js (CARGO_LEGACY_MAP).
+const CARGO_LEGACY_MAP: Record<string, string> = {
+  picked_up: 'picked_up',
+  loaded: 'loaded',
+  rep_received: 'rep_received',
+  delivered: 'delivered',
+  'забрано': 'picked_up',
+  'доставлено': 'delivered',
+};
+
+/**
+ * Значение из базы → шаг маршрута. Не распознали — '' («не в пути»).
+ * Список ДОПУСТИМЫХ на вход значений карта не расширяет: target проверяется
+ * по CARGO_FLOW_KEYS, «Забрано» прислать по-прежнему нельзя.
+ */
+function normalizeCargo(value: any): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  if (CARGO_FLOW_KEYS.includes(raw)) return raw;
+  return CARGO_LEGACY_MAP[raw] || CARGO_LEGACY_MAP[raw.toLowerCase()] || '';
+}
 
 function nextCargo(current: string): string | null {
-  const cur = current && CARGO_CHAIN.includes(current) ? current : '';
-  if (cur === '') return CARGO_CHAIN[0];
-  const i = CARGO_CHAIN.indexOf(cur);
-  return i < CARGO_CHAIN.length - 1 ? CARGO_CHAIN[i + 1] : null;
+  const cur = normalizeCargo(current);
+  const from = cur === '' ? -1 : cargoIndex(cur);
+  for (let i = from + 1; i < CARGO_FLOW.length; i++) {
+    if (!CARGO_FLOW[i].optional) return CARGO_FLOW[i].key;
+  }
+  return null;
 }
 
 function prevCargo(current: string): string | null {
-  const i = CARGO_CHAIN.indexOf(current);
+  const i = cargoIndex(current);
   if (i < 0) return null;
-  return i === 0 ? '' : CARGO_CHAIN[i - 1];
+  for (let k = i - 1; k >= 0; k--) {
+    if (!CARGO_FLOW[k].optional) return CARGO_FLOW[k].key;
+  }
+  return '';
+}
+
+/** Лежат ли между позициями только необязательные шаги. */
+function onlyOptionalBetween(a: number, b: number): boolean {
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+  for (let i = lo + 1; i < hi; i++) {
+    if (!CARGO_FLOW[i].optional) return false;
+  }
+  return true;
+}
+
+/**
+ * Достижим ли шаг вперёд. fromIdx = -1 — груз ещё «не в пути».
+ * Перескакивать можно только через необязательные шаги; начать цепочку —
+ * с любого входного (забор у отправителя или приёмка на склад).
+ */
+function canReachForward(fromIdx: number, toIdx: number): boolean {
+  if (toIdx <= fromIdx) return false;
+  if (fromIdx === -1 && CARGO_FLOW[toIdx]?.entry) return true;
+  return onlyOptionalBetween(fromIdx, toIdx);
+}
+
+/** Журнал движения: колонка Json, у старых записей — null. */
+function parseCargoEvents(raw: any): any[] {
+  if (Array.isArray(raw)) return raw.filter((e) => e && typeof e === 'object');
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((e: any) => e && typeof e === 'object') : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
 }
 
 /**
@@ -1496,17 +1703,33 @@ export const setCargoStatus = async (req: AuthRequest, res: Response) => {
     const target = String(req.body?.cargoStatus || '');
     const role = req.user?.role || '';
 
-    if (!CARGO_CHAIN.includes(target)) {
+    if (!CARGO_FLOW_KEYS.includes(target)) {
       return res.status(400).json({ message: 'Неизвестный статус груза' });
     }
-    if (!CARGO_ROLES.includes(role)) {
+    if (!CARGO_ALL_ROLES.includes(role)) {
       return res.status(403).json({ message: 'Эта роль не отмечает движение груза' });
+    }
+    // Шаг разрешён не всякой роли, которая вообще двигает груз: кладовщик
+    // отмечает склад и погрузку, но не выдачу получателю.
+    if (!cargoStep(target)?.roles.includes(role)) {
+      return res.status(403).json({ message: 'Эта роль не отмечает такой шаг движения груза' });
     }
 
     const existing = await prisma.request.findUnique({ where: { id: id as string } });
     if (!existing) return res.status(404).json({ message: 'Накладная не найдена' });
 
-    const current = String((existing as any).cargoStatus || '');
+    // Аннулированную накладную не двигают: груза по ней нет. Проверка на
+    // СЕРВЕРЕ, а не только скрытием из списка — эндпоинт открыт для любого
+    // запроса с токеном, а ссылка на карточку могла остаться открытой во
+    // вкладке ещё до аннулирования.
+    if (CARGO_BLOCKING_DOC_STATUSES.includes(String((existing as any).status || ''))) {
+      return res.status(409).json({ message: 'Накладная аннулирована — груз по ней не двигают' });
+    }
+
+    // Текущий статус читаем через карту: у записи из прежних времён в поле
+    // может лежать «Забрано» — считать такой груз нетронутым значило бы
+    // предложить водителю забрать его второй раз.
+    const current = normalizeCargo((existing as any).cargoStatus);
 
     // Повторный скан одной наклейки — не ошибка: водитель мог приложить
     // телефон дважды. Отвечаем успехом, ничего не меняя.
@@ -1514,8 +1737,10 @@ export const setCargoStatus = async (req: AuthRequest, res: Response) => {
       return res.json({ ...existing, alreadySet: true });
     }
 
-    const isForward = target === nextCargo(current);
-    const isBack = target === prevCargo(current);
+    const fromIdx = current === '' ? -1 : cargoIndex(current);
+    const toIdx = cargoIndex(target);
+    const isForward = canReachForward(fromIdx, toIdx);
+    const isBack = toIdx < fromIdx && onlyOptionalBetween(toIdx, fromIdx);
 
     if (!isForward && !isBack) {
       return res.status(400).json({
@@ -1528,9 +1753,56 @@ export const setCargoStatus = async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ message: 'Отменить шаг может только менеджер или администратор' });
     }
 
+    // Журнал: пишем КАЖДУЮ отметку, включая откат. Прежние записи не трогаем —
+    // история движения затирается только вместе с накладной.
+    const events = parseCargoEvents((existing as any).cargoEvents);
+
+    // ЗАСЕВ ИСТОРИИ ДЛЯ ЕДУЩЕГО ГРУЗА. Журнал появился позже самого движения:
+    // у накладной может стоять «погружен на фуру», а истории — ни строки.
+    // Без этой записи журнал начинался бы с середины пути, и в кабинете
+    // операционного менеджера груз выглядел бы как никогда не забиравшийся.
+    // Автор неизвестен честно: тогда его просто не записывали.
+    if (events.length === 0 && current !== '') {
+      events.push({
+        status: current,
+        at: ((existing as any).cargoStatusAt || (existing as any).updatedAt || new Date()).toISOString?.()
+          || new Date().toISOString(),
+        byId: null,
+        byName: '',
+        byRole: '',
+        back: false,
+        seeded: true, // отметка «восстановлено, а не зафиксировано в момент события»
+      });
+    }
+
+    // ИМЯ АВТОРА берём из базы, а не из токена: в JWT кладутся только
+    // { id, email, role } — имени там нет, и byName писался ПУСТЫМ. Журнал
+    // заводился ради ответа «кто отметил», а отвечал лишь «какая роль».
+    //
+    // Имя записываем СНИМКОМ, на момент события: журнал должен показывать,
+    // кто отметил тогда, а не как этого человека зовут в справочнике сейчас
+    // (его могли переименовать или удалить).
+    let byName = '';
+    if (req.user?.id != null) {
+      const actor = await prisma.user.findUnique({
+        where: { id: req.user.id },
+        select: { name: true, email: true },
+      });
+      byName = (actor?.name || actor?.email || '').trim();
+    }
+
+    events.push({
+      status: target,
+      at: new Date().toISOString(),
+      byId: req.user?.id ?? null,
+      byName,
+      byRole: role,
+      back: isBack,
+    });
+
     const updated = await prisma.request.update({
       where: { id: id as string },
-      data: { cargoStatus: target, cargoStatusAt: new Date() } as any,
+      data: { cargoStatus: target, cargoStatusAt: new Date(), cargoEvents: events } as any,
       include: { company: true },
     });
     res.json(updated);
@@ -1711,8 +1983,25 @@ export const issueAccessLink = async (req: AuthRequest, res: Response) => {
     const existing = await prisma.request.findUnique({ where: { id: id as string } });
     if (!existing) return res.status(404).json({ message: 'Накладная не найдена' });
 
+    // РОЛЬ ПОДПИСИ. Умолчание 'receiver' — то, чем ссылка была до цепочки:
+    // старый вызов без signRole обязан вести себя как раньше.
+    let signRole: string | undefined;
+    if (purpose === 'sign') {
+      signRole = String(req.body?.signRole || SIGN_ROLE.RECEIVER);
+      if (!isKnownSignRole(signRole)) {
+        return res.status(400).json({ message: 'Неизвестная роль подписи' });
+      }
+      // Ссылку на подпись документа, которого нет, выдавать бессмысленно:
+      // человек откроет её и упрётся. Проверяем на выдаче, а не только при
+      // подписании — ошибку лучше показать менеджеру, чем клиенту.
+      const gate = canSign(existing, signRole);
+      if (!gate.ok) {
+        return res.status(409).json({ message: gate.reason || 'Сейчас эту подпись собрать нельзя' });
+      }
+    }
+
     const prev = Array.isArray((existing as any).accessTokens) ? (existing as any).accessTokens : [];
-    const entry = {
+    const entry: any = {
       token: randomUUID(),
       purpose,
       createdAt: new Date().toISOString(),
@@ -1721,6 +2010,7 @@ export const issueAccessLink = async (req: AuthRequest, res: Response) => {
       revokedAt: null,
       issuedBy: req.user?.id ?? null,
     };
+    if (signRole) entry.signRole = signRole;
 
     await prisma.request.update({
       where: { id: id as string },

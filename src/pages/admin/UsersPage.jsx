@@ -402,6 +402,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { api } from '../../shared/api/api';
+import {
+  ROLE, ROLE_PICKER_GROUPS, rolePickerLabel,
+  roleName, roleBadge, needsCity, isRestrictedRole,
+} from '../../shared/auth/roles.js';
 
 export default function UsersPage() {
   const [users, setUsers] = useState([]);
@@ -616,27 +620,12 @@ export default function UsersPage() {
     setIsModalOpen(true);
   };
 
-  const getRoleName = (role) => {
-    if (role === 'ADMIN') return 'Админ';
-    if (role === 'ACCOUNTANT') return 'Бухгалтер';
-    if (role === 'ACCOUNTANT2') return 'Бухгалтер 2';
-    if (role === 'COURIER') return 'Курьер';
-    if (role === 'PRIVATE') return 'Частное лицо'; // 🆕 ТЗ v2
-    // ТЗ: урезанная роль — принимает груз, создаёт заявки и партии,
-    // но без ведомостей и без сумм выплат.
-    if (role === 'MANAGER2') return 'Менеджер (ограниченный)';
-    return 'Менеджер';
-  };
-
-  const getRoleBadge = (role) => {
-    if (role === 'ADMIN') return 'badge-primary';
-    if (role === 'ACCOUNTANT') return 'badge-info';
-    if (role === 'ACCOUNTANT2') return 'badge-info';
-    if (role === 'COURIER') return 'badge-warning';
-    if (role === 'PRIVATE') return 'badge-private'; // 🆕 ТЗ v2
-    if (role === 'MANAGER2') return 'badge-warning';
-    return 'badge-secondary';
-  };
+  // Подписи и бейджи переехали в src/shared/auth/roles.js. Для семи
+  // существующих ролей строки и CSS-классы там ТЕ ЖЕ, что стояли здесь
+  // (зафиксировано тестами roles.test.mjs), поведение на экране не меняется:
+  // неизвестная роль по-прежнему показывается как «Менеджер».
+  const getRoleName = (role) => roleName(role);
+  const getRoleBadge = (role) => roleBadge(role);
 
   // 🆕 ТЗ v2: Найти название компании по id
   const getCompanyName = (id) => companies.find(c => c.id === id)?.name || '—';
@@ -683,6 +672,12 @@ export default function UsersPage() {
             <option value="ACCOUNTANT2">Бухгалтер 2</option>
             <option value="COURIER">Курьеры</option>
             <option value="PRIVATE">Частные лица</option>
+            {/* ТЗ: четыре новые роли. Прежние пункты выше оставлены дословно —
+                значения фильтра менять нельзя, на них завязан сам фильтр. */}
+            <option value={ROLE.OPS_MANAGER}>Операционные менеджеры</option>
+            <option value={ROLE.WAREHOUSE_KEEPER}>Кладовщики</option>
+            <option value={ROLE.COURIER_LOCAL}>Курьеры (местные)</option>
+            <option value={ROLE.COURIER_REGION}>Курьеры (региональные)</option>
           </select>
         </div>
       </div>
@@ -742,12 +737,12 @@ export default function UsersPage() {
                       )}
                       {/* ТЗ: у курьера видно назначенный город. Не назначен —
                           говорим об этом прямо: у такого курьера пустой список. */}
-                      {user.role === 'COURIER' && (
+                      {needsCity(user.role) && (
                         user.city
                           ? <div style={{ fontSize: '0.85rem' }}>📍 {user.city}</div>
                           : <div style={{ fontSize: '0.85rem', color: '#cf1322', fontWeight: 600 }}>📍 город не назначен</div>
                       )}
-                      {!user.contactPhone && user.role !== 'COURIER' && !((user.role === 'PRIVATE' || user.role === 'MANAGER2') && user.assignedCompanyId) && (
+                      {!user.contactPhone && !needsCity(user.role) && !((user.role === 'PRIVATE' || user.role === 'MANAGER2') && user.assignedCompanyId) && (
                         <span className="muted">—</span>
                       )}
                     </td>
@@ -802,14 +797,34 @@ export default function UsersPage() {
               <div className="form_group_clean" style={{ marginTop: '18px' }}>
                 <label className="label_clean">Уровень доступа</label>
                 <select className="input_clean" value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
-                  <option value="MANAGER">Менеджер</option>
-                  <option value="MANAGER2">Менеджер (ограниченный)</option>
-                  <option value="ACCOUNTANT">Бухгалтер</option>
-                  <option value="ACCOUNTANT2">Бухгалтер 2</option>
-                  <option value="COURIER">Курьер</option>
-                  <option value="PRIVATE">👤 Частное лицо</option>
-                  <option value="ADMIN">Администратор</option>
+                  {/* Список собирается из ROLE_PICKER_GROUPS (shared/auth/roles.js).
+                      Раньше семь ролей стояли здесь текстом, а новые
+                      подставлялись фильтром `!hasCabinet(r)` — «новая» значило
+                      «кабинета ещё нет». Когда кабинеты написали, флаг стал
+                      true у всех, фильтр вернул пустоту, и над списком повис
+                      заголовок группы без единой строки под ним. Теперь набор
+                      ролей один и накрыт тестом. */}
+                  {ROLE_PICKER_GROUPS.map((g, gi) => (
+                    g.label ? (
+                      <optgroup key={gi} label={g.label}>
+                        {g.roles.map((r) => (
+                          <option key={r} value={r}>{rolePickerLabel(r)}</option>
+                        ))}
+                      </optgroup>
+                    ) : (
+                      g.roles.map((r) => (
+                        <option key={r} value={r}>{rolePickerLabel(r)}</option>
+                      ))
+                    )
+                  ))}
                 </select>
+                {isRestrictedRole(formData.role) && (
+                  <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#0050b3' }}>
+                    Роль работает в своём кабинете движения груза и не видит заявок,
+                    сумм и чужих разделов. Ниже обязательно укажите город — без него
+                    список груза останется пустым.
+                  </div>
+                )}
                 {formData.role === 'MANAGER2' && (
                   <div style={{ marginTop: 6, fontSize: '0.78rem', color: '#64748b' }}>
                     Принимает груз, создаёт заявки и партии. Без грузовых ведомостей,
@@ -858,11 +873,15 @@ export default function UsersPage() {
                 />
               </div>
 
-              {/* ТЗ: город курьера. Показываем только для роли «Курьер» —
-                  у остальных ролей поле не используется. Без города курьер
-                  не видит НИ ОДНОЙ заявки: пустое поле означает «доступ не
-                  настроен», а не «доступ ко всему». */}
-              {formData.role === 'COURIER' && (
+              {/* ТЗ: город курьера. Без города курьер не видит НИ ОДНОЙ
+                  заявки: пустое поле означает «доступ не настроен», а не
+                  «доступ ко всему».
+                  Условие переехало с `role === 'COURIER'` на needsCity(): для
+                  COURIER результат тот же, но поле стало доступно и новым
+                  ролям с привязкой к городу (кладовщик, местный и
+                  региональный курьер). Фильтрацию по этому городу новые роли
+                  пока не используют — courierCity.js не тронут. */}
+              {needsCity(formData.role) && (
                 <div className="form_group_clean" style={{ marginTop: '18px' }}>
                   <label className="label_clean">Город курьера *</label>
                   <input

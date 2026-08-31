@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { api } from "../../shared/api/api.js";
 import {
   LINK_PURPOSE, PURPOSE_LABELS, TTL_OPTIONS, DEFAULT_TTL_DAYS,
   linkState, LINK_STATE_LABELS, buildLinkUrl,
 } from "../../shared/access/accessLink.js";
+import { SIGN_ROLE, signChainState, signLabel } from "../../shared/sign/signChain.js";
 
 /**
  * ТЗ: выдача одноразовых ссылок наёмным водителям и получателям.
@@ -17,6 +18,8 @@ import {
  */
 export default function AccessLinksDialog({ act, onClose, onChanged }) {
   const [purpose, setPurpose] = useState(LINK_PURPOSE.CARGO);
+  // Умолчание — получатель: ровно то, чем ссылка на подпись была до цепочки.
+  const [signRole, setSignRole] = useState(SIGN_ROLE.RECEIVER);
   const [days, setDays] = useState(DEFAULT_TTL_DAYS);
   const [issuing, setIssuing] = useState(false);
   const [fresh, setFresh] = useState(null);     // только что выданная
@@ -26,11 +29,17 @@ export default function AccessLinksDialog({ act, onClose, onChanged }) {
     Array.isArray(act?.accessTokens) ? act.accessTokens : []
   );
 
+  const chain = useMemo(() => signChainState(act), [act]);
+  const selectedStep = chain.find((s) => s.role === signRole);
+
   const issue = async () => {
     setIssuing(true);
     setError("");
     try {
-      const entry = await api.requests.issueAccessLink(act.id, purpose, days);
+      const entry = await api.requests.issueAccessLink(
+        act.id, purpose, days,
+        purpose === LINK_PURPOSE.SIGN ? signRole : undefined
+      );
       setTokens((prev) => [...prev, entry]);
 setFresh(entry);
 setCopied(false);
@@ -99,6 +108,33 @@ setCopied(false);
               <option value={LINK_PURPOSE.SIGN}>{PURPOSE_LABELS[LINK_PURPOSE.SIGN]}</option>
             </select>
           </div>
+
+          {/* ТЗ: подписей теперь четыре, и ссылка обязана знать, какую из них
+              собирает. Раньше подпись была одна (получателя), поэтому выбора
+              не было. Недоступные сейчас ступени показаны с причиной, а не
+              спрятаны: менеджеру надо понимать, чего не хватает. */}
+          {purpose === LINK_PURPOSE.SIGN && (
+            <div className="field" style={{ flex: 1, minWidth: 260 }}>
+              <div className="label">Что подписывают</div>
+              <select value={signRole} onChange={(e) => setSignRole(e.target.value)}>
+                {chain.map((s) => (
+                  <option key={s.role} value={s.role} disabled={!s.available}>
+                    {s.label}{s.signed ? " — подписано" : ""}{!s.available ? " — недоступно" : ""}
+                  </option>
+                ))}
+              </select>
+              {selectedStep && !selectedStep.available && (
+                <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#b45309" }}>
+                  {selectedStep.reason}
+                </div>
+              )}
+              {selectedStep?.signed && selectedStep.available && (
+                <div style={{ marginTop: 6, fontSize: "0.75rem", color: "#0050b3" }}>
+                  Уже подписано ({selectedStep.name || "без имени"}). Новая ссылка заменит подпись.
+                </div>
+              )}
+            </div>
+          )}
           <div className="field" style={{ width: 160 }}>
             <div className="label">Срок</div>
             <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
@@ -158,7 +194,14 @@ setCopied(false);
                 const st = linkState(t);
                 return (
                   <tr key={t.token}>
-                    <td style={{ fontSize: "0.85rem" }}>{PURPOSE_LABELS[t.purpose] || t.purpose}</td>
+                    {/* У подписных ссылок показываем РОЛЬ: иначе четыре
+                        строки «Подпись получателя» неотличимы. У старых
+                        записей signRole нет — они и есть подпись получателя. */}
+                    <td style={{ fontSize: "0.85rem" }}>
+                      {t.purpose === LINK_PURPOSE.SIGN
+                        ? signLabel(t.signRole || SIGN_ROLE.RECEIVER)
+                        : (PURPOSE_LABELS[t.purpose] || t.purpose)}
+                    </td>
                     <td>
                       <span style={{
                         ...stateStyle[st], padding: "2px 8px", borderRadius: 4,

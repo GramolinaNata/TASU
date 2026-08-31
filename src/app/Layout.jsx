@@ -332,14 +332,39 @@ import {
   setSelectedCompanyId,
 } from "../shared/storage/companyStorage.js";
 import { useAuth } from "../shared/auth/AuthContext";
+import { roleLayoutName } from "../shared/auth/roles.js";
 import { api } from "../shared/api/api.js";
+
+// Ключ хранилища и порог «узкого экрана» — рядом, чтобы правились вместе
+// с CSS-классом .sidebar--floating (порог продублирован в styles.css).
+const SIDEBAR_KEY = 'tasu_sidebar_open';
+const NARROW_QUERY = '(max-width: 900px)';
 
 export default function Layout() {
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [theme, setTheme] = useState(localStorage.getItem('tasu_theme') || 'light');
   const { user, logout, isAdmin, isAccountant, isAccountant2, isCourier, isPrivate, isManager2 } = useAuth();
 
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  // Выбор пользователя помним между заходами: «сам открывает и закрывает»
+  // теряет смысл, если каждая перезагрузка возвращает панель как было.
+  // Хранилище может быть недоступно (приватное окно, запрет на данные сайта) —
+  // тогда просто открыто по умолчанию, падать из-за меню незачем.
+  const [isSidebarOpen, setIsSidebarOpen] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_KEY);
+      return saved === null ? true : saved === '1';
+    } catch {
+      return true;
+    }
+  });
+
+  // На узком экране панель всплывает поверх содержимого, а не ужимается:
+  // полоса иконок там отъедает ширину у таблиц, ради которых экран и открыт.
+  const [isNarrow, setIsNarrow] = useState(
+    () => typeof window !== 'undefined'
+      && typeof window.matchMedia === 'function'
+      && window.matchMedia(NARROW_QUERY).matches
+  );
   const [notifCount, setNotifCount] = useState(0);
   const [notifications, setNotifications] = useState([]);
   const [showNotifMenu, setShowNotifMenu] = useState(false);
@@ -393,6 +418,45 @@ export default function Layout() {
 
   const toggleSidebar = () => {
     setIsSidebarOpen(prev => !prev);
+  };
+
+  useEffect(() => {
+    try { localStorage.setItem(SIDEBAR_KEY, isSidebarOpen ? '1' : '0'); } catch { /* нет хранилища — не беда */ }
+  }, [isSidebarOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+    const mq = window.matchMedia(NARROW_QUERY);
+    const onChange = (e) => setIsNarrow(e.matches);
+    setIsNarrow(mq.matches);
+    // addEventListener у MediaQueryList есть не везде (старый Safari) —
+    // иначе меню сломалось бы ровно на тех устройствах, ради которых делалось.
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    }
+    mq.addListener(onChange);
+    return () => mq.removeListener(onChange);
+  }, []);
+
+  // Esc закрывает всплывшую панель. Только всплывшую: на широком экране
+  // Esc сворачивал бы меню, которое никому не мешает.
+  useEffect(() => {
+    if (!isNarrow || !isSidebarOpen) return undefined;
+    const onKey = (e) => { if (e.key === 'Escape') setIsSidebarOpen(false); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isNarrow, isSidebarOpen]);
+
+  // Переход по пункту меню на узком экране закрывает панель: иначе она
+  // остаётся висеть поверх страницы, на которую только что перешли.
+  const closeIfFloating = (e) => {
+    if (!isNarrow) return;
+    // Только по клику ПО ПУНКТУ. Обработчик висит на всём меню (вешать его
+    // на каждую из четырёх десятков ссылок — верный способ забыть одну),
+    // поэтому клик по заголовку раздела или по пустому месту пропускаем.
+    if (!e?.target?.closest?.('a')) return;
+    setIsSidebarOpen(false);
   };
 
   const fetchNotifs = async () => {
@@ -449,15 +513,10 @@ export default function Layout() {
     }
   }, [user, isAnyAccountant, isAdmin, isPrivate, location.pathname, selectedCompany?.id]);
 
-  const getRoleName = (role) => {
-    if (role === 'ADMIN') return 'Администратор';
-    if (role === 'ACCOUNTANT') return 'Бухгалтер';
-    if (role === 'ACCOUNTANT2') return 'Бухгалтер 2';
-    if (role === 'COURIER') return 'Курьер';
-    if (role === 'PRIVATE') return 'Частное лицо';
-    if (role === 'MANAGER2') return 'Менеджер (ограниченный)';
-    return 'Менеджер';
-  };
+  // Подписи переехали в src/shared/auth/roles.js (roleLayoutName). Для всех
+  // семи существующих ролей строки там ТЕ ЖЕ, включая «Администратор» —
+  // в шапке подпись длиннее, чем в «Персонале», и это различие сохранено.
+  const getRoleName = (role) => roleLayoutName(role);
 
   return (
     <main className="main">
@@ -468,7 +527,30 @@ export default function Layout() {
       <div className="container">
         <div className="main_wrapper">
           {!isCourier && (
-            <aside className={`sidebar ${!isSidebarOpen ? 'sidebar--collapsed' : ''}`} style={{ display: 'flex', flexDirection: 'column' }}>
+            <>
+            {/* Подложка есть только когда панель всплыла и открыта: на широком
+                экране гасить содержимое не за чем — меню там ничего не
+                перекрывает. */}
+            {isNarrow && isSidebarOpen && (
+              <button
+                type="button"
+                className="sidebar_backdrop"
+                aria-label="Закрыть меню"
+                onClick={() => setIsSidebarOpen(false)}
+              />
+            )}
+            <aside
+              className={[
+                'sidebar',
+                // Ужимаем в полосу иконок только в потоке. У всплывающей панели
+                // это лишнее: закрытая уезжает за край целиком.
+                !isSidebarOpen && !isNarrow ? 'sidebar--collapsed' : '',
+                isNarrow ? 'sidebar--floating' : '',
+                isNarrow && !isSidebarOpen ? 'sidebar--hidden' : '',
+              ].filter(Boolean).join(' ')}
+              style={{ display: 'flex', flexDirection: 'column' }}
+              aria-hidden={isNarrow && !isSidebarOpen}
+            >
               <div className="sidebar_logo" onClick={() => !isAnyAccountant && !isCompanyLocked && setSelectorOpen(true)} style={{ cursor: (isAnyAccountant || isCompanyLocked) ? "default" : "pointer", display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px' }}>
                 {!isSidebarOpen ? (
                   <div style={{ fontWeight: 900, fontSize: 22, color: 'var(--accent)', width: '100%', textAlign: 'center' }}>
@@ -482,7 +564,7 @@ export default function Layout() {
                 </button>
               </div>
 
-              <nav className="sidebar_menu" aria-label="Меню" style={{ flex: 1 }}>
+              <nav className="sidebar_menu" aria-label="Меню" style={{ flex: 1 }} onClick={closeIfFloating}>
 
                 {/* 🆕 ТЗ v2: ОТДЕЛЬНОЕ МЕНЮ ДЛЯ PRIVATE */}
                 {isPrivate && (
@@ -651,11 +733,28 @@ export default function Layout() {
                 </div>
               )}
             </aside>
+            </>
           )}
 
-          <section className="content" style={{ maxWidth: isCourier ? '100%' : (isSidebarOpen ? 'calc(100% - 280px)' : 'calc(100% - 80px)'), padding: 0 }}>
+          {/* Всплывающая панель лежит ПОВЕРХ содержимого, поэтому места под
+              неё не резервируем — иначе на телефоне таблица ужалась бы вдвое
+              ради панели, которой на экране нет. */}
+          <section className="content" style={{ maxWidth: (isCourier || isNarrow) ? '100%' : (isSidebarOpen ? 'calc(100% - 280px)' : 'calc(100% - 80px)'), padding: 0 }}>
             {!isCourier ? (
-              <div className="content_header" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', padding: '10px 24px', background: 'var(--card)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 100 }}>
+              <div className="content_header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '10px 24px', background: 'var(--card)', borderBottom: '1px solid var(--border-color)', position: 'sticky', top: 0, zIndex: 100 }}>
+                {/* Единственная кнопка, которая доступна ВСЕГДА. Прежняя ◀/▶
+                    живёт внутри панели и вместе с ней уезжает за край — открыть
+                    закрытое меню ею уже нельзя. Эта остаётся на месте. */}
+                <button
+                  type="button"
+                  className="menu_toggle_btn"
+                  onClick={toggleSidebar}
+                  aria-expanded={isSidebarOpen}
+                  title={isSidebarOpen ? 'Закрыть меню' : 'Открыть меню'}
+                >
+                  {isSidebarOpen ? '✕' : '☰'}
+                </button>
+
                 <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
                   {!isPrivate && (
                     <div style={{ position: 'relative' }}>

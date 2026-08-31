@@ -251,7 +251,7 @@
 
 
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../../shared/api/api.js";
 import { getSelectedCompany } from "../../shared/storage/companyStorage.js";
@@ -272,7 +272,6 @@ export default function ContractCreatePage() {
   const [availableActs, setAvailableActs] = useState([]);
   const [counterparties, setCounterparties] = useState([]);
   const [selectedCp, setSelectedCp] = useState(null);
-  const [existingContract, setExistingContract] = useState(null);
   const [allContracts, setAllContracts] = useState([]);
 
   const [formData, setFormData] = useState({
@@ -356,10 +355,6 @@ export default function ContractCreatePage() {
     const cp = counterparties.find(c => c.id === cpId);
     setSelectedCp(cp || null);
 
-    // Проверяем есть ли уже договор для этого контрагента
-    const existing = allContracts.find(c => c.counterpartyId === cpId);
-    setExistingContract(existing || null);
-
     setFormData(prev => ({
       ...prev,
       counterpartyId: cpId,
@@ -367,11 +362,41 @@ export default function ContractCreatePage() {
     }));
   };
 
+  /**
+   * Есть ли у контрагента ДЕЙСТВУЮЩИЙ договор ЭТОГО типа в ЭТОЙ компании.
+   *
+   * Раньше искали `allContracts.find(c => c.counterpartyId === cpId)` — по
+   * одному контрагенту во всём списке. Отсюда три ложных запрета:
+   *   • договор ДРУГОЙ компании: справочник контрагентов общий, а договор
+   *     выписывает конкретное юрлицо;
+   *   • договор ДРУГОГО типа: транспортный и складской с одним контрагентом —
+   *     это норма, а не дубль;
+   *   • АННУЛИРОВАННЫЙ договор: он как раз и заменяется новым.
+   *
+   * И считалось это один раз, в момент выбора контрагента, — переключение
+   * типа договора запрет уже не пересчитывало. Поэтому величина производная,
+   * а не состояние.
+   */
+  const existingContract = useMemo(
+    () => allContracts.find(
+      (c) => c.counterpartyId === formData.counterpartyId
+        && c.companyId === company?.id
+        && c.type === formData.type
+        && c.status !== 'canceled'
+    ) || null,
+    [allContracts, formData.counterpartyId, formData.type, company?.id]
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.number) return alert("Введите номер договора");
     // if (formData.type === 'warehouse' && !formData.actId) return alert("Выберите заявку");
-    if (existingContract) return alert("Для этого контрагента уже существует договор!");
+    if (existingContract) {
+      return alert(
+        `У контрагента уже есть действующий договор ${existingContract.number} этого же типа. `
+        + "Аннулируйте его или откройте существующий."
+      );
+    }
 
     // setLoading(true);
     // try {
@@ -386,24 +411,45 @@ export default function ContractCreatePage() {
     setLoading(true);
     try {
       const selectedAct = availableActs.find(a => a.id === formData.actId);
-      const cpData = {
-        customer: {
-          fio: selectedCp?.name || "",
-          companyName: selectedCp?.companyName || "",
-          bin: selectedCp?.bin || "",
-          jurAddress: selectedCp?.address || "",
-          bank: selectedCp?.bank || "",
-          bik: selectedCp?.bik || "",
-          account: selectedCp?.account || "",
-          phone: selectedCp?.phone || selectedCp?.contactPhone || "",
-          director: selectedCp?.director || "",
-        }
+
+      // Реквизиты контрагента — то, чем заполняется «сторона договора» в бланке.
+      // kbe и email раньше не переносились, хотя в справочнике они есть, а в
+      // бланке транспортного договора есть графа {customer_kbe} — она уходила
+      // заказчику пустой.
+      const cpCustomer = {
+        fio: selectedCp?.name || "",
+        companyName: selectedCp?.companyName || "",
+        bin: selectedCp?.bin || "",
+        jurAddress: selectedCp?.address || "",
+        bank: selectedCp?.bank || "",
+        bik: selectedCp?.bik || "",
+        account: selectedCp?.account || "",
+        kbe: selectedCp?.kbe || "",
+        email: selectedCp?.email || "",
+        phone: selectedCp?.phone || selectedCp?.contactPhone || "",
+        director: selectedCp?.director || "",
       };
+
+      // Заявка даёт груз и маршрут, контрагент — сторону договора. Раньше при
+      // выбранной заявке реквизиты контрагента отбрасывались ЦЕЛИКОМ
+      // (`actData: selectedAct || cpData`), и в бланк уходил заказчик из
+      // заявки — вместе с чужими банковскими реквизитами.
+      //
+      // Сливаем, но контрагент перекрывает заявку ТОЛЬКО там, где поле
+      // заполнено: пустая графа справочника не должна стирать то, что в
+      // заявке есть.
+      const filledCp = Object.fromEntries(
+        Object.entries(cpCustomer).filter(([, v]) => String(v || "").trim() !== "")
+      );
+      const actData = selectedAct
+        ? { ...selectedAct, customer: { ...(selectedAct.customer || {}), ...filledCp } }
+        : { customer: cpCustomer };
+
       const contractData = {
         ...formData,
         companyId: company.id,
         customerName: selectedCp?.name || selectedAct?.customer?.companyName || selectedCp?.companyName || "",
-        actData: selectedAct || cpData,
+        actData,
       };
       await api.contracts.create(contractData);
       nav("/contracts");
@@ -480,7 +526,8 @@ export default function ContractCreatePage() {
                 </select>
                 {existingContract && (
                   <div style={{ marginTop: 8, padding: '8px 12px', background: '#fff2f0', border: '1px solid #ffccc7', borderRadius: 6, color: '#cf1322', fontSize: '0.9rem' }}>
-                    ⚠️ Для этого контрагента уже существует договор №{existingContract.number}. Создание второго договора невозможно.
+                    ⚠️ У контрагента уже есть действующий договор {existingContract.number} этого же типа.
+                    Второй такой же не создаётся: аннулируйте прежний или откройте его.
                   </div>
                 )}
               </div>

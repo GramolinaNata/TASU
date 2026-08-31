@@ -113,6 +113,10 @@ import { Response } from 'express';
 import prisma from '../lib/prisma';
 import bcrypt from 'bcryptjs';
 import { AuthRequest } from '../middlewares/auth.middleware';
+// Справочник ролей. Зеркало src/shared/auth/roles.js — см. комментарий там.
+// На этом шаге используется только для предупреждения в логе; проверки
+// доступа в контроллерах остались прежними.
+import { isKnownRole } from '../lib/roles';
 
 const ALLOWED_USER_SORT = ['id', 'email', 'name', 'role', 'createdAt', 'updatedAt'] as const;
 type UserSortField = typeof ALLOWED_USER_SORT[number];
@@ -179,6 +183,17 @@ export const createUser = async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ message: 'Для этой роли необходимо указать компанию (assignedCompanyId)' });
     }
 
+    // Роль сверяется со справочником, но НЕ отклоняется.
+    //
+    // Сегодня сервер принимает в role любую строку, и в базе может лежать
+    // значение, о котором мы не знаем. Жёсткая проверка на этом шаге закрыла
+    // бы правку такому пользователю — то есть сломала бы работающее ради
+    // аккуратности. Пока просто оставляем след в логе; отклонять начнём,
+    // когда набор ролей устоится и база будет проверена.
+    if (role && !isKnownRole(role)) {
+      console.warn('[roles] createUser: незнакомая роль «' + role + '» — сохраняем как есть');
+    }
+
     const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return res.status(400).json({ message: 'Пользователь с таким email уже существует' });
@@ -241,6 +256,10 @@ export const updateUser = async (req: AuthRequest, res: Response) => {
     if (email !== undefined) updateData.email = email;
     if (name !== undefined) updateData.name = name;
     if (role !== undefined) updateData.role = role;
+    // Как и в createUser: сверяем со справочником, но не отклоняем.
+    if (role !== undefined && role && !isKnownRole(role)) {
+      console.warn('[roles] updateUser: незнакомая роль «' + role + '» — сохраняем как есть');
+    }
 
     if (password) {
       updateData.password = await bcrypt.hash(password, 10);

@@ -181,9 +181,30 @@ export default function PublicSignPage() {
     );
   }
 
+  // Ступень цепочки закрыта (ссылку выдали заранее, предыдущая подпись ещё
+  // не собрана). Показываем причину, а не пустую канву, которая потом
+  // откажется отправляться.
+  if (data.blocked) {
+    return wrap(
+      <div className="card" style={{ padding: 28, textAlign: "center" }}>
+        <div style={{ fontSize: 44, marginBottom: 12 }}>⏳</div>
+        <div style={{ fontWeight: 700, marginBottom: 8 }}>Подписать пока нельзя</div>
+        <div className="muted">{data.blockedReason}</div>
+      </div>
+    );
+  }
+
   return wrap(
     <div className="card" style={{ padding: 20 }}>
-      <div style={{ fontWeight: 800, fontSize: "1.2rem", marginBottom: 2 }}>СМР № {data.docNumber}</div>
+      {/* ЧТО ИМЕННО ПОДПИСЫВАЮТ. Раньше подпись была одна — получателя, и
+          заголовок был захардкожен «СМР №…». Теперь ступеней четыре, и
+          человек обязан видеть, под чем ставит подпись. */}
+      <div style={{ fontWeight: 800, fontSize: "1.2rem", marginBottom: 2 }}>
+        {data.heading || "Подпись"}
+      </div>
+      <div style={{ fontWeight: 600, marginBottom: 2 }}>
+        {data.docKind ? `${data.docKind} № ${data.docNumber}` : `Заявка № ${data.docNumber}`}
+      </div>
       <div className="muted" style={{ marginBottom: 14 }}>
         {data.fromCity || "—"} → {data.toCity || "—"} · {data.seats || "—"} мест
         {data.weight ? ` · ${data.weight} кг` : ""}
@@ -193,8 +214,13 @@ export default function PublicSignPage() {
           <span className="muted">Адрес выгрузки: </span>{data.unloadingAddress}
         </div>
       )}
+      {data.hint && (
+        <div style={{ marginBottom: 14, padding: 10, borderRadius: 6, background: "#f0f7ff", fontSize: "0.85rem" }}>
+          {data.hint}
+        </div>
+      )}
 
-      <div className="label">Ф.И.О. получателя</div>
+      <div className="label">Ф.И.О. подписывающего</div>
       <input value={name} onChange={e => setName(e.target.value)} placeholder="Иванов И.И."
         style={{ width: "100%", marginBottom: 12 }} />
 

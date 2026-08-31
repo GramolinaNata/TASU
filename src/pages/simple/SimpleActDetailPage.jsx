@@ -355,6 +355,7 @@ import { readExtra, extraPatch, totalWithExtra, tariffPartOf } from "../../share
 import { printLabelViaIframe } from "../../shared/print/labelPrint.js";
 import { formatDocNumber } from "../../shared/acts/docNumber.js";
 import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
+import CargoTrack from "../../shared/cargo/CargoTrack.jsx";
 import {
   emptyDimGroup, normalizeDimGroups, groupVolumeM3, groupsVolumeM3, groupsSeats,
   serializeDimGroups, flatSizeSurcharge, pickSizeCategory,
@@ -578,7 +579,10 @@ export default function SimpleActDetailPage() {
       setAutoCalc(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing, form?.toCity, form?.fromCity, form?.weight, form?.dimGroups, volumeM3, seatsManual, form?.sizeCategory, tariffs, manualSum, hasDimsNow, extra]);
+    // Флаги доставки/забора читаются из act — значит и в зависимостях им место.
+    // Без них пересчёт при открытии на правку мог отработать на прежнем act и
+    // посчитать по флагам, которых в накладной уже нет.
+  }, [editing, form?.toCity, form?.fromCity, form?.weight, form?.dimGroups, volumeM3, seatsManual, form?.sizeCategory, tariffs, manualSum, hasDimsNow, extra, act?.withDelivery, act?.withPickup]);
 
   // Явное применение предложенной суммы (для старых накладных без габаритов).
   const applyCalc = () => {
@@ -911,6 +915,12 @@ ${receiptBlock}
           <button className="btn" onClick={() => navigate("/simple")}>← Назад</button>
         </div>
       </div>
+
+      {/* ТЗ: где груз и кто его туда двинул. Раньше движение было видно только
+          в кабинетах ролей и на экране сканирования — в карточке накладной
+          ни статуса, ни журнала не было, хотя данные приходили с сервера.
+          Блок общий с карточкой юрлиц (shared/cargo/CargoTrack.jsx). */}
+      <CargoTrack act={act} />
 
       {editing ? (
         <div style={{ marginTop: 20, display: "flex", gap: 16, flexWrap: "wrap" }}>

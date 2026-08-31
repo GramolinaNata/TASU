@@ -6,6 +6,7 @@ import { activeRequestIds, batchTotalsExcludingCanceled } from "../../shared/bat
 import { vedomostRowForBatch, payoutsFromRow } from "../../shared/batch/vedomostPayouts.js";
 import { calcTax, taxSettingsOf } from "../../shared/tax/calcTax.js";
 import { unloadOfRequests } from "../../shared/report/unloadSum.js";
+import { loaderPayout, loaderFixedByVedomost } from "../../shared/batch/loaderPayout.js";
 
 const parseDetails = (raw) => {
   if (!raw) return {};
@@ -130,6 +131,34 @@ export default function BookkeeperReportPage() {
     );
   };
 
+  // Ячейка «Грузчикам». Помечаем ровно как выгрузку выше и по той же причине:
+  // бухгалтер должен видеть разницу между «столько выплачено по ведомости»,
+  // «столько получится по текущему тарифу» и «посчитать не по чему».
+  const loaderCell = (r) => {
+    if (r.loaderUnknown) {
+      return (
+        <span
+          className="muted"
+          title={"Грузчики на партии назначены, но тариф грузчиков по её городу не заведён — \n" +
+                 "сумму посчитать не по чему. Это не ноль: заведите ставку во вкладке Тарифы."}
+        >
+          —
+        </span>
+      );
+    }
+    const text = `${fmt(r.loaderSum)} тг`;
+    if (!r.loaderEstimated) return text;
+    return (
+      <span
+        style={{ color: "#92400e" }}
+        title={"Посчитано по ТЕКУЩЕМУ тарифу грузчиков: партия ещё не вошла в ведомость \n" +
+               "перевозчика. Когда ведомость сформируют, сумма зафиксируется в ней."}
+      >
+        {text}<span style={{ opacity: 0.7 }}>*</span>
+      </span>
+    );
+  };
+
   const carrierName = (id) => carriers.find(c => c.id === id)?.name || "—";
   const repName = (id) => representatives.find(r => r.id === id)?.name || "—";
 
@@ -191,10 +220,28 @@ export default function BookkeeperReportPage() {
     return unloadOfRequests(reqs, tariffs);
   };
 
-  // Компания партии = компания её накладных (у самих партий companyId пустой), без аннулированных
+  /**
+   * Компания партии. У старых партий своего companyId нет — выводим из
+   * накладных.
+   *
+   * ПОЧЕМУ ДВА ПРОХОДА. Раньше был только первый — по АКТИВНЫМ накладным.
+   * Если все накладные партии аннулированы (или ни одна не подгрузилась),
+   * возвращался null, и партия переставала совпадать с ЛЮБОЙ компанией:
+   * в фильтре «Все компании» она была, а стоило выбрать конкретный ИП —
+   * исчезала. Отсюда и «выбрал ИП, а поле пустое».
+   *
+   * Аннулированная накладная не перестаёт принадлежать своему ИП, поэтому
+   * второй проход берёт любую. На ЦИФРЫ это не влияет: выручка, места, вес
+   * и налог по-прежнему считаются без аннулированных — здесь решается
+   * только вопрос «чья партия».
+   */
   const batchCompanyId = (batch) => {
     if (batch.companyId) return batch.companyId;
     for (const rid of batchActiveIds(batch)) {
+      const r = requests.find(rr => rr.id === rid);
+      if (r && r.companyId) return r.companyId;
+    }
+    for (const rid of batchIds(batch)) {
       const r = requests.find(rr => rr.id === rid);
       if (r && r.companyId) return r.companyId;
     }
@@ -225,6 +272,46 @@ export default function BookkeeperReportPage() {
         ? vedRow.representativeName : repName(b.representativeId);
       const loaders = (vedRow && vedRow.loadersCount != null)
         ? Number(vedRow.loadersCount) || 0 : (b.loadersCount || 0);
+
+      // ТЗ (заказчик): «в отчёте бухгалтера отображай грузчиков — сумму по
+      // грузчикам». Она и раньше выводилась, но бралась ТОЛЬКО из снапшота
+      // ведомости перевозчика. У партии без ведомости payoutsFromRow(null)
+      // отдаёт нули — и в отчёте стоял ноль при назначенных грузчиках и
+      // заведённой ставке. Считаем сами, той же формулой (см. loaderPayout).
+      //
+      // Снапшот приоритетнее расчёта: в нём ставка, ДЕЙСТВОВАВШАЯ на момент
+      // формирования ведомости, а по ней уже выплатили. Пересчёт по текущему
+      // тарифу задним числом переписал бы состоявшийся факт.
+      // ЗАФИКСИРОВАЛА ЛИ ВЕДОМОСТЬ СУММУ ГРУЗЧИКОВ.
+      //
+      // Раньше здесь стояло просто `vedRow ? null : …`, и это было слишком
+      // грубо. Ведомость может содержать строку по партии и при этом НЕ нести
+      // суммы: если на момент её формирования тарифа грузчиков по городу не
+      // было, туда пишется loaderSum: 0 и признак loaderMissing: true
+      // (см. CarrierVedomostCreatePage). В отчёте такая партия показывала
+      // голый «0 тг» при назначенных грузчиках — то самое «работали
+      // бесплатно», от которого мы уходим. Проверено на данных: партия
+      // П000006 (город «вапвап», 3 грузчика, 3453 кг) — в снапшоте
+      // ВП000005 ставка 0, сумма 0, loaderMissing: true.
+      //
+      // У СТАРЫХ ведомостей флага loaderMissing нет вовсе (в ВП000001 и
+      // ВП000002 нет даже loaderRate). Поэтому тот же вывод делаем по факту:
+      // грузчики назначены, а положительной ставки в строке нет — значит
+      // сумма ничем не зафиксирована.
+      const vedLoaders = Number(vedRow?.loadersCount) || 0;
+      const vedLoaderFixed = loaderFixedByVedomost(vedRow);
+
+      // Считаем сами, когда ведомости нет ИЛИ она ничего не зафиксировала.
+      // Во втором случае переписывать нечего: выплаты по этой строке не было,
+      // так что «состоявшийся факт» мы не трогаем — его просто нет.
+      const loaderCalc = vedLoaderFixed ? null : loaderPayout({
+        // Количество берём из ведомости, если она есть: там оно на момент
+        // формирования, и именно оно показано в соседней колонке.
+        loadersCount: vedRow ? vedLoaders : b.loadersCount,
+        weight: batchWeight(b),
+        city: b.city,
+        tariffs,
+      });
       const seats = batchSeats(b);
       const weight = batchWeight(b);
       const unload = batchUnload(b);
@@ -247,7 +334,10 @@ export default function BookkeeperReportPage() {
       const taxRate = settings.taxRate;
       const taxAmount = tax.total;
 
-      const totalPayouts = expense + payouts.carrierSum + payouts.loaderSum + payouts.representativeSum + taxAmount;
+      // В выплаты идёт та же сумма, что показана в строке: иначе «Итого
+      // выплат» и прибыль разошлись бы с колонкой «Грузчикам».
+      const loaderSumEffective = loaderCalc ? loaderCalc.sum : payouts.loaderSum;
+      const totalPayouts = expense + payouts.carrierSum + loaderSumEffective + payouts.representativeSum + taxAmount;
 
       return {
         id: b.id,
@@ -269,7 +359,13 @@ export default function BookkeeperReportPage() {
         unloadKnown: unload.known,
         expense,
         carrierSum: payouts.carrierSum,
-        loaderSum: payouts.loaderSum,
+        loaderSum: loaderCalc ? loaderCalc.sum : payouts.loaderSum,
+        // Считано здесь, а не взято из ведомости: в отчёте помечаем
+        // звёздочкой — тем же способом, что и восстановленную выгрузку.
+        loaderEstimated: !!loaderCalc && loaderCalc.sum > 0,
+        // Грузчики назначены, а ставки по городу нет: сумма НЕ известна.
+        // Показать тут ноль значило бы сказать «работали бесплатно».
+        loaderUnknown: !!loaderCalc && !loaderCalc.known,
         representativeSum: payouts.representativeSum,
         taxRate,
         taxAmount,
@@ -427,7 +523,9 @@ export default function BookkeeperReportPage() {
       <td style="text-align:right">${r.unloadKnown ? fmt(r.unload) + " тг" + (r.unloadExact ? "" : "*") : "—"}</td>
       <td style="text-align:right">${fmt(r.expense)} тг</td>
       <td style="text-align:right">${fmt(r.carrierSum)} тг</td>
-      <td style="text-align:right">${fmt(r.loaderSum)} тг</td>
+      <!-- Пометки те же, что на экране: печатный отчёт уходит наружу,
+           и «0» вместо «ставка не заведена» там дороже, чем на экране. -->
+      <td style="text-align:right">${r.loaderUnknown ? "—" : fmt(r.loaderSum) + " тг" + (r.loaderEstimated ? "*" : "")}</td>
       <td style="text-align:right">${fmt(r.representativeSum)} тг</td>
       <td style="text-align:right">${fmt(r.taxAmount)} тг</td>
       <td style="text-align:right;font-weight:700">${fmt(r.profit)} тг</td>
@@ -688,7 +786,7 @@ export default function BookkeeperReportPage() {
                         <td style={{ textAlign: "right" }}>{unloadCell(r)}</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.expense)} тг</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.carrierSum)} тг</td>
-                        <td style={{ textAlign: "right" }}>{fmt(r.loaderSum)} тг</td>
+                        <td style={{ textAlign: "right" }}>{loaderCell(r)}</td>
                         <td style={{ textAlign: "right" }}>{fmt(r.representativeSum)} тг</td>
                         {/* ТЗ: в ОУР налог складывается из двух строк — НДС и КПН.
                             Показываем разбивку под суммой, чтобы бухгалтер видел,

@@ -97,6 +97,27 @@ export default function SimpleActsListPage() {
   // ТЗ: «Завершённые» (оплата пришла) отмечает бухгалтер. Админу тоже даём —
   // он видит всё и подменяет бухгалтера, как в остальных разделах.
   const canMarkPaid = isAdmin || isAccountant || isAccountant2;
+
+  /**
+   * Кто работает по ВСЕМ ИП сразу.
+   *
+   * Здесь стоял один isAdmin, и бухгалтер попадал в ветку «показывать по
+   * выбранной компании». Беда в том, что выбрать компанию он не может:
+   * переключатель ИП в шапке для бухгалтеров закрыт (Layout, !isAnyAccountant).
+   * Компания оставалась пустой, срабатывал ранний выход setActs([]) — и сток
+   * частных накладных у бухгалтера был пуст ВСЕГДА, независимо от ИП.
+   *
+   * Бухгалтерия по определению сводит все ИП: в отчёте и в разделе
+   * «Бухгалтерия» она уже грузит всё и режет своим фильтром компании.
+   * Здесь теперь так же — фильтр ниже.
+   */
+  const seesAllCompanies = isAdmin || isAccountant || isAccountant2;
+
+  // Фильтр по ИП для тех, кто видит все. Раньше выбор ИП на этот список не
+  // влиял вовсе («выбрал TASU KZ — показывает всё»), а у бухгалтера выбора
+  // не было совсем. По умолчанию «все» — то, что админ видел и раньше.
+  const [companyFilter, setCompanyFilter] = useState("all");
+  const [companies, setCompanies] = useState([]);
   const [acts, setActs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -136,18 +157,31 @@ export default function SimpleActsListPage() {
     return subscribeSelectedCompany(c => setCompany(c));
   }, []);
 
+  // Справочник ИП нужен только для подписей в фильтре. Ошибку глушим:
+  // без него фильтр просто не показывается, список накладных живёт своей
+  // жизнью и падать из-за справочника не должен.
   useEffect(() => {
-    // Админ видит частные накладные всех компаний (не зависит от переключателя).
+    if (!seesAllCompanies) return undefined;
+    let alive = true;
+    api.companies.list()
+      .then((list) => { if (alive) setCompanies(Array.isArray(list) ? list : []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [seesAllCompanies]);
+
+  useEffect(() => {
+    // Админ и бухгалтеры видят частные накладные всех компаний (переключатель
+    // ИП на выдачу не влияет — разделение делает фильтр на странице).
     // Менеджер/PRIVATE — только свою выбранную компанию.
-    if (!isAdmin && !company) { setActs([]); setLoading(false); return; }
+    if (!seesAllCompanies && !company) { setActs([]); setLoading(false); return; }
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [company, location.state?.refresh, isAdmin]);
+  }, [company, location.state?.refresh, seesAllCompanies]);
   const load = async () => {
     setLoading(true);
     try {
-      // Админ — без companyId (все компании); остальные — по своей компании
-      const list = await api.requests.list(isAdmin ? undefined : company?.id);
+      // Все компании — без companyId; остальные — по своей.
+      const list = await api.requests.list(seesAllCompanies ? undefined : company?.id);
       if (Array.isArray(list)) {
         const simple = list
           .filter(a => {
@@ -327,6 +361,9 @@ export default function SimpleActsListPage() {
 
   const filtered = useMemo(() => {
     let list = acts.filter(a => {
+      // Отбор по ИП. Работает только там, где список грузится по всем
+      // компаниям: у менеджера он и так уже сужен запросом.
+      if (seesAllCompanies && companyFilter !== "all" && a.companyId !== companyFilter) return false;
       const s = search.trim().toLowerCase();
       const searchFields = [
         a.docNumber, a.number,
@@ -371,7 +408,7 @@ export default function SimpleActsListPage() {
     });
 
     return sorted;
-  }, [acts, search, dateFrom, dateTo, activeTab, sortBy, sortOrder]);
+  }, [acts, search, dateFrom, dateTo, activeTab, sortBy, sortOrder, seesAllCompanies, companyFilter]);
 
   const displayActs = selected.length > 0 ? filtered.filter(a => selected.includes(a.id)) : filtered;
   const totalSeats = displayActs.reduce((acc, a) => acc + (Number(a.totals?.seats) || 0), 0);
@@ -406,20 +443,38 @@ export default function SimpleActsListPage() {
     const city = cities[0] || "";
     if (!city) return alert("У выбранных накладных не указан город назначения.");
 
+    // ИП ПАРТИИ. Раньше сюда всегда приходила компания из переключателя шапки,
+    // потому что без неё список накладных просто не показывался. Теперь список
+    // видят и те, у кого переключатель закрыт (бухгалтеры), — и партия могла бы
+    // создаться с пустым companyId. Такая партия потом не совпадает ни с одним
+    // ИП в отчёте бухгалтера: она есть в «Все компании» и пропадает при выборе
+    // конкретного. Поэтому ИП обязателен, и берём его в явном порядке:
+    // выбранный на странице фильтр → переключатель шапки.
+    const batchCompany = (seesAllCompanies && companyFilter !== "all")
+      ? companies.find(c => c.id === companyFilter)
+      : company;
+    if (!batchCompany?.id) {
+      return alert(
+        "Не выбран ИП, от имени которого создаётся партия." +
+        "\n\n" +
+        "Выберите конкретный ИП в фильтре над списком (или в переключателе компании вверху)."
+      );
+    }
+
     try {
-      const number = await genNextBatchNumberSimple(company);
+      const number = await genNextBatchNumberSimple(batchCompany);
       const batchData = { number, city, driverName: "", driverPhone: "", carNumber: "", deliveryCost: "" };
       // В партию — ТОЛЬКО реально отмеченные и видимые накладные (selectedActs =
       // filtered ∩ selected). Раньше писали сырой `selected`, куда мог попасть id,
       // скрытый текущим фильтром/вкладкой, — из-за этого в партию лезла лишняя накладная.
       const ids = selectedActs.map(a => a.id);
-      await api.batches.create({ ...batchData, companyId: company?.id, requestIds: ids });
+      await api.batches.create({ ...batchData, companyId: batchCompany.id, requestIds: ids });
 
       // ТЗ: партию создают обе роли, а грузовую ведомость ограниченный
       // менеджер не формирует — печать пропускаем. Для остальных ролей
       // поведение прежнее: партия и сразу печать.
       if (!isManager2) {
-        await printVedomost(selectedActs, batchData);
+        await printVedomost(selectedActs, batchData, batchCompany);
       }
 
       // ТЗ, цепочка: Сток → Подано → Обработанные → Завершённые.
@@ -444,7 +499,10 @@ export default function SimpleActsListPage() {
     }
   };
 
-  const printVedomost = async (selectedActs, batchData) => {
+  // ИП передаётся параметром, а не берётся из переключателя шапки: у ролей,
+  // работающих по всем ИП, переключатель пуст, и в шапке ведомости оставалась
+  // пустая строка вместо названия компании.
+  const printVedomost = async (selectedActs, batchData, printCompany = company) => {
     const rows = selectedActs.map((a) => ({
       docNumber: a.docNumber || a.number || a.id?.slice(0, 8) || "—",
       receiver: (a.receiver?.companyName && a.receiver?.fio)
@@ -457,25 +515,31 @@ export default function SimpleActsListPage() {
       sum: Number(a.totalSum) || null,
     }));
     await printCargoVedomost({
-      companyName: company?.name || "",
+      companyName: printCompany?.name || "",
       batchNumber: batchData.number,
       city: batchData.city,
       rows,
     });
   };
 
+  // Счётчики считаются по ТОМУ ЖЕ набору, что и таблица: иначе при выбранном
+  // ИП на вкладке стояло бы число по всем компаниям, а в списке — по одной.
+  const countBase = (seesAllCompanies && companyFilter !== "all")
+    ? acts.filter(a => a.companyId === companyFilter)
+    : acts;
+
   const tabCounts = {
-    all: acts.filter(a => a.status !== "canceled").length,
-    stock: acts.filter(a => a.status === "act").length,
-    sent: acts.filter(a => a.status === "sent").length,
-    done: acts.filter(a => a.status === "done" && !a.isPaid).length,
+    all: countBase.filter(a => a.status !== "canceled").length,
+    stock: countBase.filter(a => a.status === "act").length,
+    sent: countBase.filter(a => a.status === "sent").length,
+    done: countBase.filter(a => a.status === "done" && !a.isPaid).length,
     // ТЗ: «Завершённые» — оплата пришла. Признак ставит бухгалтер, он отдельный
     // от статуса обработки груза.
-    paid: acts.filter(a => !!a.isPaid && a.status !== "canceled").length,
+    paid: countBase.filter(a => !!a.isPaid && a.status !== "canceled").length,
     // ТЗ: отложенные — свой статус в той же механике вкладок, что и остальные
     // у частных. Флаги юрлиц (isDeferredForAccountant) сюда не тянем.
-    deferred: acts.filter(a => a.status === "deferred").length,
-    canceled: acts.filter(a => a.status === "canceled").length,
+    deferred: countBase.filter(a => a.status === "deferred").length,
+    canceled: countBase.filter(a => a.status === "canceled").length,
   };
 
   return (
@@ -568,6 +632,18 @@ export default function SimpleActsListPage() {
           <div className="label">🔍 Поиск (номер накладной, ФИО, телефон, город)</div>
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Введите № накладной (например А000001) или любую часть данных..." />
         </div>
+        {/* ТЗ (заказчик): «при выборе ИП должен отображаться сток, а не пустое
+            поле». Выбор ИП живёт здесь, а не в переключателе шапки: у бухгалтера
+            тот переключатель закрыт, а список ему нужен по конкретному ИП. */}
+        {seesAllCompanies && (
+          <div className="field" style={{ width: 200 }}>
+            <div className="label">ИП (компания)</div>
+            <select value={companyFilter} onChange={e => setCompanyFilter(e.target.value)}>
+              <option value="all">Все ИП</option>
+              {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </div>
+        )}
         <div className="field" style={{ width: 160 }}>
           <div className="label">Дата с</div>
           <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />

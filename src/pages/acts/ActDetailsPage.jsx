@@ -17,7 +17,10 @@ import { exportToDocx } from "../../shared/export/docxExport.js";
 import { exportTtnToXlsx } from "../../shared/export/xlsxExport.js";
 import { exportBundle } from "../../shared/export/exportBundle.js";
 import AccessLinksDialog from "./AccessLinksDialog.jsx";
+import { canFormDocument, signChainState } from "../../shared/sign/signChain.js";
+import { docKindForRoute, docKindMatches, DOC_LABELS } from "../../shared/acts/docKind.js";
 import { buildScanUrl } from "../../shared/cargo/cargoStatus.js";
+import CargoTrack from "../../shared/cargo/CargoTrack.jsx";
 import {
   getActSection, sectionPatch, sectionPath, sectionAfterAccountant, SECTION,
 } from "../../shared/acts/section.js";
@@ -37,6 +40,9 @@ export default function ActDetailsPage() {
   const { isAdmin, isAccountant, isManager, isManager2 } = useAuth();
   const [act, setAct] = useState(null);
   const [loading, setLoading] = useState(true);
+  // Справочник тарифов — из него берётся страна направления для подсказки
+  // «СМР или ТТН». Больше ни на что в этой карточке не влияет.
+  const [allTariffs, setAllTariffs] = useState([]);
   const [actionLoading, setActionLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const qrRef = useRef(null);
@@ -496,6 +502,17 @@ const printLabel = async () => {
     loadAct();
   }, [id]);
 
+  // Тарифы нужны только для подсказки документа по направлению
+  // (страна назначения лежит в тарифе). Ошибку глушим: подсказка —
+  // удобство, из-за неё карточка заявки падать не должна.
+  useEffect(() => {
+    let alive = true;
+    api.tariffs.list()
+      .then((list) => { if (alive) setAllTariffs(Array.isArray(list) ? list : []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   useEffect(() => {
     if (act && isAccountant && !act.isViewedByAccountant) {
       const markAsViewed = async () => {
@@ -578,6 +595,14 @@ const printLabel = async () => {
 
   const confirmDocType = async () => {
     if (!id || !showDocForm) return;
+    // ВОРОТА ЦЕПОЧКИ: без подписи заявки клиентом документа быть не может.
+    // Та же проверка стоит на сервере (updateRequest) — здесь она нужна,
+    // чтобы менеджер увидел причину до отправки, а не после отказа.
+    const gate = canFormDocument(act);
+    if (!gate.ok) {
+      alert(gate.reason);
+      return;
+    }
     const missing = missingVehicleFields();
     if (missing.length) {
       alert(
@@ -719,30 +744,6 @@ const printLabel = async () => {
       } finally {
         setActionLoading(false);
       }
-    }
-  };
-
-  const handleAnnulAndClone = async () => {
-    if (!id || !act) return;
-    if (!window.confirm("Аннулировать текущий документ и создать новый со всеми теми же данными?")) return;
-    setActionLoading(true);
-    try {
-      const result = await api.requests.cancelAndClone(id);
-      const newId = result?.id;
-      const newNumber = result?.docNumber || "";
-      if (newId) {
-        alert(`Документ аннулирован.\nСоздана новая заявка №${newNumber}.\nОткрываю...`);
-        if (act.isWarehouse) nav(`/warehouse/${newId}`);
-        else if (act.type === 'smr' || act.docType === 'smr') nav(`/smr/${newId}`);
-        else if (act.type === 'ttn' || act.docType === 'ttn') nav(`/requests/${newId}`);
-        else nav(`/acts/${newId}`);
-      } else {
-        alert("Документ создан, но не получилось определить ID. Обновите страницу.");
-      }
-    } catch (err) {
-      alert("Ошибка: " + (err.message || err));
-    } finally {
-      setActionLoading(false);
     }
   };
 
@@ -919,6 +920,16 @@ const printLabel = async () => {
     );
   }
 
+  // ТЗ: цепочка подписей. docGate — можно ли формировать СМР/ТТН,
+  // signChain — состояние всех четырёх ступеней для показа в карточке.
+  const docGate = canFormDocument(act);
+  const signChain = signChainState(act);
+
+  // ТЗ: документ по направлению — Казахстан СМР, Россия ТТН. Это ПОДСКАЗКА:
+  // тип документа управляет ещё и разделом, и путём экспорта, поэтому
+  // окончательный выбор остаётся за менеджером.
+  const docRec = docKindForRoute(allTariffs, act.route || {}, 'legal');
+
   const canSendToAccountant = hasFormedDocument();
   const isActualAccountant = isAccountant;
   // ТЗ: обработка — менеджерское действие. Право здесь ДОЛЖНО совпадать с
@@ -964,15 +975,36 @@ const printLabel = async () => {
                 {act.readyForAccountant ? "✏ Редактировать (вернётся к бухгалтеру)" : "Редактировать"}
               </button>
 
+              {/* ТЗ, ворота цепочки: кнопки формирования гаснут, пока клиент
+                  не подписал заявку. Кнопку не ПРЯЧЕМ, а гасим с подсказкой —
+                  исчезнувшая кнопка выглядит как поломка, а погашенная
+                  объясняет, чего не хватает. (Ворота сейчас выключены флагом
+                  REQUIRE_CLIENT_REQUEST_SIGNATURE — см. signChain.js.)
+
+                  ТЗ, выбор документа по направлению: рекомендованный тип
+                  выделен рамкой, второй остаётся доступным. Подсказка, а не
+                  запрет: тип документа управляет ещё и разделом, и путём
+                  экспорта, и первая же неверно заведённая страна в тарифе
+                  заблокировала бы работу по направлению. */}
               {!isSentPath && act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "ttn" && act.docType !== "ttn" && (
-                <button className="btn btn--ghost" onClick={() => chooseDocType("ttn")} disabled={actionLoading}>
-                  {actionLoading ? "Формирование..." : "Сформировать ТТН"}
+                <button
+                  className={`btn ${docRec.kind === "ttn" ? "btn--primary" : "btn--ghost"}`}
+                  onClick={() => chooseDocType("ttn")}
+                  disabled={actionLoading || !docGate.ok}
+                  title={!docGate.ok ? docGate.reason : docRec.reason}
+                >
+                  {actionLoading ? "Формирование..." : `Сформировать ТТН${docRec.kind === "ttn" ? " ★" : ""}`}
                 </button>
               )}
 
               {!isSentPath && act.status !== 'canceled' && !act.readyForAccountant && !act.isWarehouse && !act.isDeferredForAccountant && act.type !== "smr" && act.docType !== "smr" && (
-                <button className="btn btn--ghost" onClick={() => chooseDocType("smr")} disabled={actionLoading}>
-                  {actionLoading ? "Формирование..." : "Сформировать СМР"}
+                <button
+                  className={`btn ${docRec.kind === "smr" ? "btn--primary" : "btn--ghost"}`}
+                  onClick={() => chooseDocType("smr")}
+                  disabled={actionLoading || !docGate.ok}
+                  title={!docGate.ok ? docGate.reason : docRec.reason}
+                >
+                  {actionLoading ? "Формирование..." : `Сформировать СМР${docRec.kind === "smr" ? " ★" : ""}`}
                 </button>
               )}
 
@@ -1007,18 +1039,6 @@ const printLabel = async () => {
               {!isSentPath && act.status !== 'canceled' && (
                 <button className="btn btn--danger" onClick={handleAnnul} disabled={actionLoading}>
                    {actionLoading ? "..." : "Аннулировать"}
-                </button>
-              )}
-
-              {!isSentPath && act.status !== 'canceled' && (
-                <button
-                  className="btn"
-                  onClick={handleAnnulAndClone}
-                  disabled={actionLoading}
-                  title="Аннулировать текущий документ и создать новый с теми же данными"
-                  style={{ background: '#fa8c16', borderColor: '#fa8c16', color: '#fff' }}
-                >
-                  {actionLoading ? "..." : "↻ Аннулировать и создать новую"}
                 </button>
               )}
 
@@ -1549,6 +1569,74 @@ const printLabel = async () => {
                <div className="v">{act.route?.comment || "—"}</div>
             </div>
        </div>
+
+      {/* ТЗ: операционный менеджер контролирует все этапы движения — но
+          видеть, где груз, нужно и менеджеру с админом, не выходя из
+          карточки. Раньше движение было видно ТОЛЬКО в кабинетах ролей и на
+          экране сканирования: в карточке заявки не было ни статуса, ни
+          журнала, хотя данные приходили с сервера.
+          Складская заявка груз не везёт — там блок не нужен. */}
+      {!act.isWarehouse && <CargoTrack act={act} />}
+
+      {/* ТЗ: документ по направлению. Показываем и рекомендацию, и то,
+          откуда она взялась: «система посчитала» без объяснения менеджер
+          читает как приказ, а страну в тарифе мог никто не проставить. */}
+      {!act.isWarehouse && (
+        <div className="card" style={{ marginTop: 14, padding: 16 }}>
+          <div className="info_title" style={{ marginBottom: 8 }}>Перевозочный документ</div>
+          <div style={{ fontSize: "0.88rem" }}>
+            {docRec.reason}
+          </div>
+          {(() => {
+            const match = docKindMatches(act, docRec.kind);
+            if (match === null) return null;
+            return match ? (
+              <div style={{ marginTop: 8, fontSize: "0.82rem", color: "#237804" }}>
+                ✅ Сформирован {DOC_LABELS[String(act.docType || act.type).toLowerCase()]} — соответствует направлению.
+              </div>
+            ) : (
+              <div style={{ marginTop: 8, padding: 10, borderRadius: 6, background: "#fff7e6", color: "#b45309", fontSize: "0.82rem" }}>
+                ⚠ Сформирован {DOC_LABELS[String(act.docType || act.type).toLowerCase()]}, а направление просит {DOC_LABELS[docRec.kind]}.
+                Проверьте страну назначения в тарифе либо оставьте как есть, если так и задумано.
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* ТЗ: цепочка подписей целиком — где встали и чего ждём.
+          Блок про подпись получателя ниже оставлен как был: он показывает
+          миниатюру самой подписи, а этот — состояние всех четырёх ступеней. */}
+      {!act.isWarehouse && (
+        <div className="card" style={{ marginTop: 14, padding: 16 }}>
+          <div className="info_title" style={{ marginBottom: 10 }}>Цепочка подписей</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {signChain.map((s) => (
+              <div key={s.role} style={{ display: "flex", gap: 10, alignItems: "baseline", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "1rem" }}>
+                  {s.signed ? "✅" : s.available ? "⬜" : "🔒"}
+                </span>
+                <span style={{ fontWeight: 600, minWidth: 210 }}>{s.label}</span>
+                {s.signed ? (
+                  <span className="muted" style={{ fontSize: "0.82rem" }}>
+                    {s.name ? `${s.name} · ` : ""}
+                    {s.at ? new Date(s.at).toLocaleString("ru") : ""}
+                  </span>
+                ) : (
+                  <span className="muted" style={{ fontSize: "0.82rem" }}>
+                    {s.available ? "ждём подписи — выдайте ссылку" : s.reason}
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          {!docGate.ok && (
+            <div style={{ marginTop: 12, padding: 10, borderRadius: 6, background: "#fff7e6", color: "#b45309", fontSize: "0.82rem" }}>
+              {docGate.reason}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ТЗ: подписана ли СМР — видно сразу, без выгрузки документа.
           Подпись получателя приходит по одноразовой ссылке (/sign/:token)

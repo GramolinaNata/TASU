@@ -132,6 +132,20 @@ export function getTariffCategory(t) {
   return wr._category || (t && t.isPrivate ? "private" : "legal");
 }
 
+// Страна НАЗНАЧЕНИЯ тарифа: 'KZ' | 'RU'.
+//
+// ТЗ: перевозки по Казахстану оформляются СМР, перевозки в Россию — ТТН.
+// Признак живёт в weightRanges._country тем же способом, что _category и
+// _transport: колонки в схеме для этого не нужно, а миграции в проекте
+// сломаны — лишний db push на проде тут ни к чему.
+//
+// Умолчание KZ: все существующие тарифы — внутриказахстанские направления,
+// и молча переобъявить их российскими нельзя.
+export function getTariffCountry(t) {
+  const wr = t && t.weightRanges && typeof t.weightRanges === "object" ? t.weightRanges : {};
+  return wr._country === "RU" ? "RU" : "KZ";
+}
+
 // Тип перевозки тарифа: 'auto' | 'avia'. По умолчанию (у старых тарифов) — auto.
 // Признаком служит суффикс города __AVIA либо weightRanges._transport.
 export function getTariffTransport(t) {
@@ -203,18 +217,25 @@ export function findRegionalTariff(tariffs, cityRaw, weightKg, category, transpo
     // значения (fixed/perKg) + доставка на диапазон (fixed/perKg). Совместимость:
     // старый формат без типа — value берётся из sum/extra/price, mode/deliveryMode = fixed.
     let regionalExtra = 0;
+    // Забор по посёлку отдаём ОТДЕЛЬНО от доплаты: он включается галочкой
+    // «Забор груза», а доплата за посёлок — безусловна. Сложили бы вместе —
+    // забор начислялся бы и с выключенной галочкой.
+    let regionalPickup = 0;
     if (range) {
       const value = toNum(range.value ?? range.sum ?? range.extra ?? range.price);
       const val = range.mode === "perKg" ? value * weightKg : value;
       const dRaw = toNum(range.delivery);
       const dVal = range.deliveryMode === "perKg" ? dRaw * weightKg : dRaw;
       regionalExtra = val + dVal;
+      const pRaw = toNum(range.pickup);
+      regionalPickup = range.pickupMode === "perKg" ? pRaw * weightKg : pRaw;
     }
 
     return {
       tariff: t,
       parentCity: String(t.city || "").replace(/__\w+$/, ""),
       regionalExtra,
+      regionalPickup,
       regionLabel: match.region || cityRaw,
     };
   }
@@ -318,6 +339,7 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
 
   let tariff = null;
   let regionalExtra = 0;
+  let regionalPickup = 0;
   let regionLabel = "";
   let regionParent = "";  // город-родитель, если база взята из посёлка внутри тарифа
   let hubPoselok = "";    // посёлок, база которого взята из опорного города (fallback)
@@ -333,6 +355,7 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
   if (regional) {
     tariff = regional.tariff;
     regionalExtra = regional.regionalExtra;
+    regionalPickup = regional.regionalPickup || 0;
     regionLabel = regional.regionLabel;
     regionParent = regional.parentCity;
   }
@@ -429,6 +452,14 @@ export function calcDeliveryPrice({ tariffs, city, fromCity = '', weightKg = 0, 
     description += wp.pickupMode === "perKg"
       ? ` + забор груза ${toNum(wp.pickup).toLocaleString()} тг/кг × ${weightKg} кг`
       : ` + забор груза ${rangePickup.toLocaleString()} тг`;
+  }
+
+  // Забор из диапазонов ПОСЁЛКА (если база взята из _regionalDeliveries).
+  // Свой тариф забора у посёлка редактируется в тарифе-родителе; раньше он
+  // и не сохранялся, и не считался — то есть заведённая ставка пропадала.
+  if (withPickup && regionalPickup > 0) {
+    add("pickup_region", `Забор груза «${regionLabel}»`, regionalPickup);
+    description += ` + забор груза «${regionLabel}» ${regionalPickup.toLocaleString()} тг`;
   }
 
   // 2) Доплата за посёлок внутри тарифа (_regionalDeliveries) — приоритетный механизм.

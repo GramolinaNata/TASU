@@ -1,6 +1,11 @@
 import { Router, Request, Response } from 'express';
 import prisma from '../lib/prisma';
 import jwt from 'jsonwebtoken';
+// Цепочка подписей. Зеркало src/shared/sign/signChain.js — см. комментарий там.
+import {
+  SIGN_ROLE, isKnownSignRole, signHeading, signHint,
+  canSign, putSignature, hasDocument,
+} from '../lib/signChain';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'tasu_super_secret_key_123';
@@ -75,7 +80,26 @@ router.get('/acts/:id', async (req: Request, res: Response) => {
 // нельзя: образ бэка собирается из server/ и до src/ не достаёт.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ОПОРНАЯ цепочка. По ссылке доступны ТОЛЬКО эти четыре шага, хотя полный
+// маршрут (request.controller.CARGO_FLOW) теперь длиннее: складские отметки и
+// передачи между курьерами — внутренняя кухня, наёмному водителю по ссылке их
+// показывать нечего, да и ставить их некому. Список совпадает с CARGO_CHAIN
+// на фронте (src/shared/cargo/cargoStatus.js).
 const CARGO_CHAIN_PUB = ['picked_up', 'loaded', 'rep_received', 'delivered'];
+
+/** Журнал движения: колонка Json, у старых записей — null. */
+function parseCargoEvents(raw: any): any[] {
+  if (Array.isArray(raw)) return raw.filter((e) => e && typeof e === 'object');
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed.filter((e: any) => e && typeof e === 'object') : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
 
 function nextCargoPub(current: string): string | null {
   const cur = current && CARGO_CHAIN_PUB.includes(current) ? current : '';
@@ -190,13 +214,40 @@ router.post('/cargo/:token/status', async (req: Request, res: Response) => {
       });
     }
 
-    await burnToken(act.id, token, { cargoStatus: target, cargoStatusAt: new Date() });
+    // Журнал движения. У наёмного водителя учётки нет, поэтому автор
+    // записывается как ссылка: byRole 'LINK' и хвост токена — этого хватает,
+    // чтобы в истории было видно, какой именно выдачей отмечен шаг, и при этом
+    // сам токен целиком в журнал не попадает.
+    const events = parseCargoEvents(act.cargoEvents);
+    events.push({
+      status: target,
+      at: new Date().toISOString(),
+      byId: null,
+      byName: 'по ссылке …' + token.slice(-6),
+      byRole: 'LINK',
+      back: false,
+    });
+
+    await burnToken(act.id, token, { cargoStatus: target, cargoStatusAt: new Date(), cargoEvents: events });
     res.json({ ok: true, cargoStatus: target });
   } catch (e: any) {
     console.error('public cargo status error:', e);
     res.status(500).json({ message: 'Ошибка смены статуса' });
   }
 });
+
+/**
+ * Роль подписи, закреплённая за ссылкой.
+ *
+ * ⚠️ СОВМЕСТИМОСТЬ СО СТАРЫМИ ССЫЛКАМИ. У выданных до появления цепочки
+ * записей токена поля signRole нет вовсе — тогда подпись была одна. Такие
+ * ссылки обязаны продолжать работать ровно как раньше, поэтому умолчание —
+ * 'receiver'. Менять умолчание нельзя: ссылка уже у человека в мессенджере.
+ */
+function signRoleOf(entry: any): string {
+  const role = String(entry?.signRole || '');
+  return isKnownSignRole(role) ? role : SIGN_ROLE.RECEIVER;
+}
 
 /** Данные для страницы подписи — тот же урезанный состав. */
 router.get('/sign/:token', async (req: Request, res: Response) => {
@@ -205,6 +256,13 @@ router.get('/sign/:token', async (req: Request, res: Response) => {
     if (r.error) return res.status(r.code).json({ message: r.error });
     const act: any = r.request;
     const d = safeDetails(act.details);
+    const role = signRoleOf(r.entry);
+
+    // Порядок цепочки проверяем и на показе: если ссылку выдали заранее, а
+    // предыдущая ступень ещё не подписана, человек должен увидеть причину,
+    // а не пустую канву, которая потом откажется отправляться.
+    const gate = canSign(act, role);
+
     res.json({
       docNumber: act.docNumber || '',
       fromCity: d.route?.fromCity || '',
@@ -212,6 +270,13 @@ router.get('/sign/:token', async (req: Request, res: Response) => {
       unloadingAddress: d.route?.toAddress || '',
       seats: Number(d.totals?.seats) || 0,
       weight: Number(d.totals?.weight) || 0,
+      // Что именно подписывают — иначе человек ставит подпись вслепую.
+      signRole: role,
+      heading: signHeading(role),
+      hint: signHint(role),
+      docKind: hasDocument(act) ? String(act.docType || act.type || '').toUpperCase() : '',
+      blocked: !gate.ok,
+      blockedReason: gate.reason || '',
     });
   } catch (e: any) {
     console.error('public sign get error:', e);
@@ -220,11 +285,13 @@ router.get('/sign/:token', async (req: Request, res: Response) => {
 });
 
 /**
- * Сохранение подписи получателя.
+ * Сохранение подписи.
  *
- * На этом этапе подпись одна — получателя: она подтверждает выдачу груза,
- * ради чего всё и делалось. Графы отправителя и перевозчика в бланке
- * остаются под ручную.
+ * РАНЬШЕ ЗДЕСЬ БЫЛ ХАРДКОД: роль всегда писалась как 'receiver' и по ней же
+ * фильтровался прежний массив. Колонка signatures изначально рассчитана на
+ * несколько подписей, но пользовалась одной. Теперь роль берётся из записи
+ * токена, а старые ссылки без этого поля по-прежнему подписывают как
+ * получатель (см. signRoleOf).
  */
 router.post('/sign/:token', async (req: Request, res: Response) => {
   try {
@@ -245,14 +312,23 @@ router.post('/sign/:token', async (req: Request, res: Response) => {
       return res.status(413).json({ message: 'Изображение подписи слишком большое' });
     }
 
-    const prev = Array.isArray(act.signatures) ? act.signatures : [];
-    const signatures = [
-      ...prev.filter((s: any) => s && s.role !== 'receiver'),
-      { role: 'receiver', name, image, signedAt: new Date().toISOString(), token },
-    ];
+    const role = signRoleOf(r.entry);
+
+    // Порядок цепочки проверяется НА СЕРВЕРЕ: ссылку могли выдать заранее,
+    // а подпись документа, которого ещё нет, подтверждает пустоту.
+    const gate = canSign(act, role);
+    if (!gate.ok) {
+      return res.status(409).json({ message: gate.reason || 'Сейчас подписывать нельзя' });
+    }
+
+    // putSignature заменяет подпись СВОЕЙ роли и не трогает остальные:
+    // переподписал по новой ссылке — в документе одна подпись, а не две.
+    const signatures = putSignature(act.signatures, {
+      role, name, image, signedAt: new Date().toISOString(), token,
+    });
 
     await burnToken(act.id, token, { signatures: signatures as any });
-    res.json({ ok: true });
+    res.json({ ok: true, signRole: role });
   } catch (e: any) {
     console.error('public sign post error:', e);
     res.status(500).json({ message: 'Ошибка сохранения подписи' });

@@ -305,6 +305,11 @@ export default function ActCreatePage() {
   const [allCompanies, setAllCompanies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [isDataLoading, setIsDataLoading] = useState(false);
+  // Исходные данные формы разложены по состояниям.
+  // isDataLoading для этого не годится: до первого setIsDataLoading(true)
+  // он равен false, и автопересчёт успел бы принять ещё пустую форму за
+  // «менеджер всё стёр» и переписать сохранённые суммы.
+  const [formReady, setFormReady] = useState(false);
 
   // ---------- Перевод заявки на другой ИП (аннулирование + новая заявка) ----------
   const [transferOpen, setTransferOpen] = useState(false);
@@ -563,7 +568,10 @@ export default function ActCreatePage() {
             alert("Ошибка при загрузке данных заявки. Пожалуйста, попробуйте обновить страницу.");
           }
         } finally {
-          if (!cancelled) setIsDataLoading(false);
+          if (!cancelled) {
+            setIsDataLoading(false);
+            setFormReady(true);
+          }
         }
       } else {
         setSelectedCompanyId(getSelectedCompanyId() || "");
@@ -574,6 +582,7 @@ export default function ActCreatePage() {
         if (params.get("type") === "warehouse") {
           setIsWarehouse(true);
         }
+        setFormReady(true);
       }
     };
 
@@ -599,6 +608,51 @@ export default function ActCreatePage() {
   // ============================================================
   // ТАРИФИКАЦИЯ — весь расчёт живёт в src/shared/tariff/calcTariff.js
   // ============================================================
+
+  /**
+   * Расчёт по тарифу БЕЗ побочных эффектов.
+   *
+   * Вынесен из кнопки, потому что считать теперь нужно из двух мест:
+   * по нажатию (с alert-ом и разбором ошибки) и автоматически при правке
+   * (молча). Держать две копии формулы — верный способ получить в
+   * накладной одну сумму, а на экране другую.
+   */
+  const runTariffCalc = useCallback(() => calcDeliveryPrice({
+    tariffs: allTariffs,
+    city: route.toCity,
+    fromCity: route.fromCity,
+    weightKg: cargoWeightKg,
+    volumeM3: cargoVolumeM3,
+    seats: cargoTotals.seats,
+    prrType: prrType,
+    pallets: Number(pallets) || 0,
+    storageMode: storageMode,
+    storageDays: Number(storageDays) || 0,
+    cityDelivery: cityDelivery,
+    regionDelivery: regionEnabled ? regionDelivery : "",
+    transport: tariffTransport,
+    category: "legal",
+    withDelivery,
+    withPickup,
+  }), [allTariffs, route.toCity, route.fromCity, cargoWeightKg, cargoVolumeM3, cargoTotals.seats, prrType, pallets, storageMode, storageDays, cityDelivery, regionEnabled, regionDelivery, tariffTransport, withDelivery, withPickup]);
+
+  /** Строки услуг из результата движка. Формат общий для обоих путей. */
+  const linesFromCalc = (res) => (
+    Array.isArray(res.lines) && res.lines.length
+      ? res.lines.map((l) => ({ id: safeUuid(), calcKey: l.key, name: l.name, qty: 1, price: l.amount, total: l.amount }))
+      : [{ id: safeUuid(), calcKey: "transport", name: res.description, qty: 1, price: res.sum, total: res.sum }]
+  );
+
+  /**
+   * Замена ТАРИФНЫХ строк новыми. Ручные строки (без calcKey) не трогаем:
+   * их вписал менеджер, движок про них ничего не знает.
+   */
+  const applyCalcLines = (calcLines) => {
+    setWarehouseServices((prev) => {
+      const kept = prev.filter((s) => !s.calcKey && (s.name || s.price));
+      return [...kept, ...calcLines];
+    });
+  };
 
   const calculateByTariff = useCallback(() => {
     const res = calcDeliveryPrice({
@@ -636,22 +690,95 @@ export default function ActCreatePage() {
     //
     // Старый формат (одна строка) поддерживаем: если движок по какой-то
     // причине не отдал lines, поведение остаётся прежним, а не ломается.
-    const calcLines = Array.isArray(res.lines) && res.lines.length
-      ? res.lines.map((l) => ({ id: safeUuid(), calcKey: l.key, name: l.name, qty: 1, price: l.amount, total: l.amount }))
-      : [{ id: safeUuid(), calcKey: "transport", name: res.description, qty: 1, price: res.sum, total: res.sum }];
-
-    setWarehouseServices((prev) => {
-      // Пересчёт ЗАМЕНЯЕТ прежние строки тарифа, а не дописывает новые.
-      // Иначе менеджер, поправив вес и нажав «Рассчитать» второй раз,
-      // получил бы двойной счёт: пять строк поверх пяти прежних.
-      // Ручные и складские строки (без calcKey) остаются нетронутыми.
-      const kept = prev.filter((s) => !s.calcKey && (s.name || s.price));
-      return [...kept, ...calcLines];
-    });
+    // Пересчёт ЗАМЕНЯЕТ прежние строки тарифа, а не дописывает новые.
+    // Иначе менеджер, поправив вес и нажав «Рассчитать» второй раз,
+    // получил бы двойной счёт: пять строк поверх пяти прежних.
+    const calcLines = linesFromCalc(res);
+    applyCalcLines(calcLines);
     alert(
       `Расчёт по тарифу:\n\n${calcLines.map((l) => `• ${l.name} — ${Number(l.price).toLocaleString()} тг`).join("\n")}\n\nИтого: ${res.sum.toLocaleString()} тг`
     );
-  }, [route.toCity, cargoVolumeM3, cargoWeightKg, allTariffs, tariffTransport, prrType, pallets, storageMode, storageDays, cityDelivery, regionEnabled, regionDelivery]);
+    // ГАЛОЧКИ «Доставка» И «ЗАБОР ГРУЗА» ОБЯЗАНЫ БЫТЬ В ЗАВИСИМОСТЯХ.
+    //
+    // Их здесь не было, и useCallback пересоздавался только при смене города,
+    // веса, объёма, тарифов, ПРР и хранения. Значит после клика по «Забор
+    // груза» кнопка «Рассчитать» продолжала звать СТАРУЮ функцию — с теми
+    // значениями галочек, какие были на момент последнего изменения одной из
+    // перечисленных зависимостей. Отсюда «иногда не считается»: снял доставку,
+    // поставил забор — расчёт всё равно уходил со старой парой флагов, и в
+    // накладную попадало не то, что стоит на экране. Как только менеджер
+    // трогал вес или город, замыкание обновлялось и всё «само чинилось» —
+    // поэтому баг и выглядел плавающим.
+    //
+    // route.fromCity — та же история: город отправления участвует в поиске
+    // тарифа (направление from → to), но в списке зависимостей его не было.
+  }, [route.toCity, route.fromCity, cargoVolumeM3, cargoWeightKg, allTariffs, tariffTransport, prrType, pallets, storageMode, storageDays, cityDelivery, regionEnabled, regionDelivery, withDelivery, withPickup]);
+
+  // ============================================================
+  // АВТОПЕРЕСЧЁТ ПО ТАРИФУ ПРИ ПРАВКЕ
+  //
+  // ТЗ (заказчик): «при редактировании накладной суммы не отображаются —
+  // покажи суммы и автоматически пересчитывай их по тарифу с учётом
+  // изменений».
+  //
+  // ЧТО БЫЛО. Расчёт запускался ТОЛЬКО кнопкой «Рассчитать по тарифу».
+  // Менеджер правил вес, город или габариты — строки услуг оставались от
+  // прежнего расчёта, а если кнопку не нажимали ни разу, их не было вовсе:
+  // servicesTotals давал 0, totalSum — пустую строку, и в карточке заявки
+  // в графе «Сумма» стоял прочерк. Это и есть «суммы не отображаются»:
+  // не спрятаны, а не посчитаны.
+  //
+  // ПОЧЕМУ НЕ ПЕРЕСЧИТЫВАЕМ СРАЗУ ПРИ ОТКРЫТИИ. Заявку могли сохранить с
+  // суммой, согласованной с клиентом, а тарифы с тех пор поменяться.
+  // Пересчёт на входе молча переписал бы согласованную сумму, и менеджер
+  // узнал бы об этом от клиента. Поэтому первый набор параметров, пришедший
+  // из базы, запоминается как исходный и пересчёта не вызывает — считаем
+  // только то, что менеджер изменил СЕЙЧАС.
+  //
+  // РУЧНЫЕ СТРОКИ НЕ ТРОГАЕМ. Пересчёт заменяет только строки с calcKey,
+  // а строка, которой правили цену или количество руками, calcKey теряет
+  // (см. updateServiceField) и переходит в разряд ручных навсегда.
+  // ============================================================
+
+  // Слепок всех входных данных тарифа. Сравниваем строкой: пересчёт должен
+  // идти от СМЫСЛА, а не от новых ссылок на объекты route/cargoRows, которые
+  // React создаёт на каждый ввод символа.
+  const pricingKey = useMemo(() => JSON.stringify([
+    route.fromCity, route.toCity, cargoWeightKg, cargoVolumeM3, cargoTotals.seats,
+    prrType, pallets, storageMode, storageDays, cityDelivery,
+    regionEnabled ? regionDelivery : "", tariffTransport, withDelivery, withPickup,
+  ]), [route.fromCity, route.toCity, cargoWeightKg, cargoVolumeM3, cargoTotals.seats,
+       prrType, pallets, storageMode, storageDays, cityDelivery,
+       regionEnabled, regionDelivery, tariffTransport, withDelivery, withPickup]);
+
+  const basePricingKey = useRef(null);
+  const [autoCalcNote, setAutoCalcNote] = useState("");
+
+  useEffect(() => {
+    // Тарифы ещё не приехали — считать не по чему.
+    if (!allTariffs.length) return;
+    // Данные заявки ещё грузятся: слепок сейчас неполный и был бы принят
+    // за «менеджер изменил», хотя менеджер ничего не трогал.
+    if (isDataLoading || !formReady) return;
+
+    if (basePricingKey.current === null) {
+      basePricingKey.current = pricingKey;
+      return;
+    }
+    if (basePricingKey.current === pricingKey) return;
+    basePricingKey.current = pricingKey;
+
+    const res = runTariffCalc();
+    if (!res.ok) {
+      // Молча: пересчёт идёт по каждому нажатию клавиши, и alert на
+      // недозаполненном направлении сделал бы форму неработоспособной.
+      // Причину показываем строкой рядом с итогом.
+      setAutoCalcNote(res.error || "Тариф по этому направлению не найден");
+      return;
+    }
+    applyCalcLines(linesFromCalc(res));
+    setAutoCalcNote("");
+  }, [pricingKey, allTariffs.length, isDataLoading, formReady, runTariffCalc]);
 
   // Перевод заявки на другой ИП: старая аннулируется (номер остаётся за ней),
   // в целевом ИП создаётся новая заявка со СВОИМ следующим номером (genNumber(target)).
@@ -761,6 +888,12 @@ export default function ActCreatePage() {
         const next = { ...s, [field]: val };
         if (field === "qty" || field === "price") {
           next.total = toNum(next.qty) * toNum(next.price);
+          // Строку, которой правили цену или количество руками, автопересчёт
+          // больше не переписывает: calcKey снимаем, и она становится
+          // обычной ручной строкой. Иначе менеджер вписал бы согласованную
+          // с клиентом цену, поправил вес — и цена молча вернулась бы к
+          // тарифной.
+          delete next.calcKey;
         }
         return next;
       })
@@ -1672,6 +1805,15 @@ export default function ActCreatePage() {
                   <button type="button" className="btn btn--accent" onClick={calculateByTariff}>
                     💰 Рассчитать по тарифу
                   </button>
+                  {/* Кнопку оставили: она пересчитывает принудительно и
+                      показывает расшифровку. Строка рядом отвечает на вопрос
+                      «а сумма-то сейчас какая» — раньше её приходилось искать
+                      в подвале таблицы услуг. */}
+                  <span style={{ fontSize: "0.85rem", fontWeight: 600, color: autoCalcNote ? "#b45309" : "#389e0d" }}>
+                    {autoCalcNote
+                      ? `⚠ ${autoCalcNote}`
+                      : `⚡ Пересчитывается автоматически · итого ${servicesTotals.sum.toLocaleString()} тг`}
+                  </span>
                   <span style={{ fontSize: "0.85rem", color: "#666" }}>
                     Объём груза: <strong>{cargoVolumeM3.toFixed(4)} м³</strong>
                     <span style={{ color: "#aaa", marginLeft: 4 }}>(из габаритов, сравнивается с весом)</span>

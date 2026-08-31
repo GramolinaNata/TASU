@@ -9,9 +9,14 @@ function emit() {
 
 export async function loadContracts() {
     try {
-        const list = await api.requests.list();
-        // Фильтруем только договоры, если на бекенде они все в одной таблице requests
-        contractsCache = list.filter(r => r.type === 'Contract');
+        // Договоры лежат в СВОЕЙ таблице (модель Contract, роут /contracts).
+        // Здесь стояло `api.requests.list()` с фильтром `type === 'Contract'` —
+        // со времён, когда договор был разновидностью заявки. Заявок с таким
+        // типом в базе нет, поэтому кэш всегда получался пустым, а на каждый
+        // вход в систему уезжал запрос за ВСЕМИ заявками, результат которого
+        // тут же выбрасывался.
+        const list = await api.contracts.list();
+        contractsCache = Array.isArray(list) ? list : [];
         emit();
         return contractsCache;
     } catch (err) {
@@ -24,23 +29,26 @@ export const getContracts = () => {
     return contractsCache;
 };
 
+// Создание/правка/удаление идут в ТУ ЖЕ таблицу, из которой читает
+// loadContracts. Раньше они писали в requests с type: 'Contract' —
+// запись уходила не туда, где её потом ищут.
 export const addContract = async (contractData) => {
-    const newContract = await api.requests.create({
-        ...contractData,
-        type: 'Contract'
-    });
+    const newContract = await api.contracts.create(contractData);
     await loadContracts();
-    return newAct;
+    // Здесь стояло `return newAct` — переменной с таким именем в модуле нет.
+    // В ES-модуле это ReferenceError: договор создавался, а вызывающий получал
+    // исключение и считал, что создание не прошло.
+    return newContract;
 };
 
 export const updateContract = async (id, data) => {
-    const updated = await api.requests.update(id, data);
+    const updated = await api.contracts.update(id, data);
     await loadContracts();
     return updated;
 };
 
 export const deleteContract = async (id) => {
-    await api.requests.delete(id);
+    await api.contracts.delete(id);
     await loadContracts();
 };
 
