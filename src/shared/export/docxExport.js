@@ -252,6 +252,14 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
       ? await makeTextWatermark(watermarkText)
       : await makeWatermark(companyLogo, 0.2);    console.log("🔵 [Export] watermark:", watermarkImage ? "ok" : "null", "stamp:", companyStamp ? "ok" : "null");
 
+    // СМР обязан помещаться на ОДИН лист: бланк международный, второй лист
+    // на границе считают браком. Картинки в нём — самая тяжёлая часть строки
+    // (высота строки таблицы = высота самой крупной картинки в ней), поэтому
+    // для СМР печать и подписи меньше, чем в остальных бланках. Прочие шаблоны
+    // (заявка, договоры, склад) в одну страницу не обязаны укладываться —
+    // им прежние размеры оставлены.
+    const isSmr = typeToUse === "smr" || typeToUse === "cmr";
+
     const imageOptions = {
       centered: false,
       getImage: (tagValue, tagName) => {
@@ -260,22 +268,21 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
         return buf;
       },
       getSize: (img, tagValue, tagName) => {
-        if (
-  tagName === "watermark" ||
-  tagName === "watermark_corner" ||
-  tagName === "watermark_8910"
-) {
-    return [90, 90];   // можно даже 80, если нужно
-}
-        // 🆕 Печать/подпись компании — фикс. высота 2 см, ширина пропорционально
-        if (tagName === "stamp" || tagName === "company_stamp") {
-          return sizeByHeight(img, 2, 1); // 2 см высотой, ширина из пропорций картинки
+        // Круг ТТН/СМР в графах 8–10 бланка СМР: занимает целую строку
+        // таблицы, поэтому мельче остальных водяных знаков.
+        if (tagName === "watermark_8910") return [40, 40];
+        if (tagName === "watermark" || tagName === "watermark_corner") {
+          return [90, 90];
         }
-        // ТЗ: электронная подпись получателя в СМР. Ниже печати — это роспись
-        // от руки, а не оттиск; 1,5 см хватает, чтобы читалась и не наезжала
+        // 🆕 Печать/подпись компании — фикс. высота, ширина пропорционально
+        if (tagName === "stamp" || tagName === "company_stamp") {
+          return sizeByHeight(img, isSmr ? 1 : 2, 1);
+        }
+        // ТЗ: электронные подписи клиента, водителя и получателя. Это роспись
+        // от руки, а не оттиск; 0,9 см хватает, чтобы читалась и не наезжала
         // на соседние графы бланка.
         if (tagName === "signature_receiver" || tagName === "signature_client" || tagName === "signature_driver") {
-          return sizeByHeight(img, 1.5, 1);
+          return sizeByHeight(img, 0.9, 1);
         }
         return [120, 39]; // лого в шапке (уменьшено)
       },
