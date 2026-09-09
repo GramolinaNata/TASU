@@ -217,7 +217,13 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
 
     console.log("🔵 [Export] Шаблон:", templateFile);
 
-    let response = await fetch(templateFile);
+    // cache: "reload" — бланк тянем всегда свежий, из сети. Заголовков
+    // кеширования nginx на /templates не ставит, поэтому браузер вправе
+    // отдать docx из своего кеша по эвристике: после правки бланка человек
+    // получал старую вёрстку и печатал её (у старого бланка одно только поле
+    // сверху было 2,6 см против нынешних 0,35). Ctrl+Shift+R обновляет
+    // страницу, но не гарантирует перезапрос файла, который тянет fetch.
+    let response = await fetch(templateFile, { cache: "reload" });
     if (!response.ok) {
       console.warn(`[Export] Шаблон ${templateFile} не найден. Откат.`);
       response = await fetch("/templates/template.docx");
@@ -299,7 +305,14 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
     });
 
     const data = {
-      logo: companyLogo,
+      // Логотип компании — НЕ в СМР. Бланк международный, лого в нём не
+      // предусмотрено: код клал его отдельным абзацем НАД формой, и этот
+      // абзац сдвигал весь документ вниз на 0,7 см — из-за чего графы 25-26
+      // свешивались на второй лист. Без него выгрузка начинается там же, где
+      // и пустой бланк, — 1,01 см от края листа.
+      // Понадобится вернуть — заменить на companyLogo, размер задаётся
+      // в getSize (ветка isSmr).
+      logo: isSmr ? "" : companyLogo,
       // 🆕 ТЗ v2: ПЕЧАТЬ КОМПАНИИ — вставляется как картинка через {%stamp} в шаблоне
       stamp: companyStamp,
       // ТЗ: электронная подпись получателя — расписывается пальцем по
