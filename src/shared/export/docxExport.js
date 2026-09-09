@@ -270,21 +270,23 @@ export async function exportToDocx(act, templateOverride = null, opts = {}) {
       getSize: (img, tagValue, tagName) => {
         // Круг ТТН/СМР в графах 8–10 бланка СМР: занимает целую строку
         // таблицы, поэтому мельче остальных водяных знаков.
-        if (tagName === "watermark_8910") return [40, 40];
+        if (tagName === "watermark_8910") return [28, 28];
         if (tagName === "watermark" || tagName === "watermark_corner") {
           return [90, 90];
         }
         // 🆕 Печать/подпись компании — фикс. высота, ширина пропорционально
         if (tagName === "stamp" || tagName === "company_stamp") {
-          return sizeByHeight(img, isSmr ? 1 : 2, 1);
+          return sizeByHeight(img, isSmr ? 0.9 : 2, 1);
         }
         // ТЗ: электронные подписи клиента, водителя и получателя. Это роспись
-        // от руки, а не оттиск; 0,9 см хватает, чтобы читалась и не наезжала
+        // от руки, а не оттиск; 0,75 см хватает, чтобы читалась и не наезжала
         // на соседние графы бланка.
         if (tagName === "signature_receiver" || tagName === "signature_client" || tagName === "signature_driver") {
-          return sizeByHeight(img, 0.9, 1);
+          return sizeByHeight(img, 0.75, 1);
         }
-        return [120, 39]; // лого в шапке (уменьшено)
+        // Лого компании в шапке. В СМР оно стоит над бланком и его высота
+        // целиком уходит из полезной площади листа — там мельче.
+        return isSmr ? [85, 28] : [120, 39];
       },
     };
 
